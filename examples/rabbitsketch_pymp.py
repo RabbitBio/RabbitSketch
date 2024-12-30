@@ -1,11 +1,6 @@
 import rabbitsketch as sketch
 import fastx,time  
 import pymp
-from multiprocessing import Manager,Queue
-import math
-import numpy as np
-import  dill as pickle
-from dill import dumps, loads
 THREAD_NUM = 64
 file_list = []
 t1 = time.time()
