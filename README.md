@@ -1,7 +1,7 @@
 ![RabbitSketch](sketch.png)
-
+RabbitSketch is a highly optimized sketching library that exploits the power of modern multi-core CPUs. It supports various sketching algorithms including MinHash, OrderMinHash, and HyperLogLog. RabbitSketch achieves significant speedups compared to existing implementations, ranging from 2.30x to 49.55x.In addition, we provide flexible and easy-to-use interfaces for both Python and C++. The similarity analysis of 455GB genomic data can be completed in about 5 minutes using RabbitSketch with Python code.
+Detailed API documentation at https://rabbitsketch.readthedocs.io/en/latest
 ## Getting Started
-
 A Linux system on a recent x86_64 CPU is required.
 
 ### Installing (C++ interface) 
@@ -24,13 +24,7 @@ export LD_LIBRARY_PATH=`pwd`/lib:$LD_LIBRARY_PATH
 cd ../examples/
 #default install dir: ../build/
 make 
-./exe_main genome.fna
-```
 
-We will get the value of jaccard and distance.
-
-or:
-```bash
 ./exe_SKETCH_ALGORITHM FILE_PATH threshold(0.05) thread_num 
 ```
 We will get the distance among large-scale genome sequences.
@@ -39,12 +33,12 @@ We will get the distance among large-scale genome sequences.
 **pip install:**
 ```bash
 cd RabbitSketch
-pip3 install . --user
+pip install . --user
 ```
 or
 ```bash
 #pypi available (not up to date)
-#pip3 install rabbitsketch --user
+#pip install rabbitsketch --user
 ```
 **cmake install**
 ```bash
@@ -58,13 +52,6 @@ make
 
 ```bash
 cd examples
-python pysketch.py #require fastx
+python rabbitsketch_pymp.py #require fastx
 ```
-We will get the Jaccard index among large-scale genome sequences with Python API. To change the algorithm, simply modify 
-```bash 
-sketch.SKETCH_ALGORITHM.
-```
-** case study for multi-thread sketch building with Python API
-```bash
-python multi_minhash.py #require pymp
-
+We will get the Jaccard index among large-scale genome sequences with Python API. 
