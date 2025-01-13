@@ -52,7 +52,7 @@ int main(int argc, char* argv[]) {
 	std::cout << "drlevel: " << drlevel << std::endl;
 
 
-	kssd_parameter_t kssdPara(half_k, half_subk, drlevel, "/home/user_home/tongz/test/RabbitSketch/src/shuf_file/L3K10.shuf");
+	kssd_parameter_t kssdPara(half_k, half_subk, drlevel, "shuf_file/L3K10.shuf");
 	vector<Sketch::KssdLite> vkssd;	
 	//std::vector<std::unique_ptr<Sketch::Kssd>> vkssd;
 	bool isQuery = false;
