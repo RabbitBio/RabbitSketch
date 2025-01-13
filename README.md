@@ -24,10 +24,11 @@ export LD_LIBRARY_PATH=`pwd`/lib:$LD_LIBRARY_PATH
 cd ../examples/
 #default install dir: ../build/
 make 
-
 ./exe_SKETCH_ALGORITHM FILE_PATH threshold(0.05) thread_num 
 ```
 We will get the distance among large-scale genome sequences.
+
+If the Kssd algorithm is used, the shuffled file must first be generated. You can generate the shuffled file in the `shuf_file/` directory by running `exe_generate_shuf_file`. Here, L represents the drlevel, and K represents halfk. By default, we use `L3K10.shuf`.
 
 ### PYTHON bind
 **pip install:**

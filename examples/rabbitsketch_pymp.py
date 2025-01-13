@@ -12,10 +12,10 @@ info.half_k = half_k
 info.half_subk = half_subk
 info.drlevel = drlevel
 
-file_path = "/home/user_home/tongz/test/RabbitSketch/src/shuf_file/L3K10.shuf"
+file_path = "shuf_file/L3K10.shuf"
 kssd_para = sketch.kssd_parameter_t(half_k, half_subk, drlevel, file_path)
 vkssd = pymp.shared.list()
-with open('bacteria.list', "r") as bact1000:
+with open('100.list', "r") as bact1000:
     for genomefile in bact1000:
         genomefile = genomefile.strip()
         file_list.append(genomefile)
@@ -45,6 +45,6 @@ sketch.trans_sketches(vkssd, info, "pysketch.dict", "pysketch.index", THREAD_NUM
 t3 = time.time()
 print("trans time is :", t3-t2)
 
-sketch.index_dict(vkssd, info, "pysketch", "pysketch.dist", 20, 0.05, 0, THREAD_NUM)
+sketch.index_dict(vkssd, info, "pysketch", "pysketch.dist", 20, 1, 0, THREAD_NUM)
 t4 = time.time()
 print("dist time is :", t4-t3)
