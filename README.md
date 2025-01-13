@@ -51,6 +51,7 @@ make
 **test using bpython or python**
 
 ```bash
+#pip install -r requirement 
 cd examples
 python rabbitsketch_pymp.py #require fastx
 ```
