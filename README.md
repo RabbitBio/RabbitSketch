@@ -28,6 +28,11 @@ make
 ```
 We will get the distance among large-scale genome sequences.
 
+```bash
+./exe_main genome1.fna genome2.fna
+```
+We will get the distance between genome1 and genome2 with different algorithm
+
 If the Kssd algorithm is used, the shuffled file must first be generated. You can generate the shuffled file in the `shuf_file/` directory by running `exe_generate_shuf_file`. Here, L represents the drlevel, and K represents halfk. By default, we use `L3K10.shuf`.
 
 ### PYTHON bind
