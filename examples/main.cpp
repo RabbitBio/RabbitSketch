@@ -14,74 +14,9 @@ using namespace std;
 
 KSEQ_INIT(gzFile, gzread)
 
-//double get_sec(){ //	struct timeval tv;
-//	gettimeofday(&tv, NULL);
-//	return (double)tv.tv_sec + (double)tv.tv_usec / 1000000;
-//}
-
-//void getCWS(double *r, double *c, double *b, int sketchSize, int dimension){
-////	cerr << "successful malloc r, c, b in getCWS" << endl;
-//	const int DISTRIBUTION_SEED = 1;
-//    default_random_engine generator(DISTRIBUTION_SEED);
-//    gamma_distribution<double> gamma(2.0,1.0);
-//    uniform_real_distribution<double> uniform(0.0,1.0);
-//
-//    for (int i = 0; i < sketchSize * dimension; ++i){
-//        r[i] = gamma(generator);
-//        c[i] = log(gamma(generator));
-//        b[i] = uniform(generator) * r[i];
-//    }
-//}	
-
 
 int main(int argc, char* argv[])
 {
-//	string kssdHashFile = argv[1];
-//	ifstream ifs(kssdHashFile);
-//	string line;
-//	vector<vector<uint64_t>> hashesArr;
-//	vector<uint64_t> curHashes;
-//	while(getline(ifs, line)){
-//		if(line[0] == '>'){
-//			if(curHashes.size() != 0){
-//				hashesArr.push_back(curHashes);
-//				vector<uint64_t>().swap(curHashes);
-//			}
-//		}
-//		else{
-//			stringstream ss;
-//			ss << line;
-//			uint64_t hash;
-//			ss >> hash;
-//			curHashes.push_back(hash);
-//		}
-//	}
-//	if(curHashes.size() != 0){
-//		hashesArr.push_back(curHashes);
-//		vector<uint64_t>().swap(curHashes);
-//	}
-//
-//	int half_k = 10;
-//	int half_subk = 6;
-//	int drlevel = 3;
-//	Sketch::KSSDParameters kssdPara(half_k, half_subk, drlevel);
-//
-//	vector<Sketch::KSSD *> vkssd;
-//	
-//	for(int i = 0; i < hashesArr.size(); i++){
-//		Sketch::KSSD * kssd = new Sketch::KSSD(kssdPara);
-//		kssd->loadHashes(hashesArr[i]);
-//		vkssd.push_back(kssd);
-//	}
-//	int count = vkssd.size();
-//	for(int i = 0; i < count; i++){
-//		for(int j = i+1; j < count; j++){
-//			double distance4 = vkssd[i]->distance(vkssd[j]);
-//			printf("the distance of seq[%d] and seq[%d] is:\t %lf \n", i, j, distance4);
-//		}
-//	}
-	
-
 
 	gzFile fp1;
 	kseq_t *ks1;
@@ -109,9 +44,9 @@ int main(int argc, char* argv[])
 	int half_k = 10;
 	int half_subk = 6;
 	int drlevel = 3;
-	Sketch::KSSDParameters kssdPara(half_k, half_subk, drlevel);
 
-	vector<Sketch::KSSD *> vkssd;
+	Sketch::kssd_parameter_t kssdPara(half_k, half_subk, drlevel, "shuf_file/L3K10.shuf");
+	vector<Sketch::Kssd *> vkssd;
 	vector<Sketch::WMinHash *> vwmh; 
 	vector<Sketch::MinHash *> vmh; 
 	vector<Sketch::OrderMinHash > vomh; 
@@ -126,10 +61,9 @@ int main(int argc, char* argv[])
 		Sketch::WMinHash * wmh1 = new Sketch::WMinHash(parameter);
 		Sketch::MinHash * mh1 = new Sketch::MinHash();
 		Sketch::OrderMinHash omh1;
-    	static const size_t BITS = 20; //24
+    static const size_t BITS = 10; //24
 		Sketch::HyperLogLog t(BITS);
-		Sketch::KSSD * kssd = new Sketch::KSSD(kssdPara);
-
+		Sketch::Kssd* kssd = new Sketch::Kssd(kssdPara);
 		cerr << "end the wmh construction" << endl;
 		wmh1->update(ks1->seq.s);
 		mh1->update(ks1->seq.s);	
