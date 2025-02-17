@@ -26,11 +26,13 @@ If the Kssd algorithm is used, the shuffled file must first be generated. You ca
 cd ../examples/
 #default install dir: ../build/
 make 
+#./exe_generate_shuf_file
 ./exe_SKETCH_ALGORITHM FILE_PATH threshold(0.05) thread_num 
 ```
 We will get the distance among large-scale genome sequences.
 
 ```bash
+./exe_generate_shuf_file
 ./exe_main genome1.fna genome2.fna
 ```
 We will get the distance between genome1 and genome2 with different algorithm
