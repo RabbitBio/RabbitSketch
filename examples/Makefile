@@ -20,8 +20,7 @@ exe_test_OMH: test_OMH.cpp
 exe_generate_shuf_file: generate_shuf_file.cpp
 	$(CXX) $(CXXFLAGS) generate_shuf_file.cpp -o exe_generate_shuf_file -lz -lrabbitsketch_static -L $(LIBS)
 
-
-exe_test_HLL: main.cpp
+exe_main: main.cpp
 	$(CXX) $(CXXFLAGS) main.cpp -o exe_main -lz -lrabbitsketch_static -L $(LIBS)
 clean:
 	rm -f *.o exe_*
