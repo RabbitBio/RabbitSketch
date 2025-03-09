@@ -1,34 +1,54 @@
 package:
   name: rabbitsketch
-  version: v0.1.0
+  version: "0.1.0"
 
 source:
-  git_url: https://github.com/RabbitBio/RabbitSketch
-  git_submodules: true
+  url: https://github.com/RabbitBio/RabbitSketch/archive/refs/heads/bioconda.tar.gz
+  sha256: 72c9275f79111debdaa6fd7cd4feeee78705a002a73785c4c658cabbc50e57c9
 
 build:
-  number: 1
-  script: | 
-    pip install . --no-deps --ignore-installed --prefix=$PREFIX
+  number: 0
+  script:
+    - mkdir -p build
+    - cd build
+    - cmake -DCXXAPI=ON .. -DCMAKE_INSTALL_PREFIX=.
+    - make -j$(nproc)
+    - cd ..
+    - "{{ PYTHON }} -m pip install . --no-deps --ignore-installed -vv"
+  run_exports:
+    - {{ pin_subpackage('rabbitsketch', max_pin="x.x") }}
+
 requirements:
   build:
-    - python=3.7
-    - setuptools
-    - pip 
+    - {{ compiler('c') }}
+    - {{ compiler('cxx') }}
     - cmake
     - make
+    - setuptools
+    - libxcrypt
+    - pip
+    - wheel
+    - pybind11 >=2.6, <2.7
   host:
+    - python =3.7
     - zlib
+    - pybind11 >=2.6, <2.7
+    - cython
+    - sysroot_linux-64
+    - libxcrypt
   run:
-    - python=3.7
+    - python =3.7
+    - libxcrypt
+
 test:
   requires:
-    - python=3.7
+    - python =3.7
   commands:
     - python -c "import sys; print(sys.path)"
     - python -c "import rabbitsketch; print(rabbitsketch.__file__)"
     - python -c "import rabbitsketch"
     - python -c "from rabbitsketch import Kssd"
+
 about:
   home: https://github.com/RabbitBio/RabbitSketch
   license: https://github.com/RabbitBio/RabbitSketch/blob/lib/LICENSE.txt

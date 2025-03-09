@@ -117,8 +117,9 @@ constexpr inline int clz_manual( std::uint32_t x )
 	if ((x & 0xFFFF0000) == 0) {n  = 16; x <<= 16;}
 	if ((x & 0xFF000000) == 0) {n +=  8; x <<=  8;}
 	if ((x & 0xF0000000) == 0) {n +=  4; x <<=  4;}
-	clztbl(n, x >> (32 - 4));
-	return n;
+	//clztbl(n, x >> (32 - 4));
+  n += clztbl(n, x >> (32 - 4));
+  return n;
 }
 
 // Overload
@@ -129,8 +130,9 @@ constexpr inline int clz_manual( std::uint64_t x )
 	if ((x & 0xFFFF000000000000ull) == 0) {n += 16; x <<= 16;}
 	if ((x & 0xFF00000000000000ull) == 0) {n +=  8; x <<=  8;}
 	if ((x & 0xF000000000000000ull) == 0) {n +=  4; x <<=  4;}
-	clztbl(n, x >> (64 - 4));
-	return n;
+	//clztbl(n, x >> (64 - 4));
+  n += clztbl(n, x >> (64 - 4));
+  return n;
 }
 
 // clz wrappers. Apparently, __builtin_clzll is undefined for values of 0.
