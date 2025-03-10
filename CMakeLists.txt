@@ -16,7 +16,9 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -g -std=c++14 -fopenmp -march=native
 
 #set flags for specific files
 #set_source_files_properties(src/MinHash.cpp PROPERTIES COMPILE_FLAGS -mavx2)
-
+if(APPLE)
+    add_definitions(-DAVOID_CLZ_UNDEF)
+endif()
 
 if (CXXAPI)
 	add_compile_options(-DNOPYTHON)
