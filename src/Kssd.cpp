@@ -675,7 +675,7 @@ namespace Sketch{
 		for (int i = 0; i < length; i++) {
 			char ch = seq[i];
 			int basenum = (ch < 128) ? BaseMap[(int)ch] : -1;
-			if (basenum != -1) {
+      if (basenum != -1) {
 				tuple = ((tuple << 2) | basenum) & tupmask;
 				rvs_tuple = (rvs_tuple >> 2) + (((uint64_t)basenum ^ 3LLU) << rev_add_move);
 				base++;
@@ -928,8 +928,9 @@ namespace Sketch{
 			//vector<uint64_t> sketcharr64 = sketches[i]->storeHashes64();
 			if(i % progress_bar_size == 0) cerr << "=====finish: " << i << endl;
 			int tid = omp_get_thread_num();
-			fprintf(fpIndexArr[tid], "%s\t%s\n", file_name, dist_file_list[tid].c_str());
-			memset(intersectionArr[tid], 0, numRef * sizeof(int));
+			//fprintf(fpIndexArr[tid], "%s\t%s\n", file_name, dist_file_list[tid].c_str());
+			fprintf(fpIndexArr[tid], "%s\t%s\n", file_name.c_str(), dist_file_list[tid].c_str());
+      memset(intersectionArr[tid], 0, numRef * sizeof(int));
 			if(use64){
 				for(size_t j = 0; j < sketcharr.size(); j++){
 					uint64_t hash64 = sketches[i].hashList64[j];
