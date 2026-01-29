@@ -127,26 +127,16 @@ namespace Sketch{
 
 			/// test whether this minhash is empty
 			bool isEmpty() { 
-				//if(this->needToList){
-				//	this->heapToList();
-				//	this->needToList = false;
-				//}
-
+				ensureHeapToListed();
 				if(this->reference.hashesSorted.size() <= 0)
 					return true;
 				else
 					return false;
-				
 			}
 
 			/// get sketch size, it should be less than max sketch size
 			int getSketchSize() {
-				//if(this->needToList)
-				//{
-				//	this->heapToList();
-				//	this->needToList = false;
-				//}
-				
+				ensureHeapToListed();
 				return this->reference.hashesSorted.size();
 			}
 
@@ -159,6 +149,7 @@ namespace Sketch{
 
 			double pValue(uint64_t x, uint64_t lengthRef, uint64_t lengthQuery, double kmerSpace, uint64_t sketchSize);
 			void heapToList();
+			void ensureHeapToListed();  // Ensure hashesSorted is up-to-date
 
 			//parameters
 			int kmerSize;

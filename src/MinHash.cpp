@@ -741,8 +741,9 @@ void MinHash::update(char * seq)
       delete [] seqRev;
   }
 
-	//needToList = true;
-	heapToList();
+	// OPTIMIZATION: Delay heapToList() call until actually needed
+	// This avoids expensive sorting/deduplication on every update()
+	needToList = true;
 }
 
 /* addbyxxm
@@ -750,43 +751,49 @@ void MinHash::update(char * seq)
  *		The jaccard calculation will be wrong answer if there are repeat element in the hashesSorted list.
  * (2)	The memory free of intermediate variables is necessary for lower memory footprint especially for large data sets and large sketchSize.
  * 		The imtermediate variables include: tmp HashesLists, MinHashHeap objects, tmp Sets, etc.
+ * (3)	OPTIMIZATION: Reduced duplicate sorting - only sort once after deduplication
  */
 void MinHash::heapToList()
 {
 	HashList & hashlist = reference.hashesSorted;
-	//hashlist.clear();
 	hashlist.setUse64(use64);
 	HashList tmpHashlist;
 	tmpHashlist.setUse64(use64);
 	minHashHeap -> toHashList(tmpHashlist);
-	//minHashHeap -> toCounts(reference.counts);
+	
+	// Clear existing hashes and insert new ones from heap
+	hashlist.clear();
 	if(use64)
 		hashlist.hashes64.insert(hashlist.hashes64.end(), tmpHashlist.hashes64.begin(), tmpHashlist.hashes64.end());
 	else
 		hashlist.hashes32.insert(hashlist.hashes32.end(), tmpHashlist.hashes32.begin(), tmpHashlist.hashes32.end());
-	hashlist.sort();
+	
+	// OPTIMIZATION: Use unordered_set for deduplication (faster than sort + unique)
+	// This also naturally limits to sketchSize
 	if(use64){
 		robin_hood::unordered_set<uint64_t> mergedSet;
+		mergedSet.reserve(sketchSize);  // Pre-allocate for better performance
 		for(int i = 0; i < hashlist.size(); i++){
 			mergedSet.insert(hashlist.hashes64[i]);
 			if(mergedSet.size() >= sketchSize) break;
 		}
 		hashlist.clear();
+		hashlist.hashes64.reserve(mergedSet.size());
 		for(auto i = mergedSet.begin(); i != mergedSet.end(); ++i){
 			hashlist.hashes64.push_back(*i);
 		}
 		//clear mergedSet and free memory
 		robin_hood::unordered_set<uint64_t>().swap(mergedSet);
-
-
 	}
 	else{
 		robin_hood::unordered_set<uint32_t> mergedSet;
+		mergedSet.reserve(sketchSize);  // Pre-allocate for better performance
 		for(int i = 0; i < hashlist.size(); i++){
 			mergedSet.insert(hashlist.hashes32[i]);
 			if(mergedSet.size() >= sketchSize) break;
 		}
 		hashlist.clear();
+		hashlist.hashes32.reserve(mergedSet.size());
 		for(auto i = mergedSet.begin(); i != mergedSet.end(); ++i){
 			hashlist.hashes32.push_back(*i);
 		}
@@ -794,16 +801,25 @@ void MinHash::heapToList()
 		robin_hood::unordered_set<uint32_t>().swap(mergedSet);
 	}
 
+	// OPTIMIZATION: Only sort once after deduplication (removed duplicate sort)
 	hashlist.sort();
 
-	//hashlist.resize(hashlist.size() < sketchSize ? hashlist.size() : sketchSize);
 	minHashHeap -> clear();
 	tmpHashlist.clear();
+	needToList = false;  // Mark as up-to-date
+}
 
+// Ensure hashesSorted is up-to-date before accessing it
+void MinHash::ensureHeapToListed()
+{
+	if(needToList) {
+		heapToList();
+	}
 }
 
 void MinHash::printMinHashes()
 {
+	ensureHeapToListed();  // Ensure hashesSorted is up-to-date
 	for(int i = 0; i < reference.hashesSorted.size(); i++){
 		if(use64)
 			cerr << "hash64 " <<  i << " " << reference.hashesSorted.at(i).hash64 << endl;
@@ -815,6 +831,7 @@ void MinHash::printMinHashes()
 
 vector<uint64_t> MinHash::storeMinHashes()
 {
+	ensureHeapToListed();  // Ensure hashesSorted is up-to-date
 	vector<uint64_t> res;
 	for(int i = 0; i < reference.hashesSorted.size(); i++){
 		if(use64)
@@ -844,7 +861,8 @@ void MinHash::loadMinHashes(vector<uint64_t> hashArr)
  */
 void MinHash::merge(MinHash& msh)
 {
-	//msh.heapToList();
+	ensureHeapToListed();  // Ensure this object's hashesSorted is up-to-date
+	msh.ensureHeapToListed();  // Ensure msh's hashesSorted is up-to-date
 	HashList & mshList = msh.reference.hashesSorted;	
 	if(use64)
 		reference.hashesSorted.hashes64.insert(reference.hashesSorted.hashes64.end(), msh.reference.hashesSorted.hashes64.begin(), msh.reference.hashesSorted.hashes64.end());
@@ -886,6 +904,8 @@ void MinHash::merge(MinHash& msh)
 double MinHash::containJaccard(MinHash * msh)
 {
 	//cerr << "use the containJaccard in minHash.cpp " << endl;
+	ensureHeapToListed();  // Ensure hashesSorted is up-to-date
+	msh->ensureHeapToListed();  // Ensure msh's hashesSorted is up-to-date
 	uint64_t i = 0;
 	uint64_t j = 0;
 	uint64_t common = 0;
@@ -957,7 +977,8 @@ double MinHash::containJaccard(MinHash * msh)
 
 double MinHash::jaccard(MinHash * msh)
 {
-
+	ensureHeapToListed();  // Ensure hashesSorted is up-to-date
+	msh->ensureHeapToListed();  // Ensure msh's hashesSorted is up-to-date
 	uint64_t i = 0;
 	uint64_t j = 0;
 	uint64_t common = 0;
