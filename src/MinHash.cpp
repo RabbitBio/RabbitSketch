@@ -850,6 +850,10 @@ void MinHash::loadMinHashes(vector<uint64_t> hashArr)
 		else
 			reference.hashesSorted.hashes32.push_back((uint32_t)hashArr[i]);
 	}
+	// Hashes are loaded directly into hashesSorted (not via the heap).
+	// Mark needToList = false so ensureHeapToListed() does NOT overwrite them
+	// with the empty heap, which would silently discard all loaded hashes.
+	needToList = false;
 }
 
 /* addbyxxm
