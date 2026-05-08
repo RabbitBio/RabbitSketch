@@ -111,10 +111,10 @@ static int parse_args(int argc, char* argv[], Args& a) {
         std::string s = argv[i];
         if      (s == "--minhash")      setAlgo(Algo::MINHASH);
         else if (s == "--kssd")         setAlgo(Algo::KSSD);
-        else if (s == "--hll")        { setAlgo(Algo::HLL);       a.kmerSize = 32; } // HLL update() hardcodes KMERLEN=32
+        else if (s == "--hll")          setAlgo(Algo::HLL);
         else if (s == "--probminhash")  setAlgo(Algo::PROBMINHASH);
         else if (s == "--bindash")      setAlgo(Algo::BINDASH);
-        else if (s == "--setsketch")  { setAlgo(Algo::SETSKETCH); a.kmerSize = 32; }
+        else if (s == "--setsketch")    setAlgo(Algo::SETSKETCH);
         else if (s == "--fastkmv")      setAlgo(Algo::FASTKMV);
         else if (s == "--index")        a.useIndex = true;
         else if (s == "-l")             a.listMode = true;

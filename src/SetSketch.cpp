@@ -116,16 +116,17 @@ static inline double setsketch_sum_max_registers(const uint8_t* __restrict__ c1,
 } // namespace
 
 // ── Constructor: precompute threshold + base_inv_pow tables ───────────────────
-SetSketch::SetSketch(int np, double base, double a)
+SetSketch::SetSketch(int np, double base, double a, int kmerlen, bool track_witnesses)
     : np_(np), q_(62), base_(base), a_(a),
-      min_reg_(0), value_(0.0), is_calculated_(0) {
+      min_reg_(0), value_(0.0), is_calculated_(0), kmerLen_(kmerlen) {
   assert(np >= 4 && np <= 16);
   assert(base > 1.0);
   assert(a > 0.0);
 
   const uint64_t m = 1ULL << np;
   core_.resize(m, 0);
-  witnesses_.resize(m, 0);
+  track_witnesses_ = track_witnesses;
+  if (track_witnesses_) witnesses_.resize(m, 0);
   shift_ = 64 - np;
   mask_u_ = (shift_ >= 64) ? ~0ULL : (1ULL << shift_) - 1;
 
@@ -175,7 +176,7 @@ void SetSketch::add_slow(uint64_t hashval) {
   uint8_t k = cur + 1;
   while (k < q_ && rest >= thresholds_[k]) ++k;
   core_[index] = k;
-  witnesses_[index] = hashval;
+  if (track_witnesses_) witnesses_[index] = hashval;
   is_calculated_ = 0;
 
   if (cur == min_reg_) {
@@ -318,7 +319,8 @@ void SetSketch::update(char* seq) {
 
 void SetSketch::update(char* seq, size_t len) {
   const uint64_t LENGTH = static_cast<uint64_t>(len);
-  const int KMERLEN = 32;
+  const int KMERLEN = kmerLen_;
+  const uint64_t fwd_mask = (KMERLEN >= 32) ? UINT64_MAX : ((1ULL << (2 * KMERLEN)) - 1);
   if (LENGTH < (uint64_t)KMERLEN) return;
 
   // Cache class members in locals for the hot loop
@@ -326,7 +328,7 @@ void SetSketch::update(char* seq, size_t len) {
   const uint64_t mask = mask_u_;
   const uint32_t qmax = q_;
   uint8_t*       core = core_.data();
-  uint64_t*      wit  = witnesses_.data();
+  uint64_t*      wit  = track_witnesses_ ? witnesses_.data() : nullptr;
   const uint64_t* thresh = thresholds_;
   uint8_t  loc_min_reg     = min_reg_;
   uint32_t loc_count_at_min = count_at_min_;
@@ -339,7 +341,7 @@ void SetSketch::update(char* seq, size_t len) {
   for (int k = 0; k < KMERLEN; k++) {
     uint8_t ef = ENC(seq[k]);
     if (!VALID(ef)) invalid_count++;
-    fwd_enc = (fwd_enc << 2) | (VALID(ef) ? (ef & 3u) : 0u);
+    fwd_enc = ((fwd_enc << 2) | (VALID(ef) ? (ef & 3u) : 0u)) & fwd_mask;
     uint8_t er = VALID(ef) ? (COMP(ef) & 3u) : 0u;
     rev_enc = (rev_enc >> 2) | (static_cast<uint64_t>(er) << (2 * (KMERLEN - 1)));
   }
@@ -359,7 +361,7 @@ void SetSketch::update(char* seq, size_t len) {
       uint8_t ef_in  = ENC(seq[i + j + KMERLEN]);
       if (!VALID(ef_out)) invalid_count--;
       if (!VALID(ef_in))  invalid_count++;
-      fwd_enc = (fwd_enc << 2) | (VALID(ef_in) ? (ef_in & 3u) : 0u);
+      fwd_enc = ((fwd_enc << 2) | (VALID(ef_in) ? (ef_in & 3u) : 0u)) & fwd_mask;
       uint8_t er_in = VALID(ef_in) ? (COMP(ef_in) & 3u) : 0u;
       rev_enc = (rev_enc >> 2) | ((uint64_t)er_in << (2 * (KMERLEN - 1)));
     }
@@ -443,7 +445,7 @@ void SetSketch::update(char* seq, size_t len) {
           uint8_t k = cur + 1;
           while (k < qmax && rest >= thresh[k]) ++k;
           core[idx] = k;
-          wit[idx] = hashvalv[j];
+          if (wit) wit[idx] = hashvalv[j];
           loc_is_calc = 0;
 
           if (cur == loc_min_reg) {
@@ -488,7 +490,7 @@ void SetSketch::update(char* seq, size_t len) {
           uint8_t k = cur + 1;
           while (k < qmax && rest >= thresh[k]) ++k;
           core[idx] = k;
-          wit[idx] = hashvalv[j];
+          if (wit) wit[idx] = hashvalv[j];
           loc_is_calc = 0;
 
           if (cur == loc_min_reg) {
@@ -512,7 +514,7 @@ void SetSketch::update(char* seq, size_t len) {
       uint8_t k = cur + 1;
       while (k < qmax && rest >= thresh[k]) ++k;
       core[idx] = k;
-      wit[idx] = hashvalv[j];
+      if (wit) wit[idx] = hashvalv[j];
       loc_is_calc = 0;
 
       if (cur == loc_min_reg) {
@@ -536,7 +538,7 @@ void SetSketch::update(char* seq, size_t len) {
           uint8_t k = cur + 1;
           while (k < qmax && rest >= thresh[k]) ++k;
           core[idx] = k;
-          wit[idx] = hashval;
+          if (wit) wit[idx] = hashval;
           loc_is_calc = 0;
           if (cur == loc_min_reg) {
             if (!loc_min_dirty && loc_count_at_min > 0 && --loc_count_at_min == 0)
@@ -549,7 +551,7 @@ void SetSketch::update(char* seq, size_t len) {
     uint8_t ef_in  = ENC(seq[i + KMERLEN]);
     if (!VALID(ef_out)) invalid_count--;
     if (!VALID(ef_in))  invalid_count++;
-    fwd_enc = (fwd_enc << 2) | (VALID(ef_in) ? (ef_in & 3u) : 0u);
+    fwd_enc = ((fwd_enc << 2) | (VALID(ef_in) ? (ef_in & 3u) : 0u)) & fwd_mask;
     uint8_t er_in = VALID(ef_in) ? (COMP(ef_in) & 3u) : 0u;
     rev_enc = (rev_enc >> 2) | ((uint64_t)er_in << (2 * (KMERLEN - 1)));
   }

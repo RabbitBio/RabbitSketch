@@ -144,7 +144,9 @@ void HyperLogLog::compTwoSketch(const std::vector<uint8_t> &sketch1, const std::
 
 	void HyperLogLog::update(char* seq) {
 	const uint64_t LENGTH = strlen(seq);
-	const int KMERLEN = 32; // fills exactly 64 bits (2 bits/base)
+	const int KMERLEN = kmerLen_;
+	// For k<32 the forward encoding only uses 2*k bits; mask off stale upper bits.
+	const uint64_t kmer_mask = (KMERLEN >= 32) ? UINT64_MAX : ((1ULL << (2 * KMERLEN)) - 1);
 	if (LENGTH < (uint64_t)KMERLEN) return;
 
 	uint32_t qq = q();
@@ -157,7 +159,7 @@ void HyperLogLog::compTwoSketch(const std::vector<uint8_t> &sketch1, const std::
 	for (int k = 0; k < KMERLEN; k++) {
 		uint8_t ef = ENC(seq[k]);
 		if (!VALID(ef)) invalid_count++;
-		fwd_enc = (fwd_enc << 2) | (VALID(ef) ? (ef & 3u) : 0u);
+		fwd_enc = ((fwd_enc << 2) | (VALID(ef) ? (ef & 3u) : 0u)) & kmer_mask;
 		uint8_t er = VALID(ef) ? (COMP(ef) & 3u) : 0u;
 		rev_enc = (rev_enc >> 2) | (static_cast<uint64_t>(er) << (2 * (KMERLEN - 1)));
 	}
@@ -189,9 +191,9 @@ void HyperLogLog::compTwoSketch(const std::vector<uint8_t> &sketch1, const std::
 			uint8_t ef_in  = ENC(seq[i + j + KMERLEN]);
 			if (!VALID(ef_out)) invalid_count--;
 			if (!VALID(ef_in))  invalid_count++;
-			fwd_enc = (fwd_enc << 2) | (VALID(ef_in) ? (ef_in & 3u) : 0u);
-			uint8_t er_in = VALID(ef_in) ? (COMP(ef_in) & 3u) : 0u;
-			rev_enc = (rev_enc >> 2) | ((uint64_t)er_in << (2 * (KMERLEN - 1)));
+		fwd_enc = ((fwd_enc << 2) | (VALID(ef_in) ? (ef_in & 3u) : 0u)) & kmer_mask;
+		uint8_t er_in = VALID(ef_in) ? (COMP(ef_in) & 3u) : 0u;
+		rev_enc = (rev_enc >> 2) | ((uint64_t)er_in << (2 * (KMERLEN - 1)));
 		}
 
 		uint64_t hashvalv[8];
@@ -281,7 +283,7 @@ void HyperLogLog::compTwoSketch(const std::vector<uint8_t> &sketch1, const std::
 		uint8_t ef_in  = ENC(seq[i + KMERLEN]);
 		if (!VALID(ef_out)) invalid_count--;
 		if (!VALID(ef_in))  invalid_count++;
-		fwd_enc = (fwd_enc << 2) | (VALID(ef_in) ? (ef_in & 3u) : 0u);
+		fwd_enc = ((fwd_enc << 2) | (VALID(ef_in) ? (ef_in & 3u) : 0u)) & kmer_mask;
 		uint8_t er_in = VALID(ef_in) ? (COMP(ef_in) & 3u) : 0u;
 		rev_enc = (rev_enc >> 2) | ((uint64_t)er_in << (2 * (KMERLEN - 1)));
 	}

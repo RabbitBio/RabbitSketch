@@ -18,7 +18,8 @@ namespace Sketch {
 
 class SetSketch {
 public:
-  SetSketch(int np = 14, double base = 2.0, double a = 20.0);
+  SetSketch(int np = 14, double base = 2.0, double a = 20.0, int kmerlen = 32,
+            bool track_witnesses = false);
   ~SetSketch() = default;
 
   void update(char* seq);
@@ -38,6 +39,7 @@ public:
   double ani(const SetSketch& other, int kmer_size = 32) const;
   const std::vector<uint8_t>& getCore() const { return core_; }
   const std::vector<uint64_t>& getWitnesses() const { return witnesses_; }
+  bool tracksWitnesses() const { return track_witnesses_; }
   double equalRegisterFraction(const SetSketch& other) const;
   double distanceFiltered(const SetSketch& other,
                           double min_jaccard,
@@ -123,6 +125,7 @@ private:
 
   std::vector<uint8_t> core_;
   std::vector<uint64_t> witnesses_;  // hash that "won" each register
+  bool track_witnesses_;
   uint32_t np_;
   uint32_t q_;
   double base_;
@@ -142,6 +145,7 @@ private:
 
   mutable double value_;
   mutable uint8_t is_calculated_;
+  int      kmerLen_;    // k-mer length used in update() (default 32)
 };
 
 } // namespace Sketch

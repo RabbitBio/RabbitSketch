@@ -284,8 +284,10 @@ pmh_build_weighted(const std::string& path, uint32_t m, int k,
             size_t j = i + 1;
             while (j < sampled.size() && sampled[j] == sampled[i]) ++j;
             const uint32_t cnt = static_cast<uint32_t>(j - i);
-            if (cnt > 1)
-                sk->addHash(sampled[i], static_cast<double>(cnt) * inv);
+            // No singleton filter: assembly sequences have all counts=1 and
+            // filtering would empty the sketch. For reads, low-count error
+            // k-mers carry negligible weight (cnt/total ≈ 1/N) anyway.
+            sk->addHash(sampled[i], static_cast<double>(cnt) * inv);
             i = j;
         }
     }
@@ -353,7 +355,7 @@ static Sketch::MinHash* build_minhash(const std::string& path, const Args& a) {
 }
 
 static Sketch::HyperLogLog* build_hll(const std::string& path, const Args& a) {
-    auto* sk = new Sketch::HyperLogLog(a.hllBits);
+    auto* sk = new Sketch::HyperLogLog(a.hllBits, a.kmerSize);
     stream_seq(path, [&](char* seq, uint64_t /*len*/) { sk->update(seq); });
     return sk;
 }
@@ -382,7 +384,8 @@ static Sketch::BinDash* build_bindash(const std::string& path, const Args& a) {
 }
 
 static Sketch::SetSketch* build_setsketch(const std::string& path, const Args& a) {
-    auto* sk = new Sketch::SetSketch(a.ssBits, a.ssBase, a.ssA);
+    auto* sk = new Sketch::SetSketch(a.ssBits, a.ssBase, a.ssA, a.kmerSize,
+                                     /*track_witnesses=*/false);
     stream_seq(path, [&](char* seq, uint64_t len) {
         sk->update(seq, static_cast<size_t>(len));
     });
@@ -767,7 +770,8 @@ static void run_index_setsketch(const Args& a, const std::vector<std::string>& f
     const int N = static_cast<int>(files_in.size());
     if (N == 0) { cerr << "ERROR: empty file list\n"; return; }
 
-    Sketch::SetSketch proto(a.ssBits, a.ssBase, a.ssA);
+    Sketch::SetSketch proto(a.ssBits, a.ssBase, a.ssA, a.kmerSize,
+                            /*track_witnesses=*/true);
     const int    m      = proto.getM();
     const double factor = proto.getFactor();
     double bip_buf[64];
@@ -788,7 +792,8 @@ static void run_index_setsketch(const Args& a, const std::vector<std::string>& f
     double t0 = get_sec();
     #pragma omp parallel for num_threads(a.threads) schedule(dynamic)
     for (int t = 0; t < N; ++t) {
-        Sketch::SetSketch sk(a.ssBits, a.ssBase, a.ssA);
+        Sketch::SetSketch sk(a.ssBits, a.ssBase, a.ssA, a.kmerSize,
+                             /*track_witnesses=*/true);
         gzFile fp = gzopen(fileList[t].c_str(), "r");
         if (!fp) continue;
         kseq_t* ks = kseq_init(fp);
@@ -798,7 +803,7 @@ static void run_index_setsketch(const Args& a, const std::vector<std::string>& f
         gzclose(fp);
 
         sizes[t] = sk.cardinality();
-        memcpy(&flat_cores[static_cast<size_t>(t) * m], sk.getCore().data(), m);
+        memcpy(&flat_cores[static_cast<size_t>(t) * m], sk.getCore().data(), (size_t)m);
         const uint64_t* wit = sk.getWitnesses().data();
         skKeys[t].reserve(witnessesPerSketch);
         for (int p = 0; p < m; p += WITNESS_STRIDE)
@@ -827,7 +832,7 @@ static void run_index_setsketch(const Args& a, const std::vector<std::string>& f
             sF[ni] = fileList[oi];
             sS[ni] = sizes[oi];
             memcpy(&sC[static_cast<size_t>(ni) * m],
-                   &flat_cores[static_cast<size_t>(oi) * m], m);
+                   &flat_cores[static_cast<size_t>(oi) * m], (size_t)m);
             sK[ni] = std::move(skKeys[oi]);
         }
         fileList.swap(sF);
@@ -1829,7 +1834,7 @@ static void run_index_hll(const Args& a, const std::vector<std::string>& files_i
     double t0 = get_sec();
     #pragma omp parallel for num_threads(a.threads) schedule(dynamic)
     for (int t = 0; t < N; ++t) {
-        auto sk = std::make_unique<Sketch::HyperLogLog>(bits, /*track_witnesses=*/true);
+        auto sk = std::make_unique<Sketch::HyperLogLog>(bits, /*track_witnesses=*/true, a.kmerSize);
         gzFile fp = gzopen(fileList[t].c_str(), "r");
         if (!fp) { vhll[t] = std::move(sk); continue; }
         kseq_t* ks = kseq_init(fp);

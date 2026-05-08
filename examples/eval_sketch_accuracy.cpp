@@ -439,6 +439,13 @@ int main(int argc, char* argv[])
             a.hll/N, a.ss/N, a.kd/N,
             a.mh/N, a.pmh/N, a.oph/N, a.kmv/N, a.bd/N,
             a.wpmh/N);
+        // Machine-readable per-rate line for parsing
+        fprintf(stderr,
+            "PARSE_RATE len=%d rate=%.4f HLL=%.6f SetSketch=%.6f KSSD=%.6f"
+            " MinHash=%.6f ProbMH=%.6f OnePerm=%.6f KMV=%.6f BinDash=%.6f WgtPMH=%.6f\n",
+            seq_length, rates[ri],
+            a.hll/N, a.ss/N, a.kd/N,
+            a.mh/N, a.pmh/N, a.oph/N, a.kmv/N, a.bd/N, a.wpmh/N);
         g.hll+=a.hll; g.ss+=a.ss; g.kd+=a.kd;
         g.mh+=a.mh;   g.pmh+=a.pmh; g.oph+=a.oph; g.kmv+=a.kmv; g.bd+=a.bd;
         g.wpmh+=a.wpmh;
@@ -1032,6 +1039,37 @@ int main(int argc, char* argv[])
         "        [MAE]  [MAE]   [MAE]     [MAE]    [MAE]    [MAE]   [MAE]   [MAE]\n"
         "───────  ────────────────────────────────────────────────────────────────────────────────\n");
 
+    // infer representative length from bench_dir name (e.g. ".../L1M" → 1000000)
+    int rep_len = seq_length;  // seq_length is 0 in file mode; parse from dir name
+    if (rep_len == 0) {
+        std::string dname = bench_dir;
+        auto slash = dname.rfind('/');
+        if (slash != std::string::npos) dname = dname.substr(slash + 1);
+        // patterns: L100k, L500k, L1M, L2M, L4M, L8M
+        if (!dname.empty() && (dname[0] == 'L' || dname[0] == 'l')) {
+            std::string num = dname.substr(1);
+            int mult = 1;
+            if (!num.empty() && (num.back() == 'k' || num.back() == 'K'))
+                { mult = 1000;    num.pop_back(); }
+            else if (!num.empty() && (num.back() == 'm' || num.back() == 'M'))
+                { mult = 1000000; num.pop_back(); }
+            try { rep_len = std::stoi(num) * mult; } catch (...) { rep_len = 0; }
+        }
+        // fallback: read from first pair in pairs_meta
+        if (rep_len == 0) {
+            std::ifstream fm(bench_dir + "/pairs_meta.tsv");
+            std::string hdr, row;
+            if (fm && std::getline(fm, hdr) && std::getline(fm, row)) {
+                auto cols = [&](const std::string& s) {
+                    std::vector<std::string> v; std::istringstream ss(s);
+                    std::string t; while (std::getline(ss, t, '\t')) v.push_back(t);
+                    return v;
+                }(row);
+                if (cols.size() >= 3) try { rep_len = std::stoi(cols[2]); } catch (...) {}
+            }
+        }
+    }
+
     FAcc gf;
     for (int ri = 0; ri < n_rates; ri++) {
         const FAcc& a = facc[ri];
@@ -1042,6 +1080,13 @@ int main(int argc, char* argv[])
             rates[ri],
             a.hll/N, a.ss/N, a.kd/N,
             a.mh/N, a.pmh/N, a.oph/N, a.kmv/N, a.bd/N);
+        // machine-readable per-rate line (WgtPMH not available in file mode → 0)
+        fprintf(stderr,
+            "PARSE_RATE len=%d rate=%.4f HLL=%.6f SetSketch=%.6f KSSD=%.6f"
+            " MinHash=%.6f ProbMH=%.6f OnePerm=%.6f KMV=%.6f BinDash=%.6f WgtPMH=%.6f\n",
+            rep_len, rates[ri],
+            a.hll/N, a.ss/N, a.kd/N,
+            a.mh/N, a.pmh/N, a.oph/N, a.kmv/N, a.bd/N, 0.0);
         gf.hll+=a.hll; gf.ss+=a.ss; gf.kd+=a.kd;
         gf.mh+=a.mh;   gf.pmh+=a.pmh; gf.oph+=a.oph; gf.kmv+=a.kmv; gf.bd+=a.bd;
         gf.hll2+=a.hll2; gf.ss2+=a.ss2; gf.kd2+=a.kd2;

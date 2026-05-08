@@ -826,9 +826,10 @@ namespace Sketch{
   class HyperLogLog{
 
     public:
-      HyperLogLog(int np)
+      HyperLogLog(int np, int kmerlen = 32)
         : core_(1uL<<np,0),
           np_(np),
+          kmerLen_(kmerlen),
           is_calculated_(0),
           estim_(EstimationMethod::ERTL_MLE),
           jestim_(JointEstimationMethod::ERTL_JOINT_MLE),
@@ -838,10 +839,11 @@ namespace Sketch{
       // records the 64-bit hash of the k-mer that "won" the register.
       // Used by the inverted-index --hll path (mirrors SetSketch witnesses).
       // Memory cost: 8 * (1 << np) extra bytes per sketch.
-      HyperLogLog(int np, bool track_witnesses)
+      HyperLogLog(int np, bool track_witnesses, int kmerlen = 32)
         : core_(1uL<<np,0),
           witnesses_(track_witnesses ? (1uL<<np) : 0, 0),
           np_(np),
+          kmerLen_(kmerlen),
           is_calculated_(0),
           estim_(EstimationMethod::ERTL_MLE),
           jestim_(JointEstimationMethod::ERTL_JOINT_MLE),
@@ -896,6 +898,7 @@ namespace Sketch{
       std::vector<uint64_t> witnesses_;          // populated only when track_witnesses_
       mutable double value_; //cardinality
       uint32_t np_; // 10-20
+      int      kmerLen_;    // k-mer length used in update() (default 32)
       mutable uint8_t is_calculated_;
       EstimationMethod                        estim_;
       JointEstimationMethod                  jestim_;
