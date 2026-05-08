@@ -866,6 +866,12 @@ namespace Sketch{
       /// Returns an empty vector when witnesses are not being tracked.
       const std::vector<uint64_t>& getWitnesses() const { return witnesses_; }
       bool tracksWitnesses() const { return track_witnesses_; }
+      /// Release the witness array (e.g. after KMV-key extraction in
+      /// --index mode) to reclaim ~8 bytes/register before the verify pass.
+      void clearWitnesses() {
+          std::vector<uint64_t>().swap(witnesses_);
+          track_witnesses_ = false;
+      }
 
       /// Fraction of registers whose values are identical in both sketches.
       /// Computed with SIMD (AVX-512BW / AVX2 / scalar fallback).

@@ -75,6 +75,37 @@ static std::vector<std::string> load_file_list(const std::string& path) {
     return out;
 }
 
+// ── 64-bit mixing + bottom-K (KMV) keys from witnesses ─────────────────────
+// Used as a high-entropy LSH layer for register-based sketches (HLL/SetSketch).
+static inline uint64_t splitmix64(uint64_t x) {
+    x += 0x9e3779b97f4a7c15ULL;
+    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+    return x ^ (x >> 31);
+}
+
+static inline void keys_from_witnesses_kmv(
+    const uint64_t* wit,
+    int m,
+    int K,
+    uint64_t seed,
+    std::vector<uint64_t>& out)
+{
+    out.clear();
+    out.reserve(static_cast<size_t>(m));
+    for (int p = 0; p < m; ++p) {
+        const uint64_t w = wit[p];
+        if (w != 0) out.push_back(splitmix64(w ^ seed));
+    }
+    if (K <= 0 || out.empty()) return;
+    if (static_cast<int>(out.size()) > K) {
+        std::nth_element(out.begin(), out.begin() + K, out.end());
+        out.resize(static_cast<size_t>(K));
+    }
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+}
+
 // ── Frequency-weighted k-mer counting for PMH-norm ────────────────────────
 // Estimates J_P = Σ min(p_A,p_B) / Σ max(p_A,p_B)  (coverage-robust metric).
 //
@@ -618,10 +649,9 @@ static void list_allpairs(const Args& a,
 //         intersection size c against every other genome in
 //         O(N · K · avg_pl).
 //
-//  Exact verification replicates FastKMV::jaccard() union-K merge estimator:
-//    Jaccard = c / min(|A_k ∪ B_k|, K)
-//  This ensures distances from --index and pairwise paths are numerically
-//  identical for the same sketch pair.
+//  Jaccard estimated as c / min(s0+s1-c, K), equivalent to FastKMV::jaccard()
+//  for full sketches (= c/K, the standard KMV estimator).  O(1) per pair from
+//  the inverted-index intersection count — no re-merge of sorted lists needed.
 // ═══════════════════════════════════════════════════════════════════════════
 static void run_index_fastkmv(const Args& a, const std::vector<std::string>& files) {
     const int N = static_cast<int>(files.size());
@@ -677,35 +707,21 @@ static void run_index_fastkmv(const Args& a, const std::vector<std::string>& fil
               << "  (minJac=" << minJac << ", mashD<" << a.maxDist
               << ", k=" << a.kmerSize << ")\n";
 
-    // Exact verification: replicate FastKMV::jaccard() union-K merge estimator.
-    // Jaccard = c / min(|A_k ∪ B_k|, K), identical to the pairwise path.
+    // Jaccard estimator: c / min(s0 + s1 - c, K)
+    // For full sketches (s0 = s1 = K, typical case):
+    //   min(2K - c, K) = K  (since c ≤ K → 2K - c ≥ K)
+    //   → Jaccard = c / K   (standard KMV estimator, identical to FastKMV::jaccard())
+    // This is O(1) from the pre-computed intersection count c; no re-merge needed.
     const int K_fkmv = a.fkmvK;
-    const int mc_fkmv = minCommon;
-    auto exactJaccardFn = [&, K_cap = K_fkmv, mc_cap = mc_fkmv](int i, int j) -> double {
-        const auto& hi = skKeys[i];
-        const auto& hj = skKeys[j];
-        const int si = static_cast<int>(hi.size());
-        const int sj = static_cast<int>(hj.size());
-        int ii = 0, jj = 0, c = 0, denom = 0;
-        while (denom < K_cap && ii < si && jj < sj) {
-            if      (hi[ii] < hj[jj]) { ii++; }
-            else if (hi[ii] > hj[jj]) { jj++; }
-            else                      { c++; ii++; jj++; }
-            denom++;
-            if (__builtin_expect((denom & 31) == 0, 0) &&
-                c + std::min(si - ii, sj - jj) < mc_cap) return 0.0;
-        }
-        if (denom < K_cap) {
-            denom += (si - ii) + (sj - jj);
-            if (denom > K_cap) denom = K_cap;
-        }
+    auto setJaccard = [K_fkmv](int c, int s0, int s1) -> double {
+        const int denom = std::min(s0 + s1 - c, K_fkmv);
         return (denom <= 0) ? 0.0 : static_cast<double>(c) / denom;
     };
     auto minCommonFn = [minCommon](int) { return minCommon; };
 
     double t3 = get_sec();
-    Sketch::computeDistancesExact<uint64_t>(csrIdx, skKeys, files,
-        N, a.kmerSize, a.maxDist, exactJaccardFn, minCommonFn, a.output, a.threads);
+    Sketch::computeDistances<uint64_t>(csrIdx, skKeys, sketchSizes, files,
+        N, a.kmerSize, a.maxDist, setJaccard, minCommonFn, a.output, a.threads);
     double t4 = get_sec();
     std::cerr << "dist time: "  << t4 - t3 << " s\n";
     std::cerr << "total time: " << t4 - t0 << " s\n";
@@ -797,12 +813,14 @@ static void run_index_setsketch(const Args& a, const std::vector<std::string>& f
     memcpy(bip_buf, proto.getBaseInvPow(), 64 * sizeof(double));
     const double* bip = bip_buf;
 
-    // One inverted-index key per occupied register: key = p * 64 + core_[p]
-    // P(key_A[p] == key_B[p]) ≈ J_SetSketch  ← same property as MinHash keys.
-    // This eliminates the witness hash arrays entirely, saving 64 KB per sketch.
-    cerr << "registers=" << m << "  keyEncoding=(reg_idx*64+core_val)\n";
+    // Candidate keys for inverted index:
+    //   Use MinHash/KMV over per-register witnesses (64-bit winning k-mer hashes).
+    //   This yields K high-entropy keys per sketch, avoiding the small key space
+    //   problem of indexing raw (register,value) pairs.
+    const int keysPerSketch = std::max(1, a.minhashSize);
+    cerr << "registers=" << m << "  witnessKMV_keysPerSketch=" << keysPerSketch << "\n";
 
-    // ── Phase 1: Sketch construction + witness extraction ───────────────────
+    // ── Phase 1: Sketch construction + key extraction ────────────────────────
     vector<double>  sizes(N, 0.0);
     vector<uint8_t> flat_cores(static_cast<size_t>(N) * m, 0);
     vector<vector<uint64_t>> skKeys(N);
@@ -812,7 +830,7 @@ static void run_index_setsketch(const Args& a, const std::vector<std::string>& f
     #pragma omp parallel for num_threads(a.threads) schedule(dynamic)
     for (int t = 0; t < N; ++t) {
         Sketch::SetSketch sk(a.ssBits, a.ssBase, a.ssA, a.kmerSize,
-                             /*track_witnesses=*/false);
+                             /*track_witnesses=*/true);
         gzFile fp = gzopen(fileList[t].c_str(), "r");
         if (!fp) continue;
         kseq_t* ks = kseq_init(fp);
@@ -824,10 +842,8 @@ static void run_index_setsketch(const Args& a, const std::vector<std::string>& f
         sizes[t] = sk.cardinality();
         const uint8_t* core = sk.getCore().data();
         memcpy(&flat_cores[static_cast<size_t>(t) * m], core, (size_t)m);
-        skKeys[t].reserve(m);
-        for (int p = 0; p < m; ++p)
-            if (core[p] != 0)
-                skKeys[t].push_back(static_cast<uint64_t>(p) * 64ULL + core[p]);
+        const uint64_t* wit = sk.getWitnesses().data();
+        keys_from_witnesses_kmv(wit, m, keysPerSketch, a.seed, skKeys[t]);
     }
     double t1 = get_sec();
     cerr << "sketch time: " << t1 - t0 << " s\n";
@@ -882,72 +898,40 @@ static void run_index_setsketch(const Args& a, const std::vector<std::string>& f
     }
     cerr << "suffix sums: " << get_sec() - tpre << " s\n";
 
-    // ── Decide mode: inverted index needs ≥20 expected witness overlap ──────
-    // expectedOverlap >= 20 ⇒ P(missed valid pair) < exp(-20) ≈ 2e-9.
+    // ── Decide mode: inverted index needs ≥20 expected key overlap ──────────
+    // expectedOverlap = keysPerSketch * minJac  (P(match per sampled reg) ≈ J).
     const double p_exp  = std::exp(-static_cast<double>(a.kmerSize) * a.maxDist);
     const double minJac = p_exp / (2.0 - p_exp);
-    // Expected number of matching register-value keys between two sequences at
-    // the Jaccard threshold: E = m * minJac  (P(match per register) ≈ J).
-    const double expectedOverlap = static_cast<double>(m) * minJac;
-    const bool   useInvIdx = (expectedOverlap >= 20.0);
-    cerr << "minJac=" << minJac << "  expectedRegValOverlap=" << expectedOverlap << "\n";
+    const double expectedOverlap = static_cast<double>(keysPerSketch) * minJac;
+    bool useInvIdx = (expectedOverlap >= 20.0);
+    if (std::getenv("RABBIT_FORCE_ALLPAIRS")) useInvIdx = false;
+    if (std::getenv("RABBIT_FORCE_INDEX")) useInvIdx = true;
+    cerr << "minJac=" << minJac << "  expectedRegValOverlap=" << expectedOverlap
+         << "  (keysPerSketch=" << keysPerSketch << ")\n";
 
     double t5 = get_sec();
 
     if (useInvIdx) {
-        // ───────────── MODE A: inverted index (witness hashes) + exact ─────
-        cerr << "mode: INVERTED INDEX (register-value keys)\n";
-
-        const int actualThreads = min(a.threads, N);
-        vector<phmap::flat_hash_map<uint64_t, vector<uint32_t>>> threadIdx(actualThreads);
+        // ───────────── MODE A: witness-KMV inverted index + exact verify ─────
+        // Approximate candidate generation (may miss); exact verification is unchanged.
+        cerr << "mode: INVERTED INDEX (witness-KMV keys)\n";
 
         double ti0 = get_sec();
-        #pragma omp parallel num_threads(a.threads)
-        {
-            int tid = omp_get_thread_num();
-            if (tid < actualThreads) {
-                auto& localIdx = threadIdx[tid];
-                #pragma omp for schedule(static)
-                for (int t = 0; t < N; ++t)
-                    for (uint64_t key : skKeys[t])
-                        localIdx[key].push_back(static_cast<uint32_t>(t));
-            }
-        }
-        double ti1 = get_sec();
-        cerr << "local index: " << ti1 - ti0 << " s\n";
-
-        auto csrIdx = Sketch::buildCSRIndex<uint64_t>(threadIdx, a.threads);
+        auto csrIdx = Sketch::buildCSRIndexFromKeys<uint64_t>(skKeys, N, a.threads);
         double ti2 = get_sec();
-        cerr << "CSR build: " << ti2 - ti1 << " s\n";
+        cerr << "CSR build (radix): " << ti2 - ti0 << " s\n";
 
-        // Singleton-filter skKeys: a key present in exactly one sketch can never
-        // produce a candidate pair. Dropping them cuts skKeys footprint by ~75%
-        // and speeds up candidate generation by the same factor; P(miss) is
-        // unchanged because every shared pair shares only non-singleton keys.
-        {
-            size_t kbefore = 0, kafter = 0;
-            #pragma omp parallel for num_threads(a.threads) schedule(dynamic, 64) \
-                                     reduction(+:kbefore,kafter)
-            for (int t = 0; t < N; ++t) {
-                kbefore += skKeys[t].size();
-                vector<uint64_t> kept;
-                kept.reserve(skKeys[t].size() / 5);
-                for (uint64_t key : skKeys[t])
-                    if (csrIdx.postIdx.count(key))
-                        kept.push_back(key);
-                kafter += kept.size();
-                skKeys[t] = std::move(kept);
-            }
-            cerr << "skKeys singleton-filtered: " << kbefore << " -> " << kafter
-                 << " (" << (kbefore > 0 ? 100.0 * kafter / kbefore : 0.0)
-                 << "% retained, freed ~"
-                 << (kbefore - kafter) * 8 / (1 << 20) << " MB)\n";
-        }
-
-        const double sd = std::sqrt(std::max(0.0, expectedOverlap * (1.0 - minJac)));
-        const int minCommon = max(1, static_cast<int>(std::floor(expectedOverlap - 8.0 * sd)));
-        cerr << "minCommon=" << minCommon << " (expected=" << expectedOverlap
-             << ", 8sigma=" << 8.0 * sd << ")\n";
+        // ── σ-calibrated minCommon (witness-KMV is a Bernoulli LSH) ───────────
+        // For a true pair with Jaccard J, # KMV matches ~ Binomial(K, J).
+        // At J = minJac:    E = K·minJac,    σ = √(K·minJac·(1-minJac))
+        // Use minCommon = max(1, ⌊E − 6σ⌋) → P(false negative | J ≥ minJac) ≤ Φ(−6) ≈ 1e-9.
+        // Auto-clamps to 1 when E is small (low-d / small-N), so it falls back
+        // to the previous "any-shared-key" behaviour and preserves recall.
+        const double sigma     = std::sqrt(expectedOverlap * (1.0 - minJac));
+        const int    minCommon = std::max(1,
+            static_cast<int>(std::floor(expectedOverlap - 6.0 * sigma)));
+        cerr << "minCommon=" << minCommon << "/" << keysPerSketch
+             << "  (E=" << expectedOverlap << ", 6sigma=" << 6.0*sigma << ")\n";
 
         auto exactJaccardFn = [&](int i, int j) -> double {
             const double si = sizes[i], sj = sizes[j];
@@ -966,6 +950,211 @@ static void run_index_setsketch(const Args& a, const std::vector<std::string>& f
             csrIdx, skKeys, fileList,
             N, a.kmerSize, a.maxDist, exactJaccardFn, minCommonFn,
             a.output, a.threads);
+
+#if 0
+        // ─── MODE A: direct-address CSR (register-value keys) + exact verify ──
+        //
+        // Key space is bounded: key = p*64 + core[p] < m*64 = KEY_SPACE.
+        // Build a flat uint32_t CSR array indexed directly by key value instead
+        // of a hash map.  Direct array access is ~5-10× faster than phmap
+        // probing for this workload (L3 hit vs hash + probe overhead).
+        //
+        // Build in 3 parallel passes:
+        //   P1: atomic count per key
+        //   P2: prefix-sum (serial, tiny)
+        //   P3: atomic fill into posting array
+        cerr << "mode: INVERTED INDEX (direct-address CSR)\n";
+
+        // P1: count
+        vector<uint32_t> dcnt(KEY_SPACE, 0);
+        {
+            // Use per-thread local counts to avoid atomic contention in P1.
+            const int nt = min(a.threads, N);
+            vector<vector<uint32_t>> lcnt(nt, vector<uint32_t>(KEY_SPACE, 0));
+            #pragma omp parallel for num_threads(nt) schedule(dynamic, 4)
+            for (int t = 0; t < N; ++t) {
+                const int tid = omp_get_thread_num();
+                auto& lc = lcnt[tid];
+                for (uint64_t key : skKeys[t]) lc[key]++;
+            }
+            // reduce
+            #pragma omp parallel for num_threads(a.threads) schedule(static)
+            for (size_t k = 0; k < KEY_SPACE; ++k)
+                for (int tid = 0; tid < nt; ++tid) dcnt[k] += lcnt[tid][k];
+        }
+
+        // P2: prefix-sum + singleton removal
+        vector<size_t> doff(KEY_SPACE + 1, 0);
+        size_t totalPosts = 0, uniqueKeys = 0;
+        for (size_t k = 0; k < KEY_SPACE; ++k) {
+            doff[k] = totalPosts;
+            if (dcnt[k] > 1) { totalPosts += dcnt[k]; uniqueKeys++; }
+        }
+        doff[KEY_SPACE] = totalPosts;
+        cerr << "direct CSR: " << uniqueKeys << " unique keys, "
+             << totalPosts << " postings\n";
+
+        // P3: fill posting lists (atomic cursor per key)
+        vector<uint32_t> dposts(totalPosts);
+        {
+            // Reuse dcnt as atomic cursor (reset to doff[k] for each key)
+            vector<uint32_t> cur(KEY_SPACE);
+            for (size_t k = 0; k < KEY_SPACE; ++k)
+                cur[k] = static_cast<uint32_t>(doff[k]);
+
+            #pragma omp parallel for num_threads(a.threads) schedule(dynamic, 4)
+            for (int t = 0; t < N; ++t) {
+                for (uint64_t key : skKeys[t]) {
+                    if (doff[key+1] - doff[key] <= 1) continue; // singleton
+                    uint32_t pos;
+                    #pragma omp atomic capture
+                    pos = cur[key]++;
+                    dposts[pos] = static_cast<uint32_t>(t);
+                }
+            }
+        }
+        { vector<uint32_t>().swap(dcnt); } // free count array
+
+        // IDF prune + non-singleton filter.
+        // SetSketch register values cluster around a narrow range → average
+        // posting list >> 1 for large N. Keys appearing in more than
+        // max(50, expectedOverlap×4) sequences are "stop words": they add
+        // candidate explosion without helping discrimination.
+        // When N is small (< ~800) expectedOverlap×4 > N → no pruning,
+        // which is correct since all-similar small datasets have no "common"
+        // register value that can be safely skipped.
+        const uint32_t maxPost = static_cast<uint32_t>(
+            std::max(50.0, expectedOverlap * 4.0));
+        {
+            size_t kbefore = 0, kafter = 0;
+            #pragma omp parallel for num_threads(a.threads) schedule(dynamic, 4) \
+                                     reduction(+:kbefore,kafter)
+            for (int t = 0; t < N; ++t) {
+                kbefore += skKeys[t].size();
+                vector<uint64_t> kept;
+                kept.reserve(skKeys[t].size() / 4);
+                for (uint64_t key : skKeys[t]) {
+                    const uint32_t plN = static_cast<uint32_t>(doff[key+1] - doff[key]);
+                    if (plN > 1 && plN <= maxPost) kept.push_back(key);
+                }
+                kafter += kept.size();
+                skKeys[t] = std::move(kept);
+            }
+            cerr << "skKeys after IDF prune (maxPost=" << maxPost << "): "
+                 << kbefore << " -> " << kafter << "\n";
+        }
+
+        // Recompute minCommon based on effective (retained) keys per sequence.
+        // Use 3σ instead of 8σ: after IDF pruning effExpected is smaller, and
+        // for random (unrelated) pairs E[rare_key_match] ≈ 0 so 3σ gives
+        // strong precision without sacrificing recall.
+        const double effKeys = static_cast<double>(
+            [&]{ size_t s=0; for(int t=0;t<N;++t) s+=skKeys[t].size(); return s; }()
+        ) / std::max(1, N);
+        const double effExpected = effKeys * minJac;
+        const double sd = std::sqrt(std::max(0.0, effExpected * (1.0 - minJac)));
+        const int minCommon = max(1, static_cast<int>(std::floor(effExpected - 3.0 * sd)));
+        cerr << "effKeysPerSeq=" << effKeys
+             << "  effExpected=" << effExpected
+             << "  minCommon=" << minCommon << "\n";
+
+        // Inline distance computation: direct-address CSR + temp-file output
+        {
+            const bool useMashDist = (a.kmerSize > 0);
+            const double p_exp2 = std::exp(-static_cast<double>(a.kmerSize) * a.maxDist);
+            const double minJacByDist = useMashDist ? p_exp2/(2.0-p_exp2) : 1.0-a.maxDist;
+
+            string finalPath = a.output;
+            { struct stat st; if (stat(finalPath.c_str(),&st)==0 && S_ISDIR(st.st_mode)){
+                if (finalPath.back()!='/') finalPath+='/';
+                finalPath+="rabbitsketch.dist";}}
+
+            const int nt = min(a.threads, N);
+            const int procId = static_cast<int>(getpid());
+            vector<string> parts(nt);
+            for (int tid=0;tid<nt;++tid)
+                parts[tid] = finalPath+".part."+to_string(procId)+"."+to_string(tid);
+
+            int progress2 = N/20; if(progress2<1) progress2=1;
+
+            #pragma omp parallel num_threads(nt)
+            {
+                const int tid = omp_get_thread_num();
+                FILE* tf = fopen(parts[tid].c_str(),"wb");
+                if(!tf) { cerr<<"ERROR: cannot open "<<parts[tid]<<"\n"; }
+                else {
+                    setvbuf(tf,nullptr,_IOFBF,1<<22);
+                    string buf; buf.reserve(1<<22);
+                    vector<uint16_t> isect(N,0);
+                    vector<int>      stamp(N,0);
+                    int ep=0;
+                    vector<int> cand; cand.reserve(4096);
+
+                    #pragma omp for schedule(dynamic,4)
+                    for (int i=0;i<N;++i) {
+                        const double si=sizes[i];
+                        cand.clear(); ++ep;
+                        if(__builtin_expect(ep==INT_MAX,0)){
+                            memset(stamp.data(),0,N*sizeof(int));ep=1;}
+
+                        for (uint64_t key : skKeys[i]) {
+                            const uint32_t* pl  = dposts.data()+doff[key];
+                            const uint32_t  plN = static_cast<uint32_t>(doff[key+1]-doff[key]);
+                            for (uint32_t pi=0;pi<plN;++pi){
+                                int j=static_cast<int>(pl[pi]);
+                                if(j<=i) continue;
+                                if(__builtin_expect(stamp[j]!=ep,1)){
+                                    stamp[j]=ep;isect[j]=1;cand.push_back(j);
+                                } else { ++isect[j]; }
+                            }
+                        }
+
+                        for (int j:cand){
+                            if(isect[j]<static_cast<uint16_t>(minCommon)) continue;
+                            const double sj=sizes[j];
+                            if(si>0.0 && sj/si<minJac) continue;
+                            const double jac=Sketch::SetSketch::jaccardFromCoresBatch(
+                                &flat_cores[static_cast<size_t>(i)*m],
+                                &flat_cores[static_cast<size_t>(j)*m],
+                                m,bip,factor,si,sj,minJac,
+                                &tailSums[static_cast<size_t>(i)*nCP],
+                                &tailSums[static_cast<size_t>(j)*nCP],
+                                TAIL_STEP);
+                            if(jac<minJacByDist) continue;
+                            const double dist=(jac>=1.0)?0.0
+                                :-std::log(2.0*jac/(1.0+jac))/static_cast<double>(a.kmerSize);
+                            if(dist<a.maxDist){
+                                char line[1024];
+                                int len=snprintf(line,sizeof(line),"%s\t%s\t%.6f\n",
+                                    fileList[i].c_str(),fileList[j].c_str(),dist);
+                                buf.append(line,static_cast<size_t>(len));
+                            }
+                            if(buf.size()>(1<<22)){fwrite(buf.data(),1,buf.size(),tf);buf.clear();}
+                        }
+                        if(i%progress2==0){
+                            #pragma omp critical
+                            cerr<<"  dist "<<i<<" / "<<N<<"\n";
+                        }
+                    }
+                    if(!buf.empty()) fwrite(buf.data(),1,buf.size(),tf);
+                    fclose(tf);
+                }
+            }
+            FILE* fout=fopen(finalPath.c_str(),"wb");
+            if(fout){
+                setvbuf(fout,nullptr,_IOFBF,1<<24);
+                vector<char> cbuf(1<<20);
+                for(int tid=0;tid<nt;++tid){
+                    FILE* pf=fopen(parts[tid].c_str(),"rb");
+                    if(!pf) continue;
+                    while(true){size_t got=fread(cbuf.data(),1,cbuf.size(),pf);if(!got)break;fwrite(cbuf.data(),1,got,fout);}
+                    fclose(pf); remove(parts[tid].c_str());
+                }
+                fclose(fout);
+            }
+            cerr<<"output: "<<finalPath<<"\n";
+        }
+#endif
     } else {
         // ───────────── MODE B: all-pairs SIMD batch + suffix-sum early abort ─
         cerr << "mode: ALL-PAIRS (SIMD batch + suffix-sum early abort)\n";
@@ -1838,13 +2027,13 @@ static void run_index_hll(const Args& a, const std::vector<std::string>& files_i
     const int bits = a.hllBits;
     const int m    = 1 << bits;
 
-    // One inverted-index key per occupied register: key = p * 64 + core_[p]
-    // P(key_A[p] == key_B[p]) ≈ J_HLL  ← same property as MinHash keys.
-    // Eliminates witness hash arrays; no witness subsampling needed.
-    cerr << "registers=" << m << "  keyEncoding=(reg_idx*64+core_val)"
+    // Candidate keys for inverted index:
+    //   Use MinHash/KMV over per-register witnesses (64-bit winning k-mer hashes).
+    const int keysPerSketch = std::max(1, a.minhashSize);
+    cerr << "registers=" << m << "  witnessKMV_keysPerSketch=" << keysPerSketch
          << "  hllBits=" << bits << "\n";
 
-    // ── Phase 1: Sketch construction (with witness tracking) ────────────────
+    // ── Phase 1: Sketch construction ────────────────────────────────────────
     vector<unique_ptr<Sketch::HyperLogLog>> vhll(N);
     vector<double>           sizes(N, 0.0);
     vector<vector<uint64_t>> skKeys(N);
@@ -1853,7 +2042,7 @@ static void run_index_hll(const Args& a, const std::vector<std::string>& files_i
     double t0 = get_sec();
     #pragma omp parallel for num_threads(a.threads) schedule(dynamic)
     for (int t = 0; t < N; ++t) {
-        auto sk = std::make_unique<Sketch::HyperLogLog>(bits, /*track_witnesses=*/false, a.kmerSize);
+        auto sk = std::make_unique<Sketch::HyperLogLog>(bits, /*track_witnesses=*/true, a.kmerSize);
         gzFile fp = gzopen(fileList[t].c_str(), "r");
         if (!fp) { vhll[t] = std::move(sk); continue; }
         kseq_t* ks = kseq_init(fp);
@@ -1862,11 +2051,10 @@ static void run_index_hll(const Args& a, const std::vector<std::string>& files_i
         gzclose(fp);
 
         sizes[t] = sk->cardinality();
-        const uint8_t* core = sk->getCore().data();
-        skKeys[t].reserve(m);
-        for (int p = 0; p < m; ++p)
-            if (core[p] != 0)
-                skKeys[t].push_back(static_cast<uint64_t>(p) * 64ULL + core[p]);
+        const uint64_t* wit = sk->getWitnesses().data();
+        keys_from_witnesses_kmv(wit, m, keysPerSketch, a.seed, skKeys[t]);
+        // Witnesses no longer needed (verify uses HLL register array only).
+        sk->clearWitnesses();
 
         vhll[t] = std::move(sk);
     }
@@ -1897,80 +2085,41 @@ static void run_index_hll(const Args& a, const std::vector<std::string>& files_i
         skKeys.swap(sK);
     }
 
-    // ── Decide mode: inverted index needs ≥20 expected register-value overlap ──
-    // P(core_A[p] == core_B[p]) ≈ J_HLL, so expected matching keys = m * minJac.
-    // expectedOverlap >= 20 ⇒ P(missed valid pair) < e^(-20).
+    // ── Decide mode: inverted index needs ≥20 expected key overlap ──────────
+    // expectedOverlap = keysPerSketch * minJac  (P(match per sampled reg) ≈ J).
     const double p_exp  = std::exp(-static_cast<double>(a.kmerSize) * a.maxDist);
     const double minJac = p_exp / (2.0 - p_exp);
-    const double expectedOverlap = static_cast<double>(m) * minJac;
-    const bool   useInvIdx = (expectedOverlap >= 20.0);
+    const double expectedOverlap = static_cast<double>(keysPerSketch) * minJac;
+    bool useInvIdx = (expectedOverlap >= 20.0);
+    if (std::getenv("RABBIT_FORCE_ALLPAIRS")) useInvIdx = false;
+    if (std::getenv("RABBIT_FORCE_INDEX")) useInvIdx = true;
     cerr << "minJac=" << minJac << "  expectedRegValOverlap=" << expectedOverlap
+         << "  (keysPerSketch=" << keysPerSketch << ")"
          << "  mashD<" << a.maxDist << "  k=" << a.kmerSize << "\n";
 
     double t5 = get_sec();
 
     if (useInvIdx) {
-        // ───────────── MODE A: inverted index (witness hashes) + exact ─────
-        cerr << "mode: INVERTED INDEX (HLL register-value keys)\n";
-
-        const int actualThreads = min(a.threads, N);
-        vector<phmap::flat_hash_map<uint64_t, vector<uint32_t>>> threadIdx(actualThreads);
+        // ───────────── MODE A: witness-KMV inverted index + exact verify ─────
+        // Approximate candidate generation (may miss); exact verification uses HLL.
+        cerr << "mode: INVERTED INDEX (witness-KMV keys, HLL)\n";
 
         double ti0 = get_sec();
-        #pragma omp parallel num_threads(a.threads)
-        {
-            int tid = omp_get_thread_num();
-            if (tid < actualThreads) {
-                auto& localIdx = threadIdx[tid];
-                #pragma omp for schedule(static)
-                for (int t = 0; t < N; ++t)
-                    for (uint64_t key : skKeys[t])
-                        localIdx[key].push_back(static_cast<uint32_t>(t));
-            }
-        }
-        double ti1 = get_sec();
-        cerr << "local index: " << ti1 - ti0 << " s\n";
-
-        auto csrIdx = Sketch::buildCSRIndex<uint64_t>(threadIdx, a.threads);
+        auto csrIdx = Sketch::buildCSRIndexFromKeys<uint64_t>(skKeys, N, a.threads);
         double ti2 = get_sec();
-        cerr << "CSR build: " << ti2 - ti1 << " s\n";
+        cerr << "CSR build (radix): " << ti2 - ti0 << " s\n";
 
-        // Singleton-filter skKeys: keys present in only one sketch can't
-        // produce candidates. Same optimization as run_index_setsketch.
-        {
-            size_t kbefore = 0, kafter = 0;
-            #pragma omp parallel for num_threads(a.threads) schedule(dynamic, 64) \
-                                     reduction(+:kbefore,kafter)
-            for (int t = 0; t < N; ++t) {
-                kbefore += skKeys[t].size();
-                vector<uint64_t> kept;
-                kept.reserve(skKeys[t].size() / 5);
-                for (uint64_t key : skKeys[t])
-                    if (csrIdx.postIdx.count(key))
-                        kept.push_back(key);
-                kafter += kept.size();
-                skKeys[t] = std::move(kept);
-            }
-            cerr << "skKeys singleton-filtered: " << kbefore << " -> " << kafter
-                 << " (" << (kbefore > 0 ? 100.0 * kafter / kbefore : 0.0)
-                 << "% retained, freed ~"
-                 << (kbefore - kafter) * 8 / (1 << 20) << " MB)\n";
-        }
+        // ── σ-calibrated minCommon (see SetSketch path for derivation) ────
+        const double sigma     = std::sqrt(expectedOverlap * (1.0 - minJac));
+        const int    minCommon = std::max(1,
+            static_cast<int>(std::floor(expectedOverlap - 6.0 * sigma)));
+        cerr << "minCommon=" << minCommon << "/" << keysPerSketch
+             << "  (E=" << expectedOverlap << ", 6sigma=" << 6.0*sigma << ")\n";
 
-        // 8-sigma minCommon (same as SetSketch). Witness sharing follows
-        // approximate binomial(witnessesPerSketch, J) with mean expectedOverlap.
-        const double sd = std::sqrt(std::max(0.0, expectedOverlap * (1.0 - minJac)));
-        const int minCommon = max(1, static_cast<int>(std::floor(expectedOverlap - 8.0 * sd)));
-        cerr << "minCommon=" << minCommon << " (expected=" << expectedOverlap
-             << ", 8sigma=" << 8.0 * sd << ")\n";
-
-        // Exact verification: HLL::distance() runs Ertl joint MLE on the two
-        // register arrays. Size-ratio prune up front saves the MLE call.
         auto exactJaccardFn = [&](int i, int j) -> double {
             const double si = sizes[i], sj = sizes[j];
             if (si > 0.0 && sj / si < minJac) return -1.0;
-            const double d = vhll[i]->distance(*vhll[j]);
-            return 1.0 - d;  // distance() returns 1 - jaccard
+            return vhll[i]->jaccard_index(*vhll[j]);
         };
         auto minCommonFn = [minCommon](int) { return minCommon; };
 
@@ -1978,6 +2127,193 @@ static void run_index_hll(const Args& a, const std::vector<std::string>& files_i
             csrIdx, skKeys, fileList,
             N, a.kmerSize, a.maxDist, exactJaccardFn, minCommonFn,
             a.output, a.threads);
+
+#if 0
+        // ─── MODE A: direct-address CSR (register-value keys) + HLL exact ─────
+        cerr << "mode: INVERTED INDEX (direct-address CSR, HLL)\n";
+
+        // P1: per-thread local count to avoid atomic contention
+        vector<uint32_t> dcnt(KEY_SPACE, 0);
+        {
+            const int nt = min(a.threads, N);
+            vector<vector<uint32_t>> lcnt(nt, vector<uint32_t>(KEY_SPACE, 0));
+            #pragma omp parallel for num_threads(nt) schedule(dynamic, 4)
+            for (int t = 0; t < N; ++t) {
+                const int tid = omp_get_thread_num();
+                auto& lc = lcnt[tid];
+                for (uint64_t key : skKeys[t]) lc[key]++;
+            }
+            #pragma omp parallel for num_threads(a.threads) schedule(static)
+            for (size_t k = 0; k < KEY_SPACE; ++k)
+                for (int tid = 0; tid < nt; ++tid) dcnt[k] += lcnt[tid][k];
+        }
+
+        // P2: prefix-sum + singleton removal
+        vector<size_t> doff(KEY_SPACE + 1, 0);
+        size_t totalPosts = 0, uniqueKeys = 0;
+        for (size_t k = 0; k < KEY_SPACE; ++k) {
+            doff[k] = totalPosts;
+            if (dcnt[k] > 1) { totalPosts += dcnt[k]; uniqueKeys++; }
+        }
+        doff[KEY_SPACE] = totalPosts;
+        cerr << "direct CSR: " << uniqueKeys << " unique keys, "
+             << totalPosts << " postings\n";
+
+        // P3: fill posting lists (atomic cursor per key)
+        vector<uint32_t> dposts(totalPosts);
+        {
+            vector<uint32_t> cur(KEY_SPACE);
+            for (size_t k = 0; k < KEY_SPACE; ++k)
+                cur[k] = static_cast<uint32_t>(doff[k]);
+
+            #pragma omp parallel for num_threads(a.threads) schedule(dynamic, 4)
+            for (int t = 0; t < N; ++t) {
+                for (uint64_t key : skKeys[t]) {
+                    if (doff[key+1] - doff[key] <= 1) continue;
+                    uint32_t pos;
+                    #pragma omp atomic capture
+                    pos = cur[key]++;
+                    dposts[pos] = static_cast<uint32_t>(t);
+                }
+            }
+        }
+        { vector<uint32_t>().swap(dcnt); }
+
+        // IDF prune + non-singleton filter on skKeys.
+        // HLL register values follow a geometric distribution and cluster around
+        // log2(n_p) (n_p = items per bucket). For large N, many (p,v) keys are
+        // extremely common (posting lists of ~N/10 – N/5), making candidate
+        // generation degenerate to O(N²). Drop keys in > max(50, expectedOverlap×4)
+        // sequences (IDF "stop word" elimination). When N is small,
+        // expectedOverlap×4 > N → maxPost > N → no pruning (correct for
+        // all-similar small datasets where every key is "common").
+        const uint32_t maxPost = static_cast<uint32_t>(
+            std::max(50.0, expectedOverlap * 4.0));
+        {
+            size_t kbefore = 0, kafter = 0;
+            #pragma omp parallel for num_threads(a.threads) schedule(dynamic, 4) \
+                                     reduction(+:kbefore,kafter)
+            for (int t = 0; t < N; ++t) {
+                kbefore += skKeys[t].size();
+                vector<uint64_t> kept;
+                kept.reserve(skKeys[t].size() / 4);
+                for (uint64_t key : skKeys[t]) {
+                    const uint32_t plN = static_cast<uint32_t>(doff[key+1] - doff[key]);
+                    if (plN > 1 && plN <= maxPost) kept.push_back(key);
+                }
+                kafter += kept.size();
+                skKeys[t] = std::move(kept);
+            }
+            cerr << "skKeys after IDF prune (maxPost=" << maxPost << "): "
+                 << kbefore << " -> " << kafter << "\n";
+        }
+
+        // Recompute effective expectedOverlap and minCommon based on retained keys.
+        // effectiveKeysPerSeq = average number of retained keys (approx kafter/N).
+        const double effKeys = static_cast<double>(
+            [&]{ size_t s=0; for(int t=0;t<N;++t) s+=skKeys[t].size(); return s; }()
+        ) / std::max(1, N);
+        const double effExpected = effKeys * minJac;
+        const double sd = std::sqrt(std::max(0.0, effExpected * (1.0 - minJac)));
+        // 3σ: for IDF-pruned rare keys, unrelated pairs have E[match]≈0, so 3σ
+        // gives strong precision without sacrificing recall.
+        const int minCommon = max(1, static_cast<int>(std::floor(effExpected - 3.0 * sd)));
+        cerr << "effKeysPerSeq=" << effKeys
+             << "  effExpected=" << effExpected
+             << "  minCommon=" << minCommon << "\n";
+
+        // Inline distance computation with direct-address CSR
+        {
+            string finalPath = a.output;
+            { struct stat st; if (stat(finalPath.c_str(),&st)==0 && S_ISDIR(st.st_mode)){
+                if (finalPath.back()!='/') finalPath+='/';
+                finalPath+="rabbitsketch.dist";}}
+
+            const int nt = min(a.threads, N);
+            const int procId = static_cast<int>(getpid());
+            vector<string> parts(nt);
+            for (int tid=0;tid<nt;++tid)
+                parts[tid] = finalPath+".part."+to_string(procId)+"."+to_string(tid);
+
+            int progress = N/20; if(progress<1) progress=1;
+
+            #pragma omp parallel num_threads(nt)
+            {
+                const int tid = omp_get_thread_num();
+                FILE* tf = fopen(parts[tid].c_str(),"wb");
+                if(!tf) { cerr<<"ERROR: cannot open "<<parts[tid]<<"\n"; }
+                else {
+                    setvbuf(tf,nullptr,_IOFBF,1<<22);
+                    string buf; buf.reserve(1<<22);
+                    vector<uint16_t> isect(N,0);
+                    vector<int>      stamp(N,0);
+                    int ep=0;
+                    vector<int> cand; cand.reserve(4096);
+
+                    #pragma omp for schedule(dynamic,4)
+                    for (int i=0;i<N;++i) {
+                        const double si=sizes[i];
+                        cand.clear(); ++ep;
+                        if(__builtin_expect(ep==INT_MAX,0)){
+                            memset(stamp.data(),0,N*sizeof(int));ep=1;}
+
+                        for (uint64_t key : skKeys[i]) {
+                            const uint32_t* pl  = dposts.data()+doff[key];
+                            const uint32_t  plN = static_cast<uint32_t>(doff[key+1]-doff[key]);
+                            for (uint32_t pi=0;pi<plN;++pi){
+                                int j=static_cast<int>(pl[pi]);
+                                if(j<=i) continue;
+                                if(__builtin_expect(stamp[j]!=ep,1)){
+                                    stamp[j]=ep;isect[j]=1;cand.push_back(j);
+                                } else { ++isect[j]; }
+                            }
+                        }
+
+                        for (int j:cand){
+                            if(isect[j]<static_cast<uint16_t>(minCommon)) continue;
+                            const double sj=sizes[j];
+                            if(si>0.0 && sj/si<minJac) continue;
+                            // Exact verify: Ertl joint MLE Jaccard → Mash distance.
+                            // After IDF pruning + minCommon filter, only truly similar
+                            // pairs reach here, so ERTL calls are infrequent.
+                            const double jac_d = vhll[i]->distance(*vhll[j]); // 1-J
+                            const double jac = 1.0 - jac_d;
+                            if(jac < minJac) continue;
+                            const double d = (jac >= 1.0) ? 0.0
+                                : -std::log(2.0*jac/(1.0+jac))
+                                  / static_cast<double>(a.kmerSize);
+                            if(d < a.maxDist){
+                                char line[1024];
+                                int len=snprintf(line,sizeof(line),"%s\t%s\t%.6f\n",
+                                    fileList[i].c_str(),fileList[j].c_str(),d);
+                                buf.append(line,static_cast<size_t>(len));
+                            }
+                            if(buf.size()>(1<<22)){fwrite(buf.data(),1,buf.size(),tf);buf.clear();}
+                        }
+                        if(i%progress==0){
+                            #pragma omp critical
+                            cerr<<"  dist "<<i<<" / "<<N<<"\n";
+                        }
+                    }
+                    if(!buf.empty()) fwrite(buf.data(),1,buf.size(),tf);
+                    fclose(tf);
+                }
+            }
+            FILE* fout=fopen(finalPath.c_str(),"wb");
+            if(fout){
+                setvbuf(fout,nullptr,_IOFBF,1<<24);
+                vector<char> cbuf(1<<20);
+                for(int tid=0;tid<nt;++tid){
+                    FILE* pf=fopen(parts[tid].c_str(),"rb");
+                    if(!pf) continue;
+                    while(true){size_t got=fread(cbuf.data(),1,cbuf.size(),pf);if(!got)break;fwrite(cbuf.data(),1,got,fout);}
+                    fclose(pf); remove(parts[tid].c_str());
+                }
+                fclose(fout);
+            }
+            cerr<<"output: "<<finalPath<<"\n";
+        }
+#endif
     } else {
         // ───────────── MODE B: all-pairs O(N²) over already-built HLLs ─────
         // No re-sketch; reuse vhll. Cheap because HLL distance is one O(m)
@@ -2010,7 +2346,11 @@ static void run_index_hll(const Args& a, const std::vector<std::string>& files_i
                 const double sj = sizes[j];
                 if (si > 0.0 && sj / si < minJac) break;  // sorted descending
 
-                const double dist = vhll[i]->distance(*vhll[j]);
+                const double jac = vhll[i]->jaccard_index(*vhll[j]);
+                if (jac < minJac) continue;
+                const double dist = (jac >= 1.0) ? 0.0
+                    : -std::log(2.0 * jac / (1.0 + jac))
+                      / static_cast<double>(a.kmerSize);
                 if (dist < a.maxDist) {
                     char line[1024];
                     int len = snprintf(line, sizeof(line), "%s\t%s\t%.6f\n",

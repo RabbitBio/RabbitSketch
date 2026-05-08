@@ -45,6 +45,189 @@ struct InvertedIndex {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// buildCSRIndexFromKeys – fast path bypassing per-thread phmap inserts.
+//
+//   1. Per-thread per-bucket counts of (key, sid) pairs (1024 high-bit buckets)
+//   2. Compute per-thread per-bucket write offsets (parallel-safe scatter)
+//   3. Scatter pairs into bucket-grouped flat array
+//   4. Sort each bucket by key (parallel across buckets)
+//   5. Per-bucket scan emits posting lists into csrPosts; build phmap postIdx.
+//
+// Output is a phmap-backed InvertedIndex equivalent to buildCSRIndex's, so
+// the downstream computeDistances / computeDistancesExact code is unchanged.
+// ─────────────────────────────────────────────────────────────────────────────
+template<typename KeyT>
+InvertedIndex<KeyT> buildCSRIndexFromKeys(
+    const std::vector<std::vector<KeyT>>& skKeys,
+    int N,
+    int nThreads)
+{
+    InvertedIndex<KeyT> idx;
+    if (N <= 0) return idx;
+
+    constexpr int BK_BITS  = 10;
+    constexpr int BK       = 1 << BK_BITS;
+    constexpr int KEY_BITS = static_cast<int>(sizeof(KeyT) * 8);
+    constexpr int SHIFT    = KEY_BITS - BK_BITS;
+
+    struct KS { KeyT key; uint32_t sid; };
+
+    const int T = std::min(nThreads, N);
+    if (T <= 0) return idx;
+
+    // seqLo[tid] .. seqLo[tid+1] – contiguous sequence range owned by thread tid
+    std::vector<int> seqLo(T + 1, 0);
+    {
+        const int base = N / T;
+        const int rem  = N % T;
+        int p = 0;
+        for (int tid = 0; tid < T; ++tid) {
+            seqLo[tid] = p;
+            p += base + (tid < rem ? 1 : 0);
+        }
+        seqLo[T] = N;
+    }
+
+    // ── Step 1: per-thread per-bucket counts ────────────────────────────────
+    std::vector<size_t> cnt(static_cast<size_t>(T) * BK, 0);
+    #pragma omp parallel num_threads(T)
+    {
+        const int tid = omp_get_thread_num();
+        if (tid < T) {
+            size_t* lc = &cnt[static_cast<size_t>(tid) * BK];
+            const int lo = seqLo[tid], hi = seqLo[tid + 1];
+            for (int t = lo; t < hi; ++t)
+                for (KeyT k : skKeys[t])
+                    ++lc[static_cast<size_t>(k) >> SHIFT];
+        }
+    }
+
+    // ── Step 2: bucket totals + per-thread per-bucket write offsets ─────────
+    std::vector<size_t> bktSize(BK, 0);
+    for (int b = 0; b < BK; ++b) {
+        size_t s = 0;
+        for (int tid = 0; tid < T; ++tid)
+            s += cnt[static_cast<size_t>(tid) * BK + b];
+        bktSize[b] = s;
+    }
+    std::vector<size_t> bktOff(BK + 1, 0);
+    for (int b = 0; b < BK; ++b) bktOff[b + 1] = bktOff[b] + bktSize[b];
+    const size_t totalPairs = bktOff[BK];
+    if (totalPairs == 0) return idx;
+
+    std::vector<size_t> off(static_cast<size_t>(T) * BK, 0);
+    for (int b = 0; b < BK; ++b) {
+        size_t cur = bktOff[b];
+        for (int tid = 0; tid < T; ++tid) {
+            off[static_cast<size_t>(tid) * BK + b] = cur;
+            cur += cnt[static_cast<size_t>(tid) * BK + b];
+        }
+    }
+    std::vector<size_t>().swap(cnt);
+
+    // ── Step 3: scatter (key, sid) pairs into bucket-grouped flat array ─────
+    std::vector<KS> pairs(totalPairs);
+    #pragma omp parallel num_threads(T)
+    {
+        const int tid = omp_get_thread_num();
+        if (tid < T) {
+            std::vector<size_t> cur(BK);
+            std::memcpy(cur.data(), &off[static_cast<size_t>(tid) * BK],
+                        BK * sizeof(size_t));
+            const int lo = seqLo[tid], hi = seqLo[tid + 1];
+            for (int t = lo; t < hi; ++t) {
+                const uint32_t sid = static_cast<uint32_t>(t);
+                for (KeyT k : skKeys[t]) {
+                    int b = static_cast<int>(static_cast<size_t>(k) >> SHIFT);
+                    pairs[cur[b]++] = KS{k, sid};
+                }
+            }
+        }
+    }
+    std::vector<size_t>().swap(off);
+
+    // ── Step 4: sort each bucket by key ────────────────────────────────────
+    #pragma omp parallel for num_threads(nThreads) schedule(dynamic, 1)
+    for (int b = 0; b < BK; ++b) {
+        std::sort(pairs.data() + bktOff[b], pairs.data() + bktOff[b + 1],
+                  [](const KS& a, const KS& bb) { return a.key < bb.key; });
+    }
+
+    // ── Step 5: per-bucket count of unique non-singleton keys + post total ──
+    std::vector<size_t> bktUnique(BK, 0);
+    std::vector<size_t> bktPosts (BK, 0);
+    #pragma omp parallel for num_threads(nThreads) schedule(dynamic, 1)
+    for (int b = 0; b < BK; ++b) {
+        size_t u = 0, p = 0;
+        const size_t lo = bktOff[b], hi = bktOff[b + 1];
+        size_t i = lo;
+        while (i < hi) {
+            size_t j = i + 1;
+            while (j < hi && pairs[j].key == pairs[i].key) ++j;
+            const size_t run = j - i;
+            if (run > 1) { ++u; p += run; }
+            i = j;
+        }
+        bktUnique[b] = u;
+        bktPosts [b] = p;
+    }
+    size_t totalUnique = 0, totalPosts = 0;
+    std::vector<size_t> postOff(BK + 1, 0);
+    for (int b = 0; b < BK; ++b) {
+        totalUnique += bktUnique[b];
+        postOff[b]   = totalPosts;
+        totalPosts  += bktPosts[b];
+    }
+    postOff[BK] = totalPosts;
+    std::cerr << "merge index: " << totalUnique << " unique keys" << std::endl;
+    std::cerr << "singleton removal: -> " << totalUnique << std::endl;
+
+    // ── Step 6: fill csrPosts in parallel; postIdx insertion serial ────────
+    idx.totalPostings = totalPosts;
+    idx.csrPosts.resize(totalPosts);
+    idx.postIdx.reserve(totalUnique);
+
+    #pragma omp parallel for num_threads(nThreads) schedule(dynamic, 1)
+    for (int b = 0; b < BK; ++b) {
+        const size_t lo = bktOff[b], hi = bktOff[b + 1];
+        size_t out = postOff[b];
+        size_t i = lo;
+        while (i < hi) {
+            size_t j = i + 1;
+            while (j < hi && pairs[j].key == pairs[i].key) ++j;
+            const size_t run = j - i;
+            if (run > 1) {
+                for (size_t k = i; k < j; ++k)
+                    idx.csrPosts[out++] = pairs[k].sid;
+            }
+            i = j;
+        }
+    }
+
+    // postIdx is small after singleton removal → serial insert is fast.
+    for (int b = 0; b < BK; ++b) {
+        const size_t lo = bktOff[b], hi = bktOff[b + 1];
+        size_t out = postOff[b];
+        size_t i = lo;
+        while (i < hi) {
+            size_t j = i + 1;
+            while (j < hi && pairs[j].key == pairs[i].key) ++j;
+            const size_t run = j - i;
+            if (run > 1) {
+                idx.postIdx[pairs[i].key] =
+                    typename InvertedIndex<KeyT>::PostRange{
+                        out, static_cast<uint32_t>(run)};
+                out += run;
+            }
+            i = j;
+        }
+    }
+
+    std::cerr << "CSR flatten: " << totalPosts << " postings" << std::endl;
+    return idx;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Phase 2: merge thread-local maps → singleton removal → CSR flatten
 // ─────────────────────────────────────────────────────────────────────────────
 template<typename KeyT>
@@ -119,19 +302,37 @@ InvertedIndex<KeyT> buildCSRIndex(
     }
     std::cerr << "singleton removal: " << totalUnique << " -> " << totalAfter << std::endl;
 
-    // Flatten into CSR
+    // Flatten into CSR — two passes to parallelise the bulk memcpy:
+    //   Pass 1 (serial):   compute per-key offset, fill postIdx (fast hash ops).
+    //   Pass 2 (parallel): parallel memcpy per shard into csrPosts.
+    // postIdx is written only in Pass 1 (serial) so no data race.
+    // csrPosts writes are shard-disjoint so no synchronisation needed in Pass 2.
     InvertedIndex<KeyT> idx;
     idx.totalPostings = totalPostings;
     idx.postIdx.reserve(totalAfter);
     idx.csrPosts.resize(totalPostings);
 
-    size_t cursor = 0;
+    // Pass 1: assign offsets + populate postIdx (serial, purely hash-map ops)
+    std::vector<size_t> shardOff(NUM_SHARDS, 0);
+    {
+        size_t cursor = 0;
+        for (int s = 0; s < NUM_SHARDS; s++) {
+            shardOff[s] = cursor;
+            for (auto& [key, vec] : invShards[s]) {
+                idx.postIdx[key] = {cursor, static_cast<uint32_t>(vec.size())};
+                cursor += vec.size();
+            }
+        }
+    }
+
+    // Pass 2: parallel memcpy — each shard owns a disjoint region of csrPosts
+    #pragma omp parallel for num_threads(nThreads) schedule(dynamic, 1)
     for (int s = 0; s < NUM_SHARDS; s++) {
+        size_t off = shardOff[s];
         for (auto& [key, vec] : invShards[s]) {
-            idx.postIdx[key] = {cursor, static_cast<uint32_t>(vec.size())};
-            std::memcpy(&idx.csrPosts[cursor], vec.data(),
+            std::memcpy(&idx.csrPosts[off], vec.data(),
                         vec.size() * sizeof(uint32_t));
-            cursor += vec.size();
+            off += vec.size();
         }
         phmap::flat_hash_map<KeyT, std::vector<uint32_t>>().swap(invShards[s]);
     }
@@ -215,7 +416,11 @@ void computeDistances(
         std::string buf;
         buf.reserve(1 << 24);
 
-        #pragma omp for schedule(dynamic, 64)
+        // dynamic,4: good balance between load-balance quality and scheduling
+        // overhead. With 128 HT threads, chunk=1 causes excessive contention
+        // on the atomic scheduler counter; chunk=4 cuts that 4x with minimal
+        // balance loss (max idle time ≤ 4 iterations of the heaviest sequence).
+        #pragma omp for schedule(dynamic, 4)
         for (int i = 0; i < N; i++) {
             const int s0 = sketchSizes[i];
             if (__builtin_expect(s0 == 0, 0)) continue;
@@ -354,7 +559,7 @@ void computeDistancesExact(
         std::string buf;
         buf.reserve(1 << 24);
 
-        #pragma omp for schedule(dynamic, 64)
+        #pragma omp for schedule(dynamic, 4)
         for (int i = 0; i < N; i++) {
             const int nk = static_cast<int>(skKeys[i].size());
             if (__builtin_expect(nk == 0, 0)) continue;
