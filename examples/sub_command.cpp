@@ -613,16 +613,15 @@ static void list_allpairs(const Args& a,
 //      1. Each genome's bottom-k hash list is published into a per-thread
 //         local inverted index (hash → list of genome IDs).
 //      2. Local indices are merged into a single CSR-format inverted index.
-//      3. computeDistances() walks each genome's keys, follows the posting
+//      3. computeDistancesExact() walks each genome's keys, follows the posting
 //         list for each key, and uses stamp/epoch counting to accumulate the
 //         intersection size c against every other genome in
 //         O(N · K · avg_pl).
 //
-//  Jaccard is estimated with the standard set formula c/(s0+s1-c).  Note
-//  that FastKMV::jaccard() uses a slightly different estimator that caps
-//  the union at k (the bottom-k of A∪B), so distances from --index and
-//  no-index paths can differ by a small amount on the same sketch pair —
-//  both are valid estimators of the true Jaccard.
+//  Exact verification replicates FastKMV::jaccard() union-K merge estimator:
+//    Jaccard = c / min(|A_k ∪ B_k|, K)
+//  This ensures distances from --index and pairwise paths are numerically
+//  identical for the same sketch pair.
 // ═══════════════════════════════════════════════════════════════════════════
 static void run_index_fastkmv(const Args& a, const std::vector<std::string>& files) {
     const int N = static_cast<int>(files.size());
@@ -678,15 +677,35 @@ static void run_index_fastkmv(const Args& a, const std::vector<std::string>& fil
               << "  (minJac=" << minJac << ", mashD<" << a.maxDist
               << ", k=" << a.kmerSize << ")\n";
 
-    auto setJaccard = [](int c, int s0, int s1) -> double {
-        const int denom = s0 + s1 - c;
+    // Exact verification: replicate FastKMV::jaccard() union-K merge estimator.
+    // Jaccard = c / min(|A_k ∪ B_k|, K), identical to the pairwise path.
+    const int K_fkmv = a.fkmvK;
+    const int mc_fkmv = minCommon;
+    auto exactJaccardFn = [&, K_cap = K_fkmv, mc_cap = mc_fkmv](int i, int j) -> double {
+        const auto& hi = skKeys[i];
+        const auto& hj = skKeys[j];
+        const int si = static_cast<int>(hi.size());
+        const int sj = static_cast<int>(hj.size());
+        int ii = 0, jj = 0, c = 0, denom = 0;
+        while (denom < K_cap && ii < si && jj < sj) {
+            if      (hi[ii] < hj[jj]) { ii++; }
+            else if (hi[ii] > hj[jj]) { jj++; }
+            else                      { c++; ii++; jj++; }
+            denom++;
+            if (__builtin_expect((denom & 31) == 0, 0) &&
+                c + std::min(si - ii, sj - jj) < mc_cap) return 0.0;
+        }
+        if (denom < K_cap) {
+            denom += (si - ii) + (sj - jj);
+            if (denom > K_cap) denom = K_cap;
+        }
         return (denom <= 0) ? 0.0 : static_cast<double>(c) / denom;
     };
     auto minCommonFn = [minCommon](int) { return minCommon; };
 
     double t3 = get_sec();
-    Sketch::computeDistances<uint64_t>(csrIdx, skKeys, sketchSizes, files,
-        N, a.kmerSize, a.maxDist, setJaccard, minCommonFn, a.output, a.threads);
+    Sketch::computeDistancesExact<uint64_t>(csrIdx, skKeys, files,
+        N, a.kmerSize, a.maxDist, exactJaccardFn, minCommonFn, a.output, a.threads);
     double t4 = get_sec();
     std::cerr << "dist time: "  << t4 - t3 << " s\n";
     std::cerr << "total time: " << t4 - t0 << " s\n";
@@ -778,7 +797,9 @@ static void run_index_setsketch(const Args& a, const std::vector<std::string>& f
     memcpy(bip_buf, proto.getBaseInvPow(), 64 * sizeof(double));
     const double* bip = bip_buf;
 
-    static const int WITNESS_STRIDE = 4;
+    // Default to using *all* witness hashes (no subsampling) to avoid recall loss.
+    // If you want a speed/recall trade-off, change this to 2 or 4.
+    static const int WITNESS_STRIDE = 1;
     const int witnessesPerSketch = m / WITNESS_STRIDE;
     cerr << "registers=" << m << "  witnessStride=" << WITNESS_STRIDE
          << "  witnessKeys=" << witnessesPerSketch << "\n";
@@ -1819,7 +1840,9 @@ static void run_index_hll(const Args& a, const std::vector<std::string>& files_i
     // Stride 4: 8192/4 = 2048 keys per sketch — same order as FastKMV K=1024
     // and SetSketch witnessesPerSketch=2048. Lower stride = more keys = better
     // recall but more index work; 4 is the SetSketch default proven to work.
-    static const int WITNESS_STRIDE = 4;
+    // Default to using *all* witness hashes (no subsampling) to avoid recall loss.
+    // If you want a speed/recall trade-off, change this to 2 or 4.
+    static const int WITNESS_STRIDE = 1;
     const int witnessesPerSketch = m / WITNESS_STRIDE;
     cerr << "registers=" << m << "  witnessStride=" << WITNESS_STRIDE
          << "  witnessKeys=" << witnessesPerSketch
