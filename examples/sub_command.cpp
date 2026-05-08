@@ -790,19 +790,17 @@ static void run_index_setsketch(const Args& a, const std::vector<std::string>& f
     if (N == 0) { cerr << "ERROR: empty file list\n"; return; }
 
     Sketch::SetSketch proto(a.ssBits, a.ssBase, a.ssA, a.kmerSize,
-                            /*track_witnesses=*/true);
+                            /*track_witnesses=*/false);
     const int    m      = proto.getM();
     const double factor = proto.getFactor();
     double bip_buf[64];
     memcpy(bip_buf, proto.getBaseInvPow(), 64 * sizeof(double));
     const double* bip = bip_buf;
 
-    // Default to using *all* witness hashes (no subsampling) to avoid recall loss.
-    // If you want a speed/recall trade-off, change this to 2 or 4.
-    static const int WITNESS_STRIDE = 1;
-    const int witnessesPerSketch = m / WITNESS_STRIDE;
-    cerr << "registers=" << m << "  witnessStride=" << WITNESS_STRIDE
-         << "  witnessKeys=" << witnessesPerSketch << "\n";
+    // One inverted-index key per occupied register: key = p * 64 + core_[p]
+    // P(key_A[p] == key_B[p]) ≈ J_SetSketch  ← same property as MinHash keys.
+    // This eliminates the witness hash arrays entirely, saving 64 KB per sketch.
+    cerr << "registers=" << m << "  keyEncoding=(reg_idx*64+core_val)\n";
 
     // ── Phase 1: Sketch construction + witness extraction ───────────────────
     vector<double>  sizes(N, 0.0);
@@ -814,7 +812,7 @@ static void run_index_setsketch(const Args& a, const std::vector<std::string>& f
     #pragma omp parallel for num_threads(a.threads) schedule(dynamic)
     for (int t = 0; t < N; ++t) {
         Sketch::SetSketch sk(a.ssBits, a.ssBase, a.ssA, a.kmerSize,
-                             /*track_witnesses=*/true);
+                             /*track_witnesses=*/false);
         gzFile fp = gzopen(fileList[t].c_str(), "r");
         if (!fp) continue;
         kseq_t* ks = kseq_init(fp);
@@ -824,11 +822,12 @@ static void run_index_setsketch(const Args& a, const std::vector<std::string>& f
         gzclose(fp);
 
         sizes[t] = sk.cardinality();
-        memcpy(&flat_cores[static_cast<size_t>(t) * m], sk.getCore().data(), (size_t)m);
-        const uint64_t* wit = sk.getWitnesses().data();
-        skKeys[t].reserve(witnessesPerSketch);
-        for (int p = 0; p < m; p += WITNESS_STRIDE)
-            if (wit[p] != 0) skKeys[t].push_back(wit[p]);
+        const uint8_t* core = sk.getCore().data();
+        memcpy(&flat_cores[static_cast<size_t>(t) * m], core, (size_t)m);
+        skKeys[t].reserve(m);
+        for (int p = 0; p < m; ++p)
+            if (core[p] != 0)
+                skKeys[t].push_back(static_cast<uint64_t>(p) * 64ULL + core[p]);
     }
     double t1 = get_sec();
     cerr << "sketch time: " << t1 - t0 << " s\n";
@@ -887,15 +886,17 @@ static void run_index_setsketch(const Args& a, const std::vector<std::string>& f
     // expectedOverlap >= 20 ⇒ P(missed valid pair) < exp(-20) ≈ 2e-9.
     const double p_exp  = std::exp(-static_cast<double>(a.kmerSize) * a.maxDist);
     const double minJac = p_exp / (2.0 - p_exp);
-    const double expectedOverlap = static_cast<double>(witnessesPerSketch) * minJac;
+    // Expected number of matching register-value keys between two sequences at
+    // the Jaccard threshold: E = m * minJac  (P(match per register) ≈ J).
+    const double expectedOverlap = static_cast<double>(m) * minJac;
     const bool   useInvIdx = (expectedOverlap >= 20.0);
-    cerr << "minJac=" << minJac << "  expectedWitnessOverlap=" << expectedOverlap << "\n";
+    cerr << "minJac=" << minJac << "  expectedRegValOverlap=" << expectedOverlap << "\n";
 
     double t5 = get_sec();
 
     if (useInvIdx) {
         // ───────────── MODE A: inverted index (witness hashes) + exact ─────
-        cerr << "mode: INVERTED INDEX (witness hashes)\n";
+        cerr << "mode: INVERTED INDEX (register-value keys)\n";
 
         const int actualThreads = min(a.threads, N);
         vector<phmap::flat_hash_map<uint64_t, vector<uint32_t>>> threadIdx(actualThreads);
