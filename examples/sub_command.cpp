@@ -1838,15 +1838,10 @@ static void run_index_hll(const Args& a, const std::vector<std::string>& files_i
     const int bits = a.hllBits;
     const int m    = 1 << bits;
 
-    // Stride 4: 8192/4 = 2048 keys per sketch — same order as FastKMV K=1024
-    // and SetSketch witnessesPerSketch=2048. Lower stride = more keys = better
-    // recall but more index work; 4 is the SetSketch default proven to work.
-    // Default to using *all* witness hashes (no subsampling) to avoid recall loss.
-    // If you want a speed/recall trade-off, change this to 2 or 4.
-    static const int WITNESS_STRIDE = 1;
-    const int witnessesPerSketch = m / WITNESS_STRIDE;
-    cerr << "registers=" << m << "  witnessStride=" << WITNESS_STRIDE
-         << "  witnessKeys=" << witnessesPerSketch
+    // One inverted-index key per occupied register: key = p * 64 + core_[p]
+    // P(key_A[p] == key_B[p]) ≈ J_HLL  ← same property as MinHash keys.
+    // Eliminates witness hash arrays; no witness subsampling needed.
+    cerr << "registers=" << m << "  keyEncoding=(reg_idx*64+core_val)"
          << "  hllBits=" << bits << "\n";
 
     // ── Phase 1: Sketch construction (with witness tracking) ────────────────
@@ -1858,7 +1853,7 @@ static void run_index_hll(const Args& a, const std::vector<std::string>& files_i
     double t0 = get_sec();
     #pragma omp parallel for num_threads(a.threads) schedule(dynamic)
     for (int t = 0; t < N; ++t) {
-        auto sk = std::make_unique<Sketch::HyperLogLog>(bits, /*track_witnesses=*/true, a.kmerSize);
+        auto sk = std::make_unique<Sketch::HyperLogLog>(bits, /*track_witnesses=*/false, a.kmerSize);
         gzFile fp = gzopen(fileList[t].c_str(), "r");
         if (!fp) { vhll[t] = std::move(sk); continue; }
         kseq_t* ks = kseq_init(fp);
@@ -1867,10 +1862,11 @@ static void run_index_hll(const Args& a, const std::vector<std::string>& files_i
         gzclose(fp);
 
         sizes[t] = sk->cardinality();
-        const uint64_t* wit = sk->getWitnesses().data();
-        skKeys[t].reserve(witnessesPerSketch);
-        for (int p = 0; p < m; p += WITNESS_STRIDE)
-            if (wit[p] != 0) skKeys[t].push_back(wit[p]);
+        const uint8_t* core = sk->getCore().data();
+        skKeys[t].reserve(m);
+        for (int p = 0; p < m; ++p)
+            if (core[p] != 0)
+                skKeys[t].push_back(static_cast<uint64_t>(p) * 64ULL + core[p]);
 
         vhll[t] = std::move(sk);
     }
@@ -1901,21 +1897,21 @@ static void run_index_hll(const Args& a, const std::vector<std::string>& files_i
         skKeys.swap(sK);
     }
 
-    // ── Decide mode: inverted index needs ≥20 expected witness overlap ──────
-    // Witness sharing rate ≈ Jaccard × witnessesPerSketch (same model as
-    // SetSketch). expectedOverlap >= 20 ⇒ P(missed valid pair) < e^(-20).
+    // ── Decide mode: inverted index needs ≥20 expected register-value overlap ──
+    // P(core_A[p] == core_B[p]) ≈ J_HLL, so expected matching keys = m * minJac.
+    // expectedOverlap >= 20 ⇒ P(missed valid pair) < e^(-20).
     const double p_exp  = std::exp(-static_cast<double>(a.kmerSize) * a.maxDist);
     const double minJac = p_exp / (2.0 - p_exp);
-    const double expectedOverlap = static_cast<double>(witnessesPerSketch) * minJac;
+    const double expectedOverlap = static_cast<double>(m) * minJac;
     const bool   useInvIdx = (expectedOverlap >= 20.0);
-    cerr << "minJac=" << minJac << "  expectedWitnessOverlap=" << expectedOverlap
+    cerr << "minJac=" << minJac << "  expectedRegValOverlap=" << expectedOverlap
          << "  mashD<" << a.maxDist << "  k=" << a.kmerSize << "\n";
 
     double t5 = get_sec();
 
     if (useInvIdx) {
         // ───────────── MODE A: inverted index (witness hashes) + exact ─────
-        cerr << "mode: INVERTED INDEX (HLL witness hashes)\n";
+        cerr << "mode: INVERTED INDEX (HLL register-value keys)\n";
 
         const int actualThreads = min(a.threads, N);
         vector<phmap::flat_hash_map<uint64_t, vector<uint32_t>>> threadIdx(actualThreads);
