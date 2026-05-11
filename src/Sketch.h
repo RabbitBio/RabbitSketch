@@ -15,6 +15,7 @@
 #include "SetSketch.h"
 //#include "Kssd.h"
 #include <cstdint>
+#include <memory>
 #if defined(_MSC_VER)
 #include <BaseTsd.h>
 typedef SSIZE_T ssize_t;
@@ -363,28 +364,30 @@ namespace Sketch{
       //Kssd(int half_k, int half_subk, int drlevel, std::vector<int> shuffled_dim)
       //	:params_(half_k, half_subk, drlevel, std::move(shuffled_dim)),
       //	dim_size_(1 << (4 * half_subk)), use64_((half_k - drlevel) > 8)
-      Kssd(kssd_parameter_t params)
-        : params_(std::move(params)),
-        dim_size_(1 << (4 * params_.half_subk)),
-        use64((params_.half_k - params_.drlevel) > 8),
-        half_outctx_len(params_.half_outctx_len),
-        rev_add_move(params_.rev_add_move),
-        half_k_(params_.half_k),
-        drlevel_(params_.drlevel),
-        half_subk_(params_.half_subk),
-        kmer_size(params_.kmer_size),
-        dim_start(params_.dim_start),
-        dim_end(params_.dim_end),
-        hashSize(params_.hashSize),
-        hashLimit(params_.hashLimit),
-        tupmask(params_.tupmask),
-        domask(params_.domask),
-        undomask0(params_.undomask0),
-        undomask1(params_.undomask1),
-        shuffled_dim_(params_.shuffled_dim),
-        shuffled_map(params_.shuffled_map),
-        component_num(0) 
-          //comp_bittl(64 - 4 * params_.half_k)
+      // Takes a shared_ptr so all Kssd objects built from the same parameters
+      // share one copy of the two large tables (shuffled_dim + shuffled_map).
+      // Previously a value-copy was made per object, wasting ~192 MB each.
+      Kssd(std::shared_ptr<const kssd_parameter_t> params)
+        : params_ptr_(std::move(params)),
+        dim_size_(1 << (4 * params_ptr_->half_subk)),
+        use64((params_ptr_->half_k - params_ptr_->drlevel) > 8),
+        half_outctx_len(params_ptr_->half_outctx_len),
+        rev_add_move(params_ptr_->rev_add_move),
+        half_k_(params_ptr_->half_k),
+        drlevel_(params_ptr_->drlevel),
+        half_subk_(params_ptr_->half_subk),
+        kmer_size(params_ptr_->kmer_size),
+        dim_start(params_ptr_->dim_start),
+        dim_end(params_ptr_->dim_end),
+        hashSize(params_ptr_->hashSize),
+        hashLimit(params_ptr_->hashLimit),
+        tupmask(params_ptr_->tupmask),
+        domask(params_ptr_->domask),
+        undomask0(params_ptr_->undomask0),
+        undomask1(params_ptr_->undomask1),
+        shuffled_dim_(params_ptr_->shuffled_dim),
+        shuffled_map_(&params_ptr_->shuffled_map),
+        component_num(0)
     {
     }
 
@@ -444,12 +447,13 @@ namespace Sketch{
       int get_half_k();
 
     private:
-      kssd_parameter_t params_;
+      // Shared ownership of the parameter block (shuffled_dim + shuffled_map).
+      // All Kssd objects built from the same parameters point to one instance.
+      std::shared_ptr<const kssd_parameter_t> params_ptr_;
       int half_k_;
       int half_subk_;
       int drlevel_;
-      //std::unique_ptr<int[]> shuffled_dim_;
-      int * shuffled_dim_;
+      int * shuffled_dim_;          // raw pointer into params_ptr_->shuffled_dim
       int dim_size_;
       bool use64=  (half_k_ - drlevel_) > 8;
       int half_outctx_len;
@@ -471,10 +475,10 @@ namespace Sketch{
       void SetToList64();
       void SetToList();
 
+      static const int BaseMap[128];
 
-      static const int BaseMap[128]; 
-
-      phmap::flat_hash_map<uint32_t, int> shuffled_map;
+      // Pointer into params_ptr_->shuffled_map — no per-object copy.
+      const phmap::flat_hash_map<uint32_t, int>* shuffled_map_;
 
   };
 

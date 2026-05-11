@@ -358,18 +358,21 @@ static void stream_seq(const std::string& path, CB&& cb) {
 // libc srand/rand which is *not* thread-safe; concurrent constructions corrupt
 // the dim shuffle map and produce zero-Jaccard sketches.  We cache one
 // parameter object per (half_k, half_subk, drlevel) tuple under a mutex so
-// every thread receives the same fully-initialised instance.
-static const Sketch::kssd_parameter_t&
+// every thread receives the same fully-initialised shared_ptr.
+// Returning shared_ptr (not raw ref) lets Kssd objects hold shared ownership,
+// so the large tables (shuffled_dim + shuffled_map, ~192 MB) are allocated
+// exactly ONCE regardless of how many Kssd objects are constructed.
+static std::shared_ptr<const Sketch::kssd_parameter_t>
 get_kssd_params(int half_k, int half_subk, int drlevel) {
     static std::mutex mu;
     static std::vector<std::pair<std::tuple<int,int,int>,
                                  std::shared_ptr<Sketch::kssd_parameter_t>>> cache;
     std::lock_guard<std::mutex> lk(mu);
     const auto key = std::make_tuple(half_k, half_subk, drlevel);
-    for (auto& [k, v] : cache) if (k == key) return *v;
+    for (auto& [k, v] : cache) if (k == key) return v;
     cache.emplace_back(key,
         std::make_shared<Sketch::kssd_parameter_t>(half_k, half_subk, drlevel));
-    return *cache.back().second;
+    return cache.back().second;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1301,9 +1304,10 @@ static void run_index_kssd(const Args& a, const std::vector<std::string>& files)
     // by feeding the user-controllable drlevel through but keeping
     // half_k=10, half_subk=6 hard-coded — same defaults as the Sketch
     // library and as test_Kssd.
-    const Sketch::kssd_parameter_t& P = get_kssd_params(/*half_k*/ 10,
-                                                        /*half_subk*/ 6,
-                                                        /*drlevel*/ a.kssdDrlevel);
+    const auto   Pptr      = get_kssd_params(/*half_k*/ 10,
+                                             /*half_subk*/ 6,
+                                             /*drlevel*/ a.kssdDrlevel);
+    const Sketch::kssd_parameter_t& P = *Pptr;
     const int    kmerSize  = P.kmer_size;
     const bool   use64     = (P.half_k - P.drlevel) > 8;
     const uint64_t tupmask = P.tupmask, domask = P.domask;

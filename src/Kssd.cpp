@@ -667,8 +667,8 @@ namespace Sketch{
 					const uint64_t uni_tuple = (tuple < rvs_tuple) ? tuple : rvs_tuple;
 					const uint32_t dim_id    = static_cast<uint32_t>((uni_tuple & domask) >> dom_shift);
 
-					auto it = shuffled_map.find(dim_id);
-					if (it == shuffled_map.end()) continue;
+				auto it = shuffled_map_->find(dim_id);
+				if (it == shuffled_map_->end()) continue;
 
 					const uint64_t dr_tuple =
 						(((uni_tuple & undomask0) |
@@ -700,29 +700,215 @@ namespace Sketch{
 	}
 
 
-	double Kssd::jaccard(Kssd* kssd)
+	// ── SIMD sorted-set intersection helpers ────────────────────────────────
+	// Both arrays must be sorted ascending (guaranteed by SetToList/SetToList64).
+	// Variable-length version: no fixed-k truncation, no min_jaccard early exit.
+	// Mirrors FastKMV::jaccard()'s rotational block-compare strategy.
+
+	static int kssd_intersect64(const uint64_t* __restrict__ a, int sa,
+	                             const uint64_t* __restrict__ b, int sb)
 	{
-		double jaccard = 1.0;
-		int size1 = storeHashes().size();
-		int size2 = kssd->storeHashes().size();
-		if(size1 == 0 || size2 == 0) return 0.0;
-		int i = 0, j = 0;
-		int common = 0;
-		while(i < size1 && j < size2)
+		int ia = 0, ib = 0;
+		int64_t common = 0;
+
+#if defined(__AVX512F__)
 		{
-			if(storeHashes()[i] < kssd->storeHashes()[j])
-				i++;
-			else if(storeHashes()[i] > kssd->storeHashes()[j])
-				j++;
-			else{
-				i++;
-				j++;
-				common++;
+			const int W    = 8;
+			const int st_a = (sa / W) * W;
+			const int st_b = (sb / W) * W;
+
+			if (st_a > 0 && st_b > 0) {
+				__m512i sv0 = _mm512_set_epi64(0,7,6,5,4,3,2,1);
+				__m512i sv1 = _mm512_set_epi64(1,0,7,6,5,4,3,2);
+				__m512i sv2 = _mm512_set_epi64(2,1,0,7,6,5,4,3);
+				__m512i sv3 = _mm512_set_epi64(3,2,1,0,7,6,5,4);
+				__m512i sv4 = _mm512_set_epi64(4,3,2,1,0,7,6,5);
+				__m512i sv5 = _mm512_set_epi64(5,4,3,2,1,0,7,6);
+				__m512i sv6 = _mm512_set_epi64(6,5,4,3,2,1,0,7);
+
+				while (ia < st_a && ib < st_b) {
+					__m512i va = _mm512_loadu_si512(a + ia);
+					__m512i vb = _mm512_loadu_si512(b + ib);
+
+					const uint64_t a_max = a[ia + W - 1];
+					const uint64_t b_max = b[ib + W - 1];
+					ia += (a_max <= b_max) * W;
+					ib += (a_max >= b_max) * W;
+
+					__mmask8 cmpA = _mm512_cmpeq_epu64_mask(va, vb)
+					              | _mm512_cmpeq_epu64_mask(va, _mm512_permutexvar_epi64(sv0, vb))
+					              | _mm512_cmpeq_epu64_mask(va, _mm512_permutexvar_epi64(sv1, vb))
+					              | _mm512_cmpeq_epu64_mask(va, _mm512_permutexvar_epi64(sv2, vb));
+					__mmask8 cmpB = _mm512_cmpeq_epu64_mask(va, _mm512_permutexvar_epi64(sv3, vb))
+					              | _mm512_cmpeq_epu64_mask(va, _mm512_permutexvar_epi64(sv4, vb))
+					              | _mm512_cmpeq_epu64_mask(va, _mm512_permutexvar_epi64(sv5, vb))
+					              | _mm512_cmpeq_epu64_mask(va, _mm512_permutexvar_epi64(sv6, vb));
+					common += _mm_popcnt_u64(cmpA | cmpB);
+				}
 			}
 		}
-		int denom = size1 + size2 -common;
-		jaccard = (double)common / (double)denom;
-		return jaccard;
+#elif defined(__AVX2__)
+		{
+			const int W    = 4;
+			const int st_a = (sa / W) * W;
+			const int st_b = (sb / W) * W;
+
+			while (ia < st_a && ib < st_b) {
+				__m256i va = _mm256_loadu_si256((const __m256i*)(a + ia));
+				__m256i vb = _mm256_loadu_si256((const __m256i*)(b + ib));
+
+				const uint64_t a_max = a[ia + W - 1];
+				const uint64_t b_max = b[ib + W - 1];
+				ia += (a_max <= b_max) * W;
+				ib += (a_max >= b_max) * W;
+
+				__m256i combined =
+					_mm256_or_si256(
+						_mm256_or_si256(_mm256_cmpeq_epi64(va, vb),
+						                _mm256_cmpeq_epi64(va, _mm256_permute4x64_epi64(vb, 0x39))),
+						_mm256_or_si256(_mm256_cmpeq_epi64(va, _mm256_permute4x64_epi64(vb, 0x4E)),
+						                _mm256_cmpeq_epi64(va, _mm256_permute4x64_epi64(vb, 0x93))));
+				common += _mm_popcnt_u32(
+					static_cast<unsigned>(_mm256_movemask_pd(_mm256_castsi256_pd(combined))));
+			}
+		}
+#endif
+		// scalar remainder
+		while (ia < sa && ib < sb) {
+			if      (a[ia] < b[ib]) ++ia;
+			else if (a[ia] > b[ib]) ++ib;
+			else { ++common; ++ia; ++ib; }
+		}
+		return static_cast<int>(common);
+	}
+
+	// Rotation permutation indices for 16-wide uint32_t (rotations 1..15).
+	// File-scope so the compiler can guarantee 64-byte alignment for
+	// _mm512_load_si512, which requires it.
+#if defined(__AVX512F__) && defined(__AVX512BW__)
+	static const int32_t kssd_ridx32[15][16] __attribute__((aligned(64))) = {
+				{ 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15, 0},
+				{ 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15, 0, 1},
+				{ 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15, 0, 1, 2},
+				{ 4, 5, 6, 7, 8, 9,10,11,12,13,14,15, 0, 1, 2, 3},
+				{ 5, 6, 7, 8, 9,10,11,12,13,14,15, 0, 1, 2, 3, 4},
+				{ 6, 7, 8, 9,10,11,12,13,14,15, 0, 1, 2, 3, 4, 5},
+				{ 7, 8, 9,10,11,12,13,14,15, 0, 1, 2, 3, 4, 5, 6},
+				{ 8, 9,10,11,12,13,14,15, 0, 1, 2, 3, 4, 5, 6, 7},
+				{ 9,10,11,12,13,14,15, 0, 1, 2, 3, 4, 5, 6, 7, 8},
+				{10,11,12,13,14,15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+				{11,12,13,14,15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10},
+				{12,13,14,15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11},
+				{13,14,15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12},
+			{14,15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13},
+			{15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14},
+	};
+#endif
+
+	// 32-bit path: 16-wide AVX-512 or 8-wide AVX2
+	static int kssd_intersect32(const uint32_t* __restrict__ a, int sa,
+	                             const uint32_t* __restrict__ b, int sb)
+	{
+		int ia = 0, ib = 0;
+		int64_t common = 0;
+
+#if defined(__AVX512F__) && defined(__AVX512BW__)
+		{
+			__m512i sv[15];
+			for (int r = 0; r < 15; r++)
+				sv[r] = _mm512_load_si512((const __m512i*)kssd_ridx32[r]);
+
+			const int W    = 16;
+			const int st_a = (sa / W) * W;
+			const int st_b = (sb / W) * W;
+
+			while (ia < st_a && ib < st_b) {
+				__m512i va = _mm512_loadu_si512(a + ia);
+				__m512i vb = _mm512_loadu_si512(b + ib);
+
+				const uint32_t a_max = a[ia + W - 1];
+				const uint32_t b_max = b[ib + W - 1];
+				ia += (a_max <= b_max) * W;
+				ib += (a_max >= b_max) * W;
+
+				__mmask16 hits = _mm512_cmpeq_epi32_mask(va, vb);
+				for (int r = 0; r < 15; r++)
+					hits |= _mm512_cmpeq_epi32_mask(va, _mm512_permutexvar_epi32(sv[r], vb));
+				common += _mm_popcnt_u32(static_cast<uint32_t>(hits));
+			}
+		}
+#elif defined(__AVX2__)
+		{
+			// rotation indices for _mm256_permutevar8x32_epi32:
+			// sr_k: dst[i] = src[(i+k) % 8]
+			const __m256i sr1 = _mm256_set_epi32(0,7,6,5,4,3,2,1);
+			const __m256i sr2 = _mm256_set_epi32(1,0,7,6,5,4,3,2);
+			const __m256i sr3 = _mm256_set_epi32(2,1,0,7,6,5,4,3);
+			const __m256i sr4 = _mm256_set_epi32(3,2,1,0,7,6,5,4);
+			const __m256i sr5 = _mm256_set_epi32(4,3,2,1,0,7,6,5);
+			const __m256i sr6 = _mm256_set_epi32(5,4,3,2,1,0,7,6);
+			const __m256i sr7 = _mm256_set_epi32(6,5,4,3,2,1,0,7);
+
+			const int W    = 8;
+			const int st_a = (sa / W) * W;
+			const int st_b = (sb / W) * W;
+
+			while (ia < st_a && ib < st_b) {
+				__m256i va = _mm256_loadu_si256((const __m256i*)(a + ia));
+				__m256i vb = _mm256_loadu_si256((const __m256i*)(b + ib));
+
+				const uint32_t a_max = a[ia + W - 1];
+				const uint32_t b_max = b[ib + W - 1];
+				ia += (a_max <= b_max) * W;
+				ib += (a_max >= b_max) * W;
+
+				__m256i combined = _mm256_or_si256(
+					_mm256_or_si256(
+						_mm256_or_si256(_mm256_cmpeq_epi32(va, vb),
+						                _mm256_cmpeq_epi32(va, _mm256_permutevar8x32_epi32(vb, sr1))),
+						_mm256_or_si256(_mm256_cmpeq_epi32(va, _mm256_permutevar8x32_epi32(vb, sr2)),
+						                _mm256_cmpeq_epi32(va, _mm256_permutevar8x32_epi32(vb, sr3)))),
+					_mm256_or_si256(
+						_mm256_or_si256(_mm256_cmpeq_epi32(va, _mm256_permutevar8x32_epi32(vb, sr4)),
+						                _mm256_cmpeq_epi32(va, _mm256_permutevar8x32_epi32(vb, sr5))),
+						_mm256_or_si256(_mm256_cmpeq_epi32(va, _mm256_permutevar8x32_epi32(vb, sr6)),
+						                _mm256_cmpeq_epi32(va, _mm256_permutevar8x32_epi32(vb, sr7)))));
+				// _mm256_movemask_ps: 1 bit per 32-bit lane → 8-bit mask
+				common += _mm_popcnt_u32(
+					static_cast<unsigned>(_mm256_movemask_ps(_mm256_castsi256_ps(combined))));
+			}
+		}
+#endif
+		// scalar remainder
+		while (ia < sa && ib < sb) {
+			if      (a[ia] < b[ib]) ++ia;
+			else if (a[ia] > b[ib]) ++ib;
+			else { ++common; ++ia; ++ib; }
+		}
+		return static_cast<int>(common);
+	}
+
+	double Kssd::jaccard(Kssd* kssd)
+	{
+		if (use64) {
+			const auto& a = hashList64;
+			const auto& b = kssd->hashList64;
+			if (a.empty() || b.empty()) return 0.0;
+			const int sa = static_cast<int>(a.size());
+			const int sb = static_cast<int>(b.size());
+			const int common = kssd_intersect64(a.data(), sa, b.data(), sb);
+			const int denom  = sa + sb - common;
+			return denom > 0 ? static_cast<double>(common) / denom : 0.0;
+		} else {
+			const auto& a = hashList;
+			const auto& b = kssd->hashList;
+			if (a.empty() || b.empty()) return 0.0;
+			const int sa = static_cast<int>(a.size());
+			const int sb = static_cast<int>(b.size());
+			const int common = kssd_intersect32(a.data(), sa, b.data(), sb);
+			const int denom  = sa + sb - common;
+			return denom > 0 ? static_cast<double>(common) / denom : 0.0;
+		}
 	}
 
 	double Kssd::distance(Kssd* kssd)

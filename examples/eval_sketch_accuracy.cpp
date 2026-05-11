@@ -60,6 +60,7 @@
 #include <unordered_map>
 #include <fstream>
 #include <sstream>
+#include <memory>
 
 using namespace std;
 
@@ -248,6 +249,7 @@ int main(int argc, char* argv[])
 
     // ── KSSD parameters (shuffle dictionary generated in memory) ───────────
     Sketch::kssd_parameter_t kssdPara; // half_k=10, half_subk=6, drlevel=3
+    auto kssdParaPtr = std::make_shared<const Sketch::kssd_parameter_t>(std::move(kssdPara));
 
     vector<double> rates = {0.001, 0.005, 0.01, 0.02, 0.05,
                             0.1,   0.15,  0.2,  0.25, 0.3};
@@ -307,8 +309,8 @@ int main(int argc, char* argv[])
         double ss_j = s1.jaccard_index(s2);
 
         // ── KSSD (k=20, half_k=10, half_subk=6, drlevel=3) ────────────
-        Sketch::Kssd* k1 = new Sketch::Kssd(kssdPara);
-        Sketch::Kssd* k2 = new Sketch::Kssd(kssdPara);
+        Sketch::Kssd* k1 = new Sketch::Kssd(kssdParaPtr);
+        Sketch::Kssd* k2 = new Sketch::Kssd(kssdParaPtr);
         k1->update(seq_a.data());
         k2->update(seq_b.data());
         double kssd_j = k1->jaccard(k2);
@@ -559,8 +561,8 @@ int main(int argc, char* argv[])
         s1.update(seq_a.data()); s2.update(seq_b.data());
         double ss_j = s1.jaccard_index(s2);
 
-        Sketch::Kssd* k1 = new Sketch::Kssd(kssdPara);
-        Sketch::Kssd* k2 = new Sketch::Kssd(kssdPara);
+        Sketch::Kssd* k1 = new Sketch::Kssd(kssdParaPtr);
+        Sketch::Kssd* k2 = new Sketch::Kssd(kssdParaPtr);
         k1->update(seq_a.data()); k2->update(seq_b.data());
         double kssd_j = k1->jaccard(k2);
         delete k1; delete k2;
@@ -957,8 +959,8 @@ int main(int argc, char* argv[])
         double ss_j = ss1.jaccard_index(ss2);
 
         {
-            Sketch::Kssd* k1 = new Sketch::Kssd(kssdPara);
-            Sketch::Kssd* k2 = new Sketch::Kssd(kssdPara);
+            Sketch::Kssd* k1 = new Sketch::Kssd(kssdParaPtr);
+            Sketch::Kssd* k2 = new Sketch::Kssd(kssdParaPtr);
             k1->update(sa.data()); k2->update(sb.data());
             fres[idx].kssd_j = k1->jaccard(k2);
             delete k1; delete k2;
