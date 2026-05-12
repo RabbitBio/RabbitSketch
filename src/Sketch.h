@@ -153,6 +153,17 @@ namespace Sketch{
 
       this->needToList = true;
     }
+
+      // Explicit destructor: minHashHeap is a raw `new`-allocated pointer
+      // member.  The compiler-generated default destructor would leak it,
+      // costing ~16-64 KiB per sketch (a real bug for large-N runs).
+      ~MinHash() {
+          delete minHashHeap;
+          minHashHeap = nullptr;
+      }
+      MinHash(const MinHash&)            = delete;
+      MinHash& operator=(const MinHash&) = delete;
+
       /* for the containment of sequences(genomes).
        * the size of minHashHeap(as sketchSize) is proportatd with the sequence(genome) length.
        * addbyxxm 2021/9/18
@@ -219,8 +230,30 @@ namespace Sketch{
       /// return whether to use reverse complement
       bool isReverseComplement() { return !noncanonical; }
 
-      /// Materialize the hash list now (call before any parallel read).
-      void finalize() { ensureHeapToListed(); }
+      /// Materialize the hash list AND release the build-only scratch state.
+      ///
+      /// Must be called once after the last update() and before pairwise
+      /// distance queries.  Two effects:
+      ///   1. heapToList(): heap → sorted unique bottom-k vector (compact).
+      ///   2. delete minHashHeap: frees ~16-64 KiB of scratch hash table /
+      ///      priority queue per sketch.  For 200k sketches this is ~3-12 GiB
+      ///      reclaimed before the O(N²) distance loop starts.
+      ///
+      /// One-way operation: calling update() after finalize() is UB.
+      /// Mirrors Kssd::finalize() and BinDash::finalize().
+      void finalize() {
+          ensureHeapToListed();
+          if (minHashHeap) {
+              delete minHashHeap;
+              minHashHeap = nullptr;
+          }
+          // Compact the sorted hash vectors to their exact final size.
+          // heapToList() already does std::move(reserve(sketchSize)),
+          // so capacity should be ≤ sketchSize already; shrink_to_fit
+          // is a no-op when size == capacity but cheap regardless.
+          reference.hashesSorted.hashes64.shrink_to_fit();
+          reference.hashesSorted.hashes32.shrink_to_fit();
+      }
 
       /// Returns the finalized bottom-k sorted hash list for inverted-index use.
       /// Calls finalize() internally; result is valid until the sketch is modified.
@@ -418,6 +451,11 @@ namespace Sketch{
       vector<uint32_t> storeHashes();
       vector<uint64_t> storeHashes64();
       void update(const char* seq);
+      // Compact sketch storage after all update() calls: shrinks the sorted
+      // hashList vector to its exact size (dropping any capacity overshoot
+      // accumulated by multi-contig merges) and releases the hashSet's heap.
+      // Single-threaded; call once per sketch before pairwise distance loop.
+      void finalize();
       bool existFile(string fileName);
       bool isFastaList(string inputList);
       bool isFastqList(string inputList);

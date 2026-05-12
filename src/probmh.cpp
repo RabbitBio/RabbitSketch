@@ -36,6 +36,8 @@
 #include <cassert>
 #include <cmath>
 #include <limits>
+#include <mutex>
+#include <unordered_map>
 
 // ── AVX2 64-bit lane multiply helper (no AVX-512DQ needed) ───────────────────
 #ifdef __AVX2__
@@ -480,31 +482,48 @@ uint32_t ProbMHPermStream::next(uint64_t& rng) {
 // ProbMinHash4  –  constructor / copy / assign
 // ═══════════════════════════════════════════════════════════════════════════
 
-ProbMinHash4::ProbMinHash4(uint32_t m, int kmer_size, uint64_t seed,
-                           uint32_t max_L)
-    : m_(m), kmer_size_(kmer_size), seed_(seed),
-      max_L_((max_L == 0) ? m : std::min(max_L, m)),
-      total_weight_(0.0),
-      ted_params_(new TedParam[m - 1]),
-      tracker_(m),
-      perm_(m),
-      winners_(new uint64_t[m]())   // zero-initialised; 0 = "not yet set"
-{
-    assert(m > 1);
-    assert(kmer_size >= 1 && kmer_size <= 32);
-    tracker_.reset(std::numeric_limits<double>::infinity());
+void ProbMinHash4::finalize() noexcept {
+    // Drop this sketch's reference to the shared TED table.  Actual memory is
+    // freed only when the last sketch with this m goes away (the global cache
+    // also holds a strong reference, so by design it persists).
+    ted_params_.reset();
+    firstBoundaryInv_ = 0.0;
+    perm_.clear();                // ~8 KB: val_[] + ver_arr_[], update-only
+}
+
+std::shared_ptr<const ProbMinHash4::TedParam[]>
+ProbMinHash4::getOrBuildTedParams(uint32_t m, double& out_firstBoundaryInv) {
+    // Function-local statics: thread-safe init in C++11+, lives until program
+    // exit, and has access to the private TedParam type.
+    static std::mutex cache_mtx;
+    static std::unordered_map<
+        uint32_t,
+        std::pair<std::shared_ptr<const TedParam[]>, double>> cache;
+
+    {
+        std::lock_guard<std::mutex> lk(cache_mtx);
+        auto it = cache.find(m);
+        if (it != cache.end()) {
+            out_firstBoundaryInv = it->second.second;
+            return it->second.first;
+        }
+    }
+
+    // First sketch with this m: build the table outside the lock.  Other
+    // threads racing on the same m will all do the work (rare, m is small),
+    // then the first to grab the lock wins; the rest discard their copies.
+    auto buf = std::make_unique<TedParam[]>(m - 1);
 
     const double firstBoundary = std::log1p(1.0 / static_cast<double>(m - 1));
-    firstBoundaryInv_ = 1.0 / firstBoundary;
+    const double firstBoundaryInv = 1.0 / firstBoundary;
 
-    // Index 0: boundary = 1.0, gap unused in delta formula.
     {
         const double rate = firstBoundary;
-        ted_params_[0].boundary = 1.0;
-        ted_params_[0].gap      = 1.0;
-        ted_params_[0].c1 = (rate != 0.0) ? std::expm1(rate) / rate : 1.0;
-        ted_params_[0].c2 = (rate != 0.0) ? -std::log1p(std::expm1(-rate) * 0.5) / rate : 0.5;
-        ted_params_[0].c3 = (rate != 0.0) ? -std::expm1(-rate) / rate : 1.0;
+        buf[0].boundary = 1.0;
+        buf[0].gap      = 1.0;
+        buf[0].c1 = (rate != 0.0) ? std::expm1(rate) / rate : 1.0;
+        buf[0].c2 = (rate != 0.0) ? -std::log1p(std::expm1(-rate) * 0.5) / rate : 0.5;
+        buf[0].c3 = (rate != 0.0) ? -std::expm1(-rate) / rate : 1.0;
     }
 
     double prevBoundary = firstBoundary;
@@ -513,26 +532,60 @@ ProbMinHash4::ProbMinHash4(uint32_t m, int kmer_size, uint64_t seed,
                                        static_cast<double>(m - i - 1));
         const double rate = b - prevBoundary;
         const double bNorm = b / firstBoundary;
-        ted_params_[i].boundary = bNorm;
-        ted_params_[i].gap      = bNorm - ted_params_[i - 1].boundary;
-        ted_params_[i].c1 = (rate != 0.0) ? std::expm1(rate) / rate : 1.0;
-        ted_params_[i].c2 = (rate != 0.0) ? -std::log1p(std::expm1(-rate) * 0.5) / rate : 0.5;
-        ted_params_[i].c3 = (rate != 0.0) ? -std::expm1(-rate) / rate : 1.0;
+        buf[i].boundary = bNorm;
+        buf[i].gap      = bNorm - buf[i - 1].boundary;
+        buf[i].c1 = (rate != 0.0) ? std::expm1(rate) / rate : 1.0;
+        buf[i].c2 = (rate != 0.0) ? -std::log1p(std::expm1(-rate) * 0.5) / rate : 0.5;
+        buf[i].c3 = (rate != 0.0) ? -std::expm1(-rate) / rate : 1.0;
         prevBoundary = b;
     }
+
+    // Transfer ownership to a shared_ptr with array-deleter, then publish.
+    std::shared_ptr<const TedParam[]> sp(
+        buf.release(),
+        [](const TedParam* p){ delete[] p; });
+
+    {
+        std::lock_guard<std::mutex> lk(cache_mtx);
+        auto it = cache.find(m);
+        if (it != cache.end()) {
+            // Lost the race; discard our build and use the existing cached one.
+            out_firstBoundaryInv = it->second.second;
+            return it->second.first;
+        }
+        cache.emplace(m, std::make_pair(sp, firstBoundaryInv));
+    }
+    out_firstBoundaryInv = firstBoundaryInv;
+    return sp;
+}
+
+ProbMinHash4::ProbMinHash4(uint32_t m, int kmer_size, uint64_t seed,
+                           uint32_t max_L)
+    : m_(m), kmer_size_(kmer_size), seed_(seed),
+      max_L_((max_L == 0) ? m : std::min(max_L, m)),
+      total_weight_(0.0),
+      tracker_(m),
+      perm_(m),
+      winners_(new uint64_t[m]())   // zero-initialised; 0 = "not yet set"
+{
+    assert(m > 1);
+    assert(kmer_size >= 1 && kmer_size <= 32);
+    tracker_.reset(std::numeric_limits<double>::infinity());
+
+    // Share-by-pointer: O(1) when the m-cache is warm (after the first
+    // sketch); ~4 K transcendentals + one 40 KB alloc on the cold miss.
+    ted_params_ = getOrBuildTedParams(m, firstBoundaryInv_);
 }
 
 ProbMinHash4::ProbMinHash4(const ProbMinHash4& o)
     : m_(o.m_), kmer_size_(o.kmer_size_), seed_(o.seed_),
       max_L_(o.max_L_),
       total_weight_(o.total_weight_),
-      ted_params_(new TedParam[o.m_ - 1]),
+      ted_params_(o.ted_params_),              // share, no deep copy
       firstBoundaryInv_(o.firstBoundaryInv_),
       tracker_(o.m_),
       perm_(o.m_)
 {
-    std::copy(o.ted_params_.get(), o.ted_params_.get() + m_ - 1,
-              ted_params_.get());
     // Copy leaves then rebuild internal nodes in O(m) instead of m × update().
     std::copy(o.tracker_.leaves(), o.tracker_.leaves() + m_,
               tracker_.leaves());

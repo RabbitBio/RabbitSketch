@@ -220,6 +220,11 @@ void FastKMV::addHash(uint64_t h) {
 // update  –  ntHash rolling + SIMD fmix finalizer + threshold filter
 // ═══════════════════════════════════════════════════════════════════════════
 
+void FastKMV::finalize() {
+    enc_buf_.reset();
+    enc_cap_ = 0;
+}
+
 void FastKMV::update(const char* seq, uint64_t length) {
     const int K = kmer_size_;
     if (length < static_cast<uint64_t>(K)) return;

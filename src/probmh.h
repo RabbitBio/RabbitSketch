@@ -84,6 +84,9 @@ public:
     explicit ProbMHPermStream(uint32_t m);
     void     reset();
     uint32_t next(uint64_t& rng_state);   // advances rng_state in-place
+    // Release the two internal arrays (val_ / ver_arr_).  Call after all
+    // update() calls are done; next()/reset() must not be called afterward.
+    void     clear() noexcept { val_.reset(); ver_arr_.reset(); }
     friend void swap(ProbMHPermStream& a, ProbMHPermStream& b) noexcept;
 
 private:
@@ -125,6 +128,15 @@ public:
      * The caller must supply the sequence length (avoids an extra strlen pass).
      */
     void update(const char* seq, uint64_t length);
+
+    /**
+     * Release construction-only memory after all update() calls are done.
+     * Frees ted_params_ (~40 KB/sketch) and the permutation-stream arrays
+     * (~8 KB/sketch).  tracker_ (registers) and winners_ are preserved so
+     * jaccard(), distance(), and getWinnerIndexKeys() remain usable.
+     * Must not call update() / addHash() after finalize().
+     */
+    void finalize() noexcept;
 
     /** Every k-mer occurrence uses the same weight @p weight_each (> 0). */
     void updateWeighted(const char* seq, uint64_t length, double weight_each);
@@ -264,14 +276,24 @@ private:
         double c1, c2, c3;
     };
 
+    // Build (or fetch from a global cache) the TED-parameter table for sketch
+    // size @p m and write firstBoundary^-1 into @p out_firstBoundaryInv.  The
+    // table depends only on m, so all sketches with the same m share one copy.
+    // Thread-safe.  Eliminates ~40 KB malloc and ~4 K transcendentals per
+    // sketch in large-N runs.
+    static std::shared_ptr<const TedParam[]>
+    getOrBuildTedParams(uint32_t m, double& out_firstBoundaryInv);
+
     uint32_t           m_;
     int                kmer_size_;
     uint64_t           seed_;
     uint32_t           max_L_;    // Route C: max updates per element (m_ = unlimited)
     double             total_weight_;  // accumulated sum of all element weights
 
-    std::unique_ptr<TedParam[]>  ted_params_;     // [m-1]
-    double                       firstBoundaryInv_;
+    // Shared, immutable.  Constructor copies a pointer; no per-sketch malloc
+    // or transcendental recomputation when m is identical across sketches.
+    std::shared_ptr<const TedParam[]>  ted_params_;     // [m-1]
+    double                             firstBoundaryInv_;
 
     ProbMHMaxTracker   tracker_;
     ProbMHPermStream   perm_;

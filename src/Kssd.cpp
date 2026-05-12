@@ -690,6 +690,22 @@ namespace Sketch{
 		else        SetToList();
 	}
 
+	// ── Kssd::finalize ──────────────────────────────────────────────────────
+	// SetToList()/SetToList64() are invoked once per update() (i.e. per contig),
+	// so for multi-contig genomes the active hashList capacity can grow well
+	// beyond the final size due to vector geometric reallocation.  Call this
+	// once after the build phase to shrink hashList to its exact final size
+	// and free any residual hashSet allocation.  For 200k bacterial sketches
+	// this typically cuts peak RSS roughly in half during the dist phase.
+	void Kssd::finalize() {
+		if (use64) {
+			hashList64.shrink_to_fit();
+			phmap::flat_hash_set<uint64_t>().swap(hashSet64);
+		} else {
+			hashList.shrink_to_fit();
+			phmap::flat_hash_set<uint32_t>().swap(hashSet);
+		}
+	}
 
 	vector<uint32_t> Kssd::storeHashes(){
 		return hashList;

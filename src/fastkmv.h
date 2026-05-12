@@ -35,6 +35,20 @@ public:
     void update(const char* seq, uint64_t length);
 
     /**
+     * Release the SIMD encoding scratch buffer (enc_buf_) used inside
+     * update().  This buffer is grown to the length of the largest
+     * sequence ever passed in (typically MB-scale per bacterial contig);
+     * after the last update() it is no longer needed for jaccard() /
+     * distance() calls.  For 200k sketches × multi-MB max contigs this
+     * reclaims tens of GiB of RSS before the pairwise loop runs.
+     *
+     * One-way: calling update() after finalize() will re-allocate the
+     * buffer on demand, so finalize() is safe to call multiple times
+     * but is intended for the post-build compaction step.
+     */
+    void finalize();
+
+    /**
      * KMV Jaccard on two sorted bottom-k lists: count the overlap in the
      * k smallest distinct values of the union.
      *

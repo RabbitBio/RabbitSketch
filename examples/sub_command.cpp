@@ -400,6 +400,9 @@ static Sketch::Kssd* build_kssd(const std::string& path, const Args& a) {
                                                 /*drlevel*/ a.kssdDrlevel));
     sk->fileName = path;
     stream_seq(path, [&](char* seq, uint64_t /*len*/) { sk->update(seq); });
+    // Compact hashList to exact size and release any hashSet capacity.
+    // Mirrors MinHash::finalize() / BinDash::finalize() in the other builders.
+    sk->finalize();
     return sk;
 }
 
@@ -429,6 +432,9 @@ static Sketch::SetSketch* build_setsketch(const std::string& path, const Args& a
 static Sketch::FastKMV* build_fastkmv(const std::string& path, const Args& a) {
     auto* sk = new Sketch::FastKMV(a.fkmvK, a.kmerSize, a.seed);
     stream_seq(path, [&](char* seq, uint64_t len) { sk->update(seq, len); });
+    // Drop the per-call SIMD encoding scratch buffer (sized to the largest
+    // contig seen).  See FastKMV::finalize().
+    sk->finalize();
     return sk;
 }
 
@@ -601,10 +607,16 @@ static void run_index_minhash(const Args& a, const std::vector<std::string>& fil
 //      no specialised list-mode path (MinHash, HLL, ProbMinHash, FastKMV in
 //      no-index mode).  BinDash uses its own fast path (see §9).
 // ═══════════════════════════════════════════════════════════════════════════
-template<class T, class BuildFn, class DistFn>
+// PostBuildFn: called once on each sketch pointer after all sketches are built,
+// before the dist phase.  Use to release construction-only memory (e.g.
+// ProbMinHash4::finalize()) without perturbing the parallel build loop.
+// Default is a no-op lambda.
+template<class T, class BuildFn, class DistFn,
+         class PostBuildFn = void(*)(T*)>
 static void list_allpairs(const Args& a,
                           const std::vector<std::string>& files,
-                          BuildFn build, DistFn dist)
+                          BuildFn build, DistFn dist,
+                          PostBuildFn post_build = [](T*){})
 {
     const int N = static_cast<int>(files.size());
     std::vector<std::unique_ptr<T>> sks(N);
@@ -614,28 +626,55 @@ static void list_allpairs(const Args& a,
     for (int i = 0; i < N; ++i) sks[i].reset(build(files[i], a));
     std::cerr << "sketch time: " << get_sec() - t0 << " s\n";
 
+    // Post-build pass: free construction-only memory before the dist phase.
+    // Running sequentially is fine – these are just pointer resets (O(N) frees).
+    for (int i = 0; i < N; ++i) post_build(sks[i].get());
+
     double t1 = get_sec();
-    std::vector<std::string> bufs(a.threads);
 
-    #pragma omp parallel for num_threads(a.threads) schedule(dynamic, 1)
-    for (int i = 0; i < N; ++i) {
-        const int tid = omp_get_thread_num();
-        std::string& buf = bufs[tid];
-        for (int j = i + 1; j < N; ++j) {
-            const double d = dist(sks[i].get(), sks[j].get());
-            if (d < a.maxDist) {
-                char line[2048];
-                int len = std::snprintf(line, sizeof(line), "%s\t%s\t%.6f\n",
-                                        files[i].c_str(), files[j].c_str(), d);
-                buf.append(line, static_cast<size_t>(len));
-            }
-        }
-    }
-
+    // Output streamed directly to disk during the dist loop.  Per-thread
+    // 16 MiB buffer; flush via `#pragma omp critical` when full.  This mirrors
+    // the test_BinDash / test_Kssd / test_MinHash_OLD pairwise pattern:
+    // bounded per-thread RSS during dist, regardless of how many close pairs
+    // are found.
     FILE* fp = std::fopen(a.output.c_str(), "w");
     if (!fp) err(errno, "cannot open output: %s", a.output.c_str());
     std::setvbuf(fp, nullptr, _IOFBF, 1 << 22);
-    for (auto& b : bufs) std::fwrite(b.data(), 1, b.size(), fp);
+
+    // 16 MiB per-thread buffer + critical flush, matching test_Kssd.cpp.
+    // At T threads the dist-phase RSS cap is T × 16 MiB (e.g. 32T → 512 MiB).
+    // Larger than test_BinDash.cpp's 4 MiB; trades a bit more RSS for fewer
+    // fwrite syscalls and lower omp_critical contention.
+    static constexpr size_t FLUSH_BYTES = 1u << 24; // 16 MiB
+
+    #pragma omp parallel num_threads(a.threads)
+    {
+        std::string buf;
+        buf.reserve(FLUSH_BYTES);
+
+        #pragma omp for schedule(dynamic, 1)
+        for (int i = 0; i < N; ++i) {
+            for (int j = i + 1; j < N; ++j) {
+                const double d = dist(sks[i].get(), sks[j].get());
+                if (d < a.maxDist) {
+                    char line[2048];
+                    int len = std::snprintf(line, sizeof(line), "%s\t%s\t%.6f\n",
+                                            files[i].c_str(), files[j].c_str(), d);
+                    buf.append(line, static_cast<size_t>(len));
+                }
+            }
+            if (buf.size() >= FLUSH_BYTES) {
+                #pragma omp critical
+                { std::fwrite(buf.data(), 1, buf.size(), fp); }
+                buf.clear();
+            }
+        }
+        if (!buf.empty()) {
+            #pragma omp critical
+            { std::fwrite(buf.data(), 1, buf.size(), fp); }
+        }
+    }
+
     std::fclose(fp);
     std::cerr << "dist time:   " << get_sec() - t1 << " s\n";
     std::cerr << "output: " << a.output << "\n";
@@ -2447,7 +2486,10 @@ int run_cli(const Args& a) {
         list_allpairs<Sketch::ProbMinHash4>(a, files, build_probminhash,
             [kmer](Sketch::ProbMinHash4* x, Sketch::ProbMinHash4* y) {
                 return mash_distance(x->jaccard_weighted(*y), kmer);
-            });
+            },
+            // Post-build: free ted_params_ (~40 KB) + perm_ (~8 KB) per sketch.
+            // Runs after all sketches are built; no malloc-contention during build.
+            [](Sketch::ProbMinHash4* sk) { sk->finalize(); });
         break;
 
     case Algo::SETSKETCH:
