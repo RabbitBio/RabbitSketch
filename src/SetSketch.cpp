@@ -56,6 +56,49 @@ static int setsketch_count_equal_regs(const uint8_t* __restrict__ a,
   return count;
 }
 
+// Count registers where c1[i] > c2[i] and c1[i] < c2[i] in one pass.
+// Returns (n_greater, n_less). n_equal = m - n_greater - n_less.
+static inline void setsketch_count_greater_less(const uint8_t* __restrict__ a,
+                                                 const uint8_t* __restrict__ b,
+                                                 int n,
+                                                 int& n_greater,
+                                                 int& n_less) {
+  int g = 0, l = 0, i = 0;
+#if defined(__AVX512BW__)
+  for (; i + 64 <= n; i += 64) {
+    __m512i va = _mm512_loadu_si512((const void*)(a + i));
+    __m512i vb = _mm512_loadu_si512((const void*)(b + i));
+    // unsigned a > b  iff  max(a,b) == a  AND  a != b
+    uint64_t mask_eq = (uint64_t)_mm512_cmpeq_epi8_mask(va, vb);
+    __m512i vmax    = _mm512_max_epu8(va, vb);
+    uint64_t mask_amax = (uint64_t)_mm512_cmpeq_epi8_mask(va, vmax);
+    uint64_t mask_g = mask_amax & ~mask_eq;
+    uint64_t mask_l = (~mask_amax) & ~mask_eq;
+    g += __builtin_popcountll(mask_g);
+    l += __builtin_popcountll(mask_l);
+  }
+#endif
+#if defined(__AVX2__)
+  for (; i + 32 <= n; i += 32) {
+    __m256i va = _mm256_loadu_si256((const __m256i*)(a + i));
+    __m256i vb = _mm256_loadu_si256((const __m256i*)(b + i));
+    __m256i veq = _mm256_cmpeq_epi8(va, vb);
+    __m256i vmax = _mm256_max_epu8(va, vb);
+    __m256i va_is_max = _mm256_cmpeq_epi8(va, vmax);
+    __m256i vg = _mm256_andnot_si256(veq, va_is_max);
+    __m256i vl = _mm256_andnot_si256(veq, _mm256_andnot_si256(va_is_max, _mm256_set1_epi8(-1)));
+    g += __builtin_popcount((uint32_t)_mm256_movemask_epi8(vg));
+    l += __builtin_popcount((uint32_t)_mm256_movemask_epi8(vl));
+  }
+#endif
+  for (; i < n; i++) {
+    if (a[i] > b[i]) g++;
+    else if (a[i] < b[i]) l++;
+  }
+  n_greater = g;
+  n_less    = l;
+}
+
 static inline double setsketch_sum_max_registers(const uint8_t* __restrict__ c1,
                                                  const uint8_t* __restrict__ c2,
                                                  int m,
@@ -249,13 +292,234 @@ double SetSketch::union_size(const SetSketch& other) const {
   return (sum > 1e-300) ? factor_ / sum : 0.0;
 }
 
-double SetSketch::jaccard_index(const SetSketch& other) const {
+double SetSketch::jaccard_index_inclexcl(const SetSketch& other) const {
   double us = union_size(other);
   if (us <= 0.0) return 0.0;
   double c1 = cardinality();
   double c2 = other.cardinality();
   double inter = c1 + c2 - us;
   return (inter > 0.0) ? inter / us : 0.0;
+}
+
+// Default = joint-MLE estimator. Definition is below; we just forward to it.
+double SetSketch::jaccard_index(const SetSketch& other) const {
+  return jaccard_index_mle(other);
+}
+
+// ── Joint MLE Jaccard estimator (Ertl 2021, "estimateJointNew") ──────────────
+//
+// Given two SetSketch states with cardinality estimates c1, c2 and counts of
+// equal / A>B / A<B registers, the log-likelihood of true Jaccard J is:
+//
+//   logL(J) = N_eq * log1p( log_b(1+(c2*J-c1)*z) + log_b(1+(c1*J-c2)*z) )
+//           + N_gt * log( -log_b(1+(c2*J-c1)*z) )
+//           + N_lt * log( -log_b(1+(c1*J-c2)*z) )
+//   z = (1 - 1/b) / (c1 + c2)
+//
+// We maximize logL on J ∈ [0, min(c1/c2, c2/c1)] using Brent's algorithm.
+// If both cardinalities are 0 or any register-extreme corner case appears,
+// fall back to inclusion-exclusion (which is what the reference also does).
+//
+// References:
+//   Ertl O. (2021). SetSketch: Filling the Gap between MinHash and HLL.
+//   set-sketch-paper/c++/sketch.hpp :: estimateJointNew
+namespace {
+
+// Brent's 1-D minimizer (no-derivative, golden + parabolic interpolation).
+// Searches min of f on [ax, cx]. Returns x* with |x* - true min| < tol*(|x*|+ZEPS).
+template <typename F>
+static double brent_minimize(F f, double ax, double cx,
+                             double tol = 1e-10, int max_iter = 200) {
+  const double GOLD = 0.3819660112501051;  // (3 - sqrt(5)) / 2
+  const double ZEPS = 1e-12;
+
+  double bx = ax + GOLD * (cx - ax);
+  double a = ax, b = cx;
+  double x = bx, w = bx, v = bx;
+  double fx = f(x), fw = fx, fv = fx;
+  double d = 0.0, e = 0.0;
+
+  for (int iter = 0; iter < max_iter; ++iter) {
+    double xm = 0.5 * (a + b);
+    double tol1 = tol * std::fabs(x) + ZEPS;
+    double tol2 = 2.0 * tol1;
+    if (std::fabs(x - xm) <= tol2 - 0.5 * (b - a)) {
+      return x;
+    }
+
+    bool use_golden = true;
+    if (std::fabs(e) > tol1) {
+      double r = (x - w) * (fx - fv);
+      double q = (x - v) * (fx - fw);
+      double p = (x - v) * q - (x - w) * r;
+      q = 2.0 * (q - r);
+      if (q > 0.0) p = -p;
+      q = std::fabs(q);
+      double etemp = e;
+      e = d;
+      if (std::fabs(p) < std::fabs(0.5 * q * etemp) &&
+          p > q * (a - x) && p < q * (b - x)) {
+        d = p / q;
+        double u_test = x + d;
+        if (u_test - a < tol2 || b - u_test < tol2)
+          d = (xm - x >= 0.0 ? tol1 : -tol1);
+        use_golden = false;
+      }
+    }
+
+    if (use_golden) {
+      e = (x >= xm) ? (a - x) : (b - x);
+      d = GOLD * e;
+    }
+
+    double u = (std::fabs(d) >= tol1)
+                   ? (x + d)
+                   : (x + (d >= 0.0 ? tol1 : -tol1));
+    double fu = f(u);
+
+    if (fu <= fx) {
+      if (u >= x) a = x; else b = x;
+      v = w; fv = fw;
+      w = x; fw = fx;
+      x = u; fx = fu;
+    } else {
+      if (u < x) a = u; else b = u;
+      if (fu <= fw || w == x) {
+        v = w; fv = fw;
+        w = u; fw = fu;
+      } else if (fu <= fv || v == x || v == w) {
+        v = u; fv = fu;
+      }
+    }
+  }
+  return x;
+}
+
+} // namespace
+
+// ── Shared MLE kernel (used by both the OO and from-cores entry points) ─────
+//
+// Inputs:
+//   c1, c2       : two SetSketch register arrays of length m
+//   m            : # registers
+//   baseInvPow   : pre-computed table base^(-k), used by incl-excl fallback
+//   factor       : SetSketch's `numRegisters / (base * logBaseDivBaseMinus1 * a)`
+//   card1, card2 : SetSketch cardinality estimates of the two sketches
+//   base         : SetSketch base parameter
+//   q            : SetSketch q parameter (max non-saturated register value)
+//
+// Returns Ĵ in [0, 1]. When the joint MLE objective is degenerate (sketch
+// extremely under-filled), falls back to inclusion-exclusion via the static
+// `jaccardFromCores` helper to remain numerically safe.
+static double setsketch_mle_kernel(const uint8_t* __restrict__ c1,
+                                   const uint8_t* __restrict__ c2,
+                                   int m,
+                                   const double* __restrict__ baseInvPow,
+                                   double factor,
+                                   double card1, double card2,
+                                   double base, uint32_t q) {
+  if (m <= 0) return 0.0;
+  if (card1 <= 0.0 || card2 <= 0.0) return 0.0;
+
+  // 1) Joint register counts (SIMD).
+  int n_gt = 0, n_lt = 0;
+  setsketch_count_greater_less(c1, c2, m, n_gt, n_lt);
+  const int n_eq = m - n_gt - n_lt;
+
+  // 2) Boundary cases.
+  if (n_gt + n_lt == 0) return 1.0;  // all equal → J ≈ 1
+  if (n_eq == m) {
+    // unreachable here (handled above), but for completeness
+    return SetSketch::jaccardFromCores(c1, c2, m, baseInvPow, factor, card1, card2);
+  }
+
+  // 3) Range correction: fall back when too many registers carry no joint info
+  //    (both empty or both saturated). Threshold 30%.
+  const uint8_t Q = static_cast<uint8_t>(q + 1);
+  int n_both_zero = 0;
+  int n_both_max  = 0;
+  for (int i = 0; i < m; ++i) {
+    if (c1[i] == 0 && c2[i] == 0)       n_both_zero++;
+    else if (c1[i] == Q && c2[i] == Q)  n_both_max++;
+  }
+  if ((n_both_zero + n_both_max) * 10 > m * 3) {
+    return SetSketch::jaccardFromCores(c1, c2, m, baseInvPow, factor, card1, card2);
+  }
+
+  // 4) MLE objective: minimize −logL(J).
+  const double inv_log_base = 1.0 / std::log(base);
+  const double z = (1.0 - 1.0 / base) / (card1 + card2);
+  const double j_max = (card1 >= card2) ? (card2 / card1) : (card1 / card2);
+  if (j_max <= 1e-12) return 0.0;
+
+  auto neg_logL = [&](double j) -> double {
+    double log1px1 = 0.0, log1px2 = 0.0;
+    bool need1 = (n_eq > 0) || (n_gt > 0);
+    bool need2 = (n_eq > 0) || (n_lt > 0);
+    if (need1) {
+      double arg1 = (card2 * j - card1) * z;
+      if (arg1 <= -1.0) return std::numeric_limits<double>::infinity();
+      log1px1 = std::log1p(arg1) * inv_log_base;
+    }
+    if (need2) {
+      double arg2 = (card1 * j - card2) * z;
+      if (arg2 <= -1.0) return std::numeric_limits<double>::infinity();
+      log1px2 = std::log1p(arg2) * inv_log_base;
+    }
+
+    double ret = 0.0;
+    if (n_eq > 0) {
+      double inner = log1px1 + log1px2;
+      if (inner <= -1.0) return std::numeric_limits<double>::infinity();
+      ret += n_eq * std::log1p(inner);
+    }
+    if (n_gt > 0) {
+      if (log1px1 >= 0.0) return std::numeric_limits<double>::infinity();
+      ret += n_gt * std::log(-log1px1);
+    }
+    if (n_lt > 0) {
+      if (log1px2 >= 0.0) return std::numeric_limits<double>::infinity();
+      ret += n_lt * std::log(-log1px2);
+    }
+    if (std::isnan(ret)) return std::numeric_limits<double>::infinity();
+    return -ret;
+  };
+
+  const double EPS = 1e-9;
+  double lo = EPS;
+  double hi = std::max(EPS * 2.0, j_max - EPS);
+  if (hi <= lo) return 0.0;
+
+  double j_hat = brent_minimize(neg_logL, lo, hi, 1e-10, 200);
+  if (std::isnan(j_hat) || j_hat < 0.0) j_hat = 0.0;
+  if (j_hat > j_max)                    j_hat = j_max;
+  return j_hat;
+}
+
+double SetSketch::jaccard_index_mle(const SetSketch& other) const {
+  const int m = static_cast<int>(core_.size());
+  if (m <= 0 || (int)other.core_.size() != m) return 0.0;
+  if (np_ != other.np_ || base_ != other.base_ || a_ != other.a_) {
+    // Incompatible sketches → fall back to inclusion-exclusion.
+    return jaccard_index_inclexcl(other);
+  }
+
+  const double c1 = cardinality();
+  const double c2 = other.cardinality();
+  return setsketch_mle_kernel(core_.data(), other.core_.data(), m,
+                              base_inv_pow_, factor_,
+                              c1, c2, base_, q_);
+}
+
+// ── Static MLE entry point for flat-cores all-pairs hot paths ────────────────
+double SetSketch::jaccardFromCoresMLE(
+    const uint8_t* c1, const uint8_t* c2, int m,
+    const double* baseInvPow, double factor,
+    double card1, double card2,
+    double base, uint32_t q)
+{
+  return setsketch_mle_kernel(c1, c2, m, baseInvPow, factor,
+                              card1, card2, base, q);
 }
 
 SetSketch SetSketch::merge(const SetSketch& other) const {

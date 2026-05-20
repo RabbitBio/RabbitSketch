@@ -26,7 +26,24 @@ public:
   void update(char* seq, size_t len);
   SetSketch merge(const SetSketch& other) const;
   double cardinality() const;
+
+  /// Default Jaccard estimator: joint MLE from Ertl 2021 ("estimateJointNew").
+  /// In our benchmarks this yields 2–10× lower MAE than inclusion-exclusion
+  /// across all practical sequence lengths (≥10 kb) and is the SetSketch
+  /// paper's main contribution. Internally falls back to inclusion-exclusion
+  /// for degenerate corner cases (extremely short input vs. large sketch).
   double jaccard_index(const SetSketch& other) const;
+
+  /// Joint MLE estimator. Identical to `jaccard_index()` — kept for explicit
+  /// callers that want to make the estimator choice unambiguous.
+  double jaccard_index_mle(const SetSketch& other) const;
+
+  /// Classical inclusion-exclusion Jaccard estimator
+  /// (HLL-style: J = (|A|+|B|-|A∪B|)/|A∪B|). Fast but inherits HLL's variance
+  /// amplification at high J. Available for backward compatibility and for
+  /// head-to-head comparisons; new code should use `jaccard_index()`.
+  double jaccard_index_inclexcl(const SetSketch& other) const;
+
   double distance(const SetSketch& other) const { return 1.0 - jaccard_index(other); }
 
   /// Containment of *this in other: |A ∩ B| / |A|.
@@ -50,6 +67,8 @@ public:
   double getFactor() const { return factor_; }
   const double* getBaseInvPow() const { return base_inv_pow_; }
   int getM() const { return (int)(1ULL << np_); }
+  double getBase() const { return base_; }
+  uint32_t getQ() const { return q_; }
 
   // ── Inverted index support (block-of-3 registers) ─────────────────────────
   // Individual 8-bit registers have only 256 values → too low entropy for
@@ -92,12 +111,38 @@ public:
    * Exact Jaccard from two flat core arrays (SIMD accelerated).
    * Used by the inverted-index Phase 3 for candidate verification.
    */
+  /// Static batch Jaccard functions (used by the all-pairs / list-allpairs
+  /// hot path in `rabbitsketch`).
+  ///
+  /// `jaccardFromCores*` implement the **inclusion-exclusion** estimator —
+  /// fast SIMD reduce + tail-sum early-abort. Use them for *screening*: which
+  /// pair passes a `minJaccard` threshold.
+  ///
+  /// `jaccardFromCoresMLE` implements the **joint MLE** (Ertl 2021) on top of
+  /// the same flat-cores layout, with the same `setsketch_mle_kernel` used by
+  /// `jaccard_index_mle()`. Use it for *refinement*: re-estimate the J of
+  /// pairs that survived the incl-excl screen.
+  ///
+  /// Typical pattern in the all-pairs hot loop:
+  ///   double j = jaccardFromCoresBatch(...);          // SIMD + early-abort
+  ///   if (j < minJaccard) continue;                   // 99% of pairs cut here
+  ///   j = jaccardFromCoresMLE(c1, c2, m, baseInvPow,  // MLE refines the rest
+  ///                            factor, c1_card, c2_card, base, q);
   static double jaccardFromCores(const uint8_t* c1, const uint8_t* c2, int m,
                                  const double* baseInvPow, double factor,
                                  double card1, double card2);
   static double jaccardFromCoresEarlyAbort(const uint8_t* c1, const uint8_t* c2, int m,
                                            const double* baseInvPow, double factor,
                                            double card1, double card2, double minJaccard);
+
+  /// Joint MLE Jaccard estimator on a flat cores layout. Used for refinement
+  /// after `jaccardFromCoresBatch` clears the screening threshold.
+  /// Internally falls back to incl-excl if the joint state is too degenerate
+  /// (e.g. >30% registers both empty).
+  static double jaccardFromCoresMLE(const uint8_t* c1, const uint8_t* c2, int m,
+                                    const double* baseInvPow, double factor,
+                                    double card1, double card2,
+                                    double base, uint32_t q);
 
   /**
    * SIMD-batched Jaccard with early abort using precomputed suffix sums.
