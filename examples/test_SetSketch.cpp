@@ -92,7 +92,7 @@ int main(int argc, char* argv[])
     static const int KMER_SIZE = 32;
     static const int WITNESS_STRIDE = 4;
 
-    Sketch::SetSketch proto(BITS, 2.0, 20.0);
+    Sketch::SetSketch proto(BITS, 2.0, 5.0);
     const int    m      = proto.getM();
     const double factor = proto.getFactor();
     double bip_buf[64];
@@ -112,7 +112,7 @@ int main(int argc, char* argv[])
 
     #pragma omp parallel for num_threads(nThreads) schedule(dynamic)
     for (int t = 0; t < N; t++) {
-        Sketch::SetSketch sk(BITS, 2.0, 20.0);
+        Sketch::SetSketch sk(BITS, 2.0, 5.0);
         gzFile fp = gzopen(fileList[t].c_str(), "r");
         if (!fp) continue;
         kseq_t* ks = kseq_init(fp);

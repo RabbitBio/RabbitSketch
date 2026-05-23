@@ -56,7 +56,7 @@ struct Args {
     uint32_t    bdSketch64  = 16;   // matches test_BinDash.cpp (NBINS = 16 * 64 = 1024)
 
     int         ssBits      = 13;
-    double      ssA         = 20.0;
+    double      ssA         = 5.0;
     double      ssBase      = 2.0;
 
     uint32_t    fkmvK       = 1024;

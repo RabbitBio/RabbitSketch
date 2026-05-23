@@ -40,7 +40,7 @@
  *   --bindash       --bbits <int>  bits per bin                    (default 16)
  *                   --sketch64 <int> 64-bin groups                 (default 16; NBINS = sketch64 * 64)
  *   --setsketch     -b   <int>     log2(register count)            (default 13)
- *                   -a   <float>   parameter a                     (default 20.0)
+ *                   -a   <float>   parameter a                     (default 5.0)
  *                   -B   <float>   base                            (default 2.0)
  *   --fastkmv       -K   <int>     sketch size (k smallest)        (default 1024)
  *
@@ -84,7 +84,7 @@ static void print_usage(const char* prog) {
 "  --probminhash  -m <int> -L <int>   sketch size / max-L (1024, 0)\n"
 "                  freq-weighted PMH-norm (J_P estimator, coverage-robust)\n"
 "  --bindash      --bbits <int> --sketch64 <int>  (16, 16)\n"
-"  --setsketch    -b <int> -a <float> -B <float>  (13, 20.0, 2.0)\n"
+"  --setsketch    -b <int> -a <float> -B <float>  (13, 5.0, 2.0)\n"
 "  --fastkmv      -K <int>             sketch size      (1024)\n";
 }
 
