@@ -1,9 +1,10 @@
 /**
  * FastKMV – fast K Minimum Values sketch for genomic k-mers.
  *
- * ntHash rolling hash + murmur3 fmix; SIMD encoding and batched fmix where
- * available.  Compile with -DFASTKMV_NO_FMUX to use raw ntHash>>11 keys (ablation).
- * Not part of ProbMinHash; standalone KMV / bottom-k estimator.
+ * Canonical k-mer processing: 2-bit lex rolling hash (A→0, C→1, G→2, T→3),
+ * canonical = min(fwd_enc, rev_enc), then murmur3_fmix finaliser.
+ * SIMD batched fmix (AVX-512 / AVX2) where available.
+ * Compile with -DFASTKMV_NO_FMUX to use raw canonical>>11 keys (ablation).
  *
  * Jaccard: standard KMV two-pointer merge on sorted bottom-k keys.
  */
@@ -35,16 +36,9 @@ public:
     void update(const char* seq, uint64_t length);
 
     /**
-     * Release the SIMD encoding scratch buffer (enc_buf_) used inside
-     * update().  This buffer is grown to the length of the largest
-     * sequence ever passed in (typically MB-scale per bacterial contig);
-     * after the last update() it is no longer needed for jaccard() /
-     * distance() calls.  For 200k sketches × multi-MB max contigs this
-     * reclaims tens of GiB of RSS before the pairwise loop runs.
-     *
-     * One-way: calling update() after finalize() will re-allocate the
-     * buffer on demand, so finalize() is safe to call multiple times
-     * but is intended for the post-build compaction step.
+     * No-op kept for API compatibility.  Previously released a bulk
+     * encoding scratch buffer; the current lex-rolling path reads the
+     * input sequence directly and allocates no per-sequence buffer.
      */
     void finalize();
 
@@ -123,8 +117,6 @@ private:
     uint32_t buf_cap_;
 
     std::unique_ptr<uint64_t[]> vals_;
-    mutable std::unique_ptr<uint8_t[]> enc_buf_;
-    mutable uint64_t enc_cap_;
     mutable uint32_t size_;
     mutable uint64_t threshold_;
     mutable bool     sorted_;
