@@ -551,17 +551,15 @@ Result query(const FracMinHash& left,
     Result result;
     result.plan = planQuery(describe(left), describe(right), request);
     if (!result.plan.executable()) return result;
-    const FracMinHash projected_left = left.project(
-        result.plan.common_resolution);
-    const FracMinHash projected_right = right.project(
-        result.plan.common_resolution);
     populateCardinalityMetrics(
-        result, projected_left.jaccard(projected_right),
-        projected_left.cardinality(), projected_right.cardinality(),
+        result, left.jaccard(right),
+        left.cardinalityAt(result.plan.common_resolution),
+        right.cardinalityAt(result.plan.common_resolution),
         left.metadata().kmer_size);
     result.confidence_level = request.confidence_level;
     result.effective_samples = std::min(
-        projected_left.size(), projected_right.size());
+        left.retainedAt(result.plan.common_resolution),
+        right.retainedAt(result.plan.common_resolution));
     return result;
 }
 

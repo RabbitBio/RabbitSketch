@@ -20,6 +20,7 @@ def main() -> int:
     assert runtime.architecture
     assert runtime.portable_baseline
     assert runtime.selected_byte_path in {"scalar", "sse2", "avx2", "avx512bw"}
+    assert runtime.selected_rank_path in {"scalar", "avx2", "avx512dq"}
 
     with tempfile.TemporaryDirectory(prefix="rabbitsketch-fastx-python-") as tmp:
         path = pathlib.Path(tmp) / "reads.fa.gz"
@@ -54,6 +55,11 @@ def main() -> int:
         assert [item.record_name for item in built[1:]] == ["alpha", "beta"]
         comparison = built[0].sketch.query(built[0].sketch)
         assert comparison.jaccard == 1.0
+
+        native_frac = rs.FracMinHash(2, 5, 42)
+        native_frac.update("ACGTACGTACGT")
+        native_frac.finalize()
+        assert native_frac.cardinality_at(4) >= 0.0
 
         builder = rs.MultiSketchBuilder([fast])
         builder.update(records[0])

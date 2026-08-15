@@ -142,6 +142,9 @@ if (CXXAPI)
 		add_executable(unified_query_test tests/unified_query_test.cpp)
 		target_link_libraries(unified_query_test rabbitsketch_static)
 		add_test(NAME unified_query COMMAND unified_query_test)
+		add_executable(fracminhash_test tests/fracminhash_test.cpp)
+		target_link_libraries(fracminhash_test rabbitsketch_static)
+		add_test(NAME fracminhash COMMAND fracminhash_test)
 		add_executable(fastx_builder_test tests/fastx_builder_test.cpp)
 		target_link_libraries(fastx_builder_test
 			rabbitsketch_static ${ZLIB_LIBRARIES})
@@ -157,6 +160,12 @@ if (CXXAPI)
 		add_test(NAME runtime_dispatch_scalar COMMAND runtime_dispatch_test)
 		set_tests_properties(runtime_dispatch_scalar PROPERTIES
 			ENVIRONMENT "RABBITSKETCH_SIMD=scalar")
+		add_test(NAME runtime_dispatch_avx2 COMMAND runtime_dispatch_test)
+		set_tests_properties(runtime_dispatch_avx2 PROPERTIES
+			ENVIRONMENT "RABBITSKETCH_SIMD=avx2")
+		add_test(NAME runtime_dispatch_avx512 COMMAND runtime_dispatch_test)
+		set_tests_properties(runtime_dispatch_avx512 PROPERTIES
+			ENVIRONMENT "RABBITSKETCH_SIMD=avx512")
 		find_package(Python3 COMPONENTS Interpreter QUIET)
 		if(Python3_Interpreter_FOUND)
 			add_test(NAME rankstream_python_vectors

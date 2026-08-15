@@ -17,9 +17,11 @@ struct RuntimeInfo {
     bool cpu_sse41 = false;
     bool cpu_avx2 = false;
     bool cpu_avx512f = false;
+    bool cpu_avx512dq = false;
     bool cpu_avx512bw = false;
     std::string selected_byte_path = "scalar";
     std::string selected_u64_path = "scalar";
+    std::string selected_rank_path = "scalar";
     std::string environment_override;
     bool environment_override_honored = true;
 };
@@ -43,6 +45,23 @@ size_t countEqualBytes(const uint8_t* left,
 size_t countEqualNonZeroU64(const uint64_t* left,
                             const uint64_t* right,
                             size_t size) noexcept;
+
+/** Count matches between two sorted, duplicate-free uint64 arrays. */
+size_t countSortedIntersectionU64(const uint64_t* left,
+                                  size_t left_size,
+                                  const uint64_t* right,
+                                  size_t right_size) noexcept;
+
+/**
+ * Compute RankStream fmix64 for eight canonical values and return the lanes
+ * whose unsigned fingerprint is <= threshold. Only valid-mask lanes are
+ * considered; output values for invalid lanes are unspecified.
+ */
+uint8_t filterFmix64x8(const uint64_t* canonical_values,
+                       uint8_t valid_mask,
+                       uint64_t seed,
+                       uint64_t threshold,
+                       uint64_t* fingerprints) noexcept;
 
 } // namespace Runtime
 } // namespace Sketch

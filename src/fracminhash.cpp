@@ -1,5 +1,6 @@
 #include "fracminhash.h"
 
+#include "api/RuntimeInfo.h"
 #include "rank/CanonicalKmer.h"
 #include "rank/RankStream.h"
 
@@ -9,6 +10,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace Sketch {
 namespace {
@@ -16,6 +18,14 @@ namespace {
 uint64_t thresholdFor(uint32_t scaled) noexcept {
     return scaled == 1 ? UINT64_MAX : UINT64_MAX / scaled;
 }
+
+double samplingProbabilityFor(uint32_t scaled) noexcept {
+    if (scaled == 1) return 1.0;
+    return std::ldexp(static_cast<double>(thresholdFor(scaled)) + 1.0, -64);
+}
+
+constexpr uint32_t BUFFERED_BUILD_MAX_SCALED = 64;
+constexpr uint64_t MAX_SPECULATIVE_RESERVE = UINT64_C(8) * 1024 * 1024;
 
 struct IntersectionStats {
     uint64_t common = 0;
@@ -31,24 +41,17 @@ IntersectionStats compareAtThreshold(const std::vector<uint64_t>& left,
         std::upper_bound(left.begin(), left.end(), threshold) - left.begin());
     result.right = static_cast<uint64_t>(
         std::upper_bound(right.begin(), right.end(), threshold) - right.begin());
-    size_t left_index = 0;
-    size_t right_index = 0;
-    while (left_index < result.left && right_index < result.right) {
-        if (left[left_index] < right[right_index]) ++left_index;
-        else if (right[right_index] < left[left_index]) ++right_index;
-        else {
-            ++result.common;
-            ++left_index;
-            ++right_index;
-        }
-    }
+    result.common = Runtime::countSortedIntersectionU64(
+        left.data(), static_cast<size_t>(result.left),
+        right.data(), static_cast<size_t>(result.right));
     return result;
 }
 
 } // namespace
 
 FracMinHash::FracMinHash(uint32_t scaled, int kmer_size, uint64_t seed)
-    : scaled_(scaled), kmer_size_(kmer_size), seed_(seed) {
+    : scaled_(scaled), kmer_size_(kmer_size), seed_(seed),
+      buffered_build_(scaled <= BUFFERED_BUILD_MAX_SCALED) {
     if (scaled_ == 0)
         throw std::invalid_argument("FracMinHash scaled must be positive");
     if (kmer_size_ < 1 || kmer_size_ > 32)
@@ -58,7 +61,7 @@ FracMinHash::FracMinHash(uint32_t scaled, int kmer_size, uint64_t seed)
 
 FracMinHash FracMinHash::fromHashes(
     uint32_t scaled, int kmer_size, uint64_t seed,
-    const std::vector<uint64_t>& hashes) {
+    std::vector<uint64_t> hashes) {
     FracMinHash result(scaled, kmer_size, seed);
     if (!std::is_sorted(hashes.begin(), hashes.end()) ||
         std::adjacent_find(hashes.begin(), hashes.end()) != hashes.end())
@@ -67,7 +70,7 @@ FracMinHash FracMinHash::fromHashes(
     if (!hashes.empty() && hashes.back() > result.threshold())
         throw std::invalid_argument(
             "FracMinHash restored hash exceeds the scaled threshold");
-    result.hashes_ = hashes;
+    result.hashes_ = std::move(hashes);
     result.sealed_ = true;
     return result;
 }
@@ -83,27 +86,87 @@ void FracMinHash::update(const char* sequence, uint64_t length) {
     if (sequence == nullptr && length != 0)
         throw std::invalid_argument(
             "FracMinHash sequence is null with nonzero length");
+    if (length < static_cast<uint64_t>(kmer_size_)) return;
+    reserveForUpdate(length);
+
     Rank::CanonicalKmerIterator iterator(
         sequence, static_cast<size_t>(length),
         static_cast<uint8_t>(kmer_size_));
-    const Rank::RankStream ranks(seed_);
-    uint64_t canonical = 0;
-    while (iterator.next(canonical))
-        addHash(ranks.fingerprint(canonical));
+    const uint64_t admission_threshold = threshold();
+    uint64_t canonical[8] = {};
+    uint64_t fingerprints[8] = {};
+    bool have_last = false;
+    uint64_t last = 0;
+
+    for (;;) {
+        unsigned count = 0;
+        while (count < 8 && iterator.next(canonical[count])) ++count;
+        if (count == 0) break;
+        const uint8_t valid_mask = count == 8
+            ? UINT8_MAX
+            : static_cast<uint8_t>((UINT16_C(1) << count) - 1);
+        uint8_t accepted = Runtime::filterFmix64x8(
+            canonical, valid_mask, seed_, admission_threshold, fingerprints);
+        while (accepted != 0) {
+            unsigned lane = 0;
+            while ((accepted & static_cast<uint8_t>(UINT8_C(1) << lane)) == 0)
+                ++lane;
+            accepted &= static_cast<uint8_t>(accepted - 1);
+            const uint64_t fingerprint = fingerprints[lane];
+            if (!have_last || fingerprint != last)
+                retainFingerprint(fingerprint);
+            last = fingerprint;
+            have_last = true;
+        }
+        if (count != 8) break;
+    }
 }
 
 void FracMinHash::addHash(uint64_t coordinated_fingerprint) {
     requireMutable("FracMinHash::addHash");
     if (coordinated_fingerprint <= threshold())
-        build_hashes_.insert(coordinated_fingerprint);
+        retainFingerprint(coordinated_fingerprint);
+}
+
+void FracMinHash::reserveForUpdate(uint64_t length) {
+    const uint64_t windows = length - static_cast<uint64_t>(kmer_size_) + 1;
+    uint64_t expected = windows / scaled_ + (windows % scaled_ != 0);
+    const uint64_t headroom = expected / 16 + 64;
+    if (expected <= UINT64_MAX - headroom) expected += headroom;
+    expected = std::min(expected, MAX_SPECULATIVE_RESERVE);
+
+    const size_t current = buffered_build_
+        ? build_buffer_.size() : build_hashes_.size();
+    const size_t increment = static_cast<size_t>(std::min<uint64_t>(
+        expected, static_cast<uint64_t>(
+            std::numeric_limits<size_t>::max() - current)));
+    const size_t target = current + increment;
+    if (buffered_build_) {
+        if (build_buffer_.capacity() < target) build_buffer_.reserve(target);
+    } else if (build_hashes_.capacity() < target) {
+        build_hashes_.reserve(target);
+    }
+}
+
+void FracMinHash::retainFingerprint(uint64_t fingerprint) {
+    if (buffered_build_) build_buffer_.push_back(fingerprint);
+    else build_hashes_.insert(fingerprint);
 }
 
 void FracMinHash::finalize() {
     if (sealed_) return;
-    hashes_.assign(build_hashes_.begin(), build_hashes_.end());
-    std::sort(hashes_.begin(), hashes_.end());
+    if (buffered_build_) {
+        std::sort(build_buffer_.begin(), build_buffer_.end());
+        build_buffer_.erase(
+            std::unique(build_buffer_.begin(), build_buffer_.end()),
+            build_buffer_.end());
+        hashes_ = std::move(build_buffer_);
+    } else {
+        hashes_.assign(build_hashes_.begin(), build_hashes_.end());
+        std::sort(hashes_.begin(), hashes_.end());
+    }
     phmap::flat_hash_set<uint64_t>().swap(build_hashes_);
-    hashes_.shrink_to_fit();
+    std::vector<uint64_t>().swap(build_buffer_);
     sealed_ = true;
 }
 
@@ -121,8 +184,7 @@ uint64_t FracMinHash::threshold() const noexcept {
 }
 
 double FracMinHash::samplingProbability() const noexcept {
-    if (scaled_ == 1) return 1.0;
-    return std::ldexp(static_cast<double>(threshold()) + 1.0, -64);
+    return samplingProbabilityFor(scaled_);
 }
 
 const std::vector<uint64_t>& FracMinHash::hashes() const {
@@ -158,14 +220,19 @@ FracMinHash FracMinHash::project(uint32_t target_scaled) const {
 FracMinHash FracMinHash::merge(const FracMinHash& other) const {
     requireCompatible(other, "FracMinHash::merge");
     const uint32_t common_scaled = std::max(scaled_, other.scaled_);
-    const FracMinHash left = project(common_scaled);
-    const FracMinHash right = other.project(common_scaled);
+    const std::vector<uint64_t>& left = hashes();
+    const std::vector<uint64_t>& right = other.hashes();
+    const uint64_t common_threshold = thresholdFor(common_scaled);
+    const auto left_end = std::upper_bound(
+        left.begin(), left.end(), common_threshold);
+    const auto right_end = std::upper_bound(
+        right.begin(), right.end(), common_threshold);
     std::vector<uint64_t> merged;
-    merged.reserve(left.hashes_.size() + right.hashes_.size());
-    std::set_union(left.hashes_.begin(), left.hashes_.end(),
-                   right.hashes_.begin(), right.hashes_.end(),
+    merged.reserve(static_cast<size_t>(left_end - left.begin()) +
+                   static_cast<size_t>(right_end - right.begin()));
+    std::set_union(left.begin(), left_end, right.begin(), right_end,
                    std::back_inserter(merged));
-    return fromHashes(common_scaled, kmer_size_, seed_, merged);
+    return fromHashes(common_scaled, kmer_size_, seed_, std::move(merged));
 }
 
 double FracMinHash::jaccard(const FracMinHash& other) const {
@@ -190,7 +257,14 @@ double FracMinHash::containment(const FracMinHash& other) const {
 }
 
 double FracMinHash::cardinality() const {
-    return static_cast<double>(size()) / samplingProbability();
+    return cardinalityAt(scaled_);
+}
+
+double FracMinHash::cardinalityAt(uint32_t target_scaled) const {
+    const size_t retained = target_scaled == scaled_
+        ? size() : retainedAt(target_scaled);
+    return static_cast<double>(retained) /
+        samplingProbabilityFor(target_scaled);
 }
 
 double FracMinHash::distance(const FracMinHash& other) const {

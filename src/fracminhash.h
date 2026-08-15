@@ -26,7 +26,7 @@ public:
     static FracMinHash fromHashes(uint32_t scaled,
                                   int kmer_size,
                                   uint64_t seed,
-                                  const std::vector<uint64_t>& hashes);
+                                  std::vector<uint64_t> hashes);
 
     void update(const char* sequence, uint64_t length);
     void addHash(uint64_t coordinated_fingerprint);
@@ -39,6 +39,7 @@ public:
     double jaccard(const FracMinHash& other) const;
     double containment(const FracMinHash& other) const;
     double cardinality() const;
+    double cardinalityAt(uint32_t target_scaled) const;
     double distance(const FracMinHash& other) const;
     double ani(const FracMinHash& other) const;
 
@@ -57,11 +58,15 @@ private:
     uint32_t scaled_;
     int kmer_size_;
     uint64_t seed_;
+    bool buffered_build_;
     mutable phmap::flat_hash_set<uint64_t> build_hashes_;
+    mutable std::vector<uint64_t> build_buffer_;
     mutable std::vector<uint64_t> hashes_;
     mutable bool sealed_ = false;
 
     void requireMutable(const char* operation) const;
+    void reserveForUpdate(uint64_t length);
+    void retainFingerprint(uint64_t fingerprint);
     void ensureFinalized() const;
     void requireCompatible(const FracMinHash& other,
                            const char* operation) const;

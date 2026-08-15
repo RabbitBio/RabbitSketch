@@ -189,12 +189,16 @@ PYBIND11_MODULE(rabbitsketch, m) {
     .def_readonly("cpu_avx2", &Sketch::Runtime::RuntimeInfo::cpu_avx2)
     .def_readonly("cpu_avx512f",
                   &Sketch::Runtime::RuntimeInfo::cpu_avx512f)
+    .def_readonly("cpu_avx512dq",
+                  &Sketch::Runtime::RuntimeInfo::cpu_avx512dq)
     .def_readonly("cpu_avx512bw",
                   &Sketch::Runtime::RuntimeInfo::cpu_avx512bw)
     .def_readonly("selected_byte_path",
                   &Sketch::Runtime::RuntimeInfo::selected_byte_path)
     .def_readonly("selected_u64_path",
                   &Sketch::Runtime::RuntimeInfo::selected_u64_path)
+    .def_readonly("selected_rank_path",
+                  &Sketch::Runtime::RuntimeInfo::selected_rank_path)
     .def_readonly("environment_override",
                   &Sketch::Runtime::RuntimeInfo::environment_override)
     .def_readonly("environment_override_honored",
@@ -541,6 +545,8 @@ PYBIND11_MODULE(rabbitsketch, m) {
          py::call_guard<py::gil_scoped_release>())
     .def("distance", &Sketch::FracMinHash::distance)
     .def("cardinality", &Sketch::FracMinHash::cardinality)
+    .def("cardinality_at", &Sketch::FracMinHash::cardinalityAt,
+         py::arg("target_scaled"))
     .def("containment", &Sketch::FracMinHash::containment)
     .def("ani", &Sketch::FracMinHash::ani)
     .def("metadata", &Sketch::FracMinHash::metadata)
