@@ -5,7 +5,7 @@
 #include "hash.h"
 #include <algorithm>
 #include <iostream>
-#include <omp.h>
+#include "api/OpenMPCompat.h"
 #include <immintrin.h>
 #include <string.h>
 #include <list>
@@ -912,8 +912,62 @@ namespace Sketch
 
 
 
+	std::unique_ptr<MinHash> MinHash::fromHashes(
+		int kmer_size, uint32_t maximum_sketch_size, uint32_t seed_value,
+		bool reverse_complement, const std::vector<uint64_t>& hashes,
+		double estimated_cardinality, uint64_t total_length)
+	{
+		if (hashes.size() > maximum_sketch_size)
+			throw std::invalid_argument(
+				"MinHash restored hash count exceeds maximum sketch size");
+		if (!std::is_sorted(hashes.begin(), hashes.end()) ||
+			std::adjacent_find(hashes.begin(), hashes.end()) != hashes.end())
+			throw std::invalid_argument(
+				"MinHash restored hashes must be sorted and distinct");
+		if (!(estimated_cardinality >= 0.0) ||
+			!std::isfinite(estimated_cardinality))
+			throw std::invalid_argument(
+				"MinHash restored cardinality must be finite and nonnegative");
+		std::unique_ptr<MinHash> result(new MinHash(
+			kmer_size, maximum_sketch_size, seed_value, reverse_complement));
+		result->reference.hashesSorted.setUse64(true);
+		result->reference.hashesSorted.hashes64 = hashes;
+		result->needToList = false;
+		result->estimatedCardinality_ = estimated_cardinality;
+		result->totalLength = total_length;
+		delete result->minHashHeap;
+		result->minHashHeap = nullptr;
+		result->sealed_ = true;
+		return result;
+	}
+
+	Rank::RankMetadata MinHash::metadata() const
+	{
+		Rank::RankMetadata meta;
+		meta.canonicalization = noncanonical
+			? Rank::Canonicalization::ForwardOnlyV1
+			: Rank::Canonicalization::Lexicographic2BitReverseComplementV1;
+		meta.hash_profile = Rank::HashProfile::LegacyMurmur3X64V1;
+		meta.backend = Rank::Backend::LegacyMinHash;
+		meta.weight_semantics = Rank::WeightSemantics::UnweightedSet;
+		meta.resolution_kind = Rank::ResolutionKind::BottomK;
+		meta.fingerprint_bits = 64;
+		meta.kmer_size = static_cast<uint16_t>(kmerSize);
+		meta.resolution = static_cast<uint32_t>(sketchSize);
+		meta.seed = seed;
+		const uint64_t flags = static_cast<uint64_t>(use64) |
+			(static_cast<uint64_t>(preserveCase) << 1);
+		meta.parameter_fingerprint = Rank::RankStream::fmix64(
+			flags, UINT64_C(0x6c65676163792d6d));
+		return meta;
+	}
+
 	void MinHash::update(char * seq)
 	{
+		if (sealed_)
+			throw std::logic_error("MinHash::update called after finalize");
+		if (seq == nullptr)
+			throw std::invalid_argument("MinHash::update sequence must not be null");
 		const uint64_t length = strlen(seq);
 		totalLength += length;
 
@@ -1203,6 +1257,9 @@ namespace Sketch
 	 */
 	void MinHash::heapToList()
 	{
+		if (minHashHeap == nullptr)
+			throw std::logic_error("MinHash build state is unavailable");
+		estimatedCardinality_ = minHashHeap->estimateSetSize();
 		HashList & hashlist = reference.hashesSorted;
 		hashlist.setUse64(use64);
 		HashList tmpHashlist;
@@ -1270,6 +1327,8 @@ namespace Sketch
 
 	void MinHash::loadMinHashes(vector<uint64_t> hashArr)
 	{
+		if (sealed_)
+			throw std::logic_error("MinHash::loadMinHashes called after finalize");
 		for(int i = 0; i < hashArr.size(); i++){
 			if(use64)
 				reference.hashesSorted.hashes64.push_back(hashArr[i]);
@@ -1288,8 +1347,16 @@ namespace Sketch
 	 */
 	void MinHash::merge(MinHash& msh)
 	{
+		if (sealed_)
+			throw std::logic_error("MinHash::merge called after finalize");
+		metadata().requireSameFamily(
+			msh.metadata(), "MinHash::merge", true);
 		ensureHeapToListed();
 		msh.ensureHeapToListed();
+		const double left_cardinality = estimatedCardinality_;
+		const double right_cardinality = msh.estimatedCardinality_;
+		const double similarity = jaccard(&msh);
+		sketchSize = std::min(sketchSize, msh.sketchSize);
 		if(use64)
 			reference.hashesSorted.hashes64.insert(reference.hashesSorted.hashes64.end(), msh.reference.hashesSorted.hashes64.begin(), msh.reference.hashesSorted.hashes64.end());
 		else
@@ -1311,12 +1378,20 @@ namespace Sketch
 				if(i == 0 || reference.hashesSorted.hashes32[i] != reference.hashesSorted.hashes32[i-1])
 					out.push_back(reference.hashesSorted.hashes32[i]);
 			}
-			reference.hashesSorted.hashes32 = std::move(out);
+			 reference.hashesSorted.hashes32 = std::move(out);
 		}
+		estimatedCardinality_ = similarity >= 0.0
+			? (left_cardinality + right_cardinality) / (1.0 + similarity)
+			: 0.0;
+		totalLength += msh.totalLength;
 	}
 
 	double MinHash::containJaccard(MinHash * msh)
 	{
+		if (msh == nullptr)
+			throw std::invalid_argument("MinHash::containJaccard received null");
+		metadata().requireSameFamily(
+			msh->metadata(), "MinHash::containJaccard", true);
 		ensureHeapToListed();
 		msh->ensureHeapToListed();
 		//cerr << "use the containJaccard in minHash.cpp " << endl;
@@ -1326,7 +1401,7 @@ namespace Sketch
 		//uint64_t denom = 0;
 		const HashList & hashesSortedRef = this->reference.hashesSorted;
 		const HashList & hashesSortedQry = msh->reference.hashesSorted;
-		uint64_t denom = std::min(hashesSortedRef.size(), hashesSortedQry.size());
+		uint64_t denom = hashesSortedRef.size();
 		uint64_t sumSketchSize = hashesSortedRef.size() + hashesSortedQry.size();
 #if defined __AVX512F__ && defined __AVX512CD__
 		//	cerr << "the avx512 ===========================================" << endl;
@@ -1384,13 +1459,17 @@ namespace Sketch
 #endif
 #endif
 
-		double jaccard = double(common) / denom;
+		double jaccard = denom == 0 ? 1.0 : double(common) / denom;
 		return jaccard;
 	}
 
 
 	double MinHash::jaccard(MinHash * msh)
 	{
+		if (msh == nullptr)
+			throw std::invalid_argument("MinHash::jaccard received null");
+		metadata().requireSameFamily(
+			msh->metadata(), "MinHash::jaccard", true);
 		ensureHeapToListed();
 		msh->ensureHeapToListed();
 		uint64_t i = 0;
@@ -1506,7 +1585,7 @@ namespace Sketch
 			}
 		}
 
-		double jaccard = double(common) / denom;
+		double jaccard = denom == 0 ? 1.0 : double(common) / denom;
 		return jaccard;
 	}
 	double MinHash::containDistance(MinHash * msh)

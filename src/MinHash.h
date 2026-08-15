@@ -8,6 +8,7 @@
 
 #include <vector>
 #include <queue>
+#include <algorithm>
 
 #include "hash.h"
 #include <cmath>
@@ -120,7 +121,20 @@ private:
 };
 
 inline double MinHashHeap::estimateMultiplicity() const {return hashes.size() ? (double)multiplicitySum / hashes.size() : 0;}
-inline double MinHashHeap::estimateSetSize() const {return hashes.size() ? pow(2.0, use64 ? 64.0 : 32.0) * (double)hashes.size() / (use64 ? (double)hashesQueue.top().hash64 : (double)hashesQueue.top().hash32) : 0;}
+inline double MinHashHeap::estimateSetSize() const {
+    const uint64_t retained = static_cast<uint64_t>(hashes.size());
+    if (retained == 0) return 0.0;
+    if (retained < cardinalityMaximum)
+        return static_cast<double>(retained);
+    const double threshold = use64
+        ? static_cast<double>(hashesQueue.top().hash64)
+        : static_cast<double>(hashesQueue.top().hash32);
+    if (!(threshold > 0.0))
+        return static_cast<double>(retained);
+    const double estimate = std::ldexp(1.0, use64 ? 64 : 32) *
+        static_cast<double>(retained - 1) / threshold;
+    return std::max(static_cast<double>(retained), estimate);
+}
 inline void MinHashHeap::toHashList(HashList & hashList) const {hashes.toHashList(hashList);}
 inline void MinHashHeap::toCounts(std::vector<uint32_t> & counts) const {hashes.toCounts(counts);}
 

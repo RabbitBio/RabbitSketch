@@ -13,17 +13,38 @@
 #include <cmath>
 #include <cassert>
 #include <algorithm>
+#include "rank/RankMetadata.h"
 
 namespace Sketch {
 
 class SetSketch {
 public:
   SetSketch(int np = 14, double base = 2.0, double a = 5.0, int kmerlen = 32,
-            bool track_witnesses = false);
+            bool track_witnesses = false, uint64_t seed = 42);
+  /** Restore a validated native register state without original sequence. */
+  static SetSketch fromRegisters(uint32_t precision,
+                                 double base,
+                                 double a,
+                                 int kmer_size,
+                                 uint64_t seed,
+                                 const std::vector<uint8_t>& registers);
   ~SetSketch() = default;
 
   void update(char* seq);
   void update(char* seq, size_t len);
+  /**
+   * Add an already coordinated 64-bit RankStream fingerprint.
+   * This bypasses sequence canonicalization and hashing; callers are
+   * responsible for following the contract reported by metadata().
+   */
+  void addFingerprint(uint64_t fingerprint) { add_slow(fingerprint); }
+  /**
+   * Native SetSketch folding is intentionally not claimed yet: the current
+   * partitioned and quantized state does not retain enough information for a
+   * proven lower-precision projection. Same-precision projection is a copy;
+   * lower precision raises logic_error until a refinement-layer design lands.
+   */
+  SetSketch project(uint32_t target_precision) const;
   SetSketch merge(const SetSketch& other) const;
   double cardinality() const;
 
@@ -57,6 +78,10 @@ public:
   const std::vector<uint8_t>& getCore() const { return core_; }
   const std::vector<uint64_t>& getWitnesses() const { return witnesses_; }
   bool tracksWitnesses() const { return track_witnesses_; }
+  void clearWitnesses() {
+    std::vector<uint64_t>().swap(witnesses_);
+    track_witnesses_ = false;
+  }
   double equalRegisterFraction(const SetSketch& other) const;
   double distanceFiltered(const SetSketch& other,
                           double min_jaccard,
@@ -68,7 +93,12 @@ public:
   const double* getBaseInvPow() const { return base_inv_pow_; }
   int getM() const { return (int)(1ULL << np_); }
   double getBase() const { return base_; }
+  double getA() const { return a_; }
   uint32_t getQ() const { return q_; }
+  uint32_t getPrecision() const { return np_; }
+  int getKmerSize() const { return kmerLen_; }
+  uint64_t getSeed() const { return seed_; }
+  Rank::RankMetadata metadata() const;
 
   // ── Inverted index support (block-of-3 registers) ─────────────────────────
   // Individual 8-bit registers have only 256 values → too low entropy for
@@ -172,7 +202,7 @@ private:
   std::vector<uint64_t> witnesses_;  // hash that "won" each register
   bool track_witnesses_;
   uint32_t np_;
-  uint32_t q_;
+  uint32_t q_;                         // last finite threshold; q+1 is saturation
   double base_;
   double a_;
   double factor_;
@@ -191,6 +221,7 @@ private:
   mutable double value_;
   mutable uint8_t is_calculated_;
   int      kmerLen_;    // k-mer length used in update() (default 32)
+  uint64_t seed_;       // coordinated RankStream seed
 };
 
 } // namespace Sketch

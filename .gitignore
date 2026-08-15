@@ -41,3 +41,11 @@ examples/test_TMH.cpp
 examples/result.*
 res.*
 *.log
+benchmarks/
+scripts/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Locally generated manuscript and paper artifacts
+paper/

@@ -16,6 +16,8 @@
 #include <limits>
 #include <memory>
 #include <cassert>
+#include <vector>
+#include "rank/RankMetadata.h"
 
 namespace Sketch {
 
@@ -27,6 +29,15 @@ public:
                      int      kmer_size = 21,
                      uint64_t seed = 42);
 
+    /** Construct from a validated, sorted bottom-K register state. */
+    static FastKMV fromRegisters(uint32_t k,
+                                 int kmer_size,
+                                 uint64_t seed,
+                                 const std::vector<uint64_t>& registers);
+
+    /** Hash pipeline compiled into fastkmv.cpp (including ablation builds). */
+    static Rank::HashProfile runtimeHashProfile() noexcept;
+
     ~FastKMV() = default;
     FastKMV(const FastKMV&);
     FastKMV& operator=(FastKMV other);
@@ -35,18 +46,19 @@ public:
 
     void update(const char* seq, uint64_t length);
 
-    /**
-     * No-op kept for API compatibility.  Previously released a bulk
-     * encoding scratch buffer; the current lex-rolling path reads the
-     * input sequence directly and allocates no per-sequence buffer.
-     */
+    /** Seal the sketch.  Query operations remain valid; later updates fail. */
     void finalize();
+    bool isSealed() const noexcept { return sealed_; }
 
     /**
      * KMV Jaccard on two sorted bottom-k lists: count the overlap in the
      * k smallest distinct values of the union.
      *
-     * @param other        the other sketch (must share k and kmer_size).
+     * Sketches may have different K values; both are compared at min(K1,K2),
+     * which is the exact bottom-k projection to their common resolution.
+     * Seed, k-mer semantics, and hash profile must match.
+     *
+     * @param other        the other coordinated FastKMV sketch.
      * @param min_jaccard  target Jaccard threshold for early-abort. If
      *                     > 0, the intersection loop is aborted as soon
      *                     as the achievable match count is guaranteed to
@@ -95,13 +107,19 @@ public:
      */
     double ani(const FastKMV& other) const;
 
+    /** Return an exact bottom-k prefix projection without original sequence. */
+    FastKMV project(uint32_t target_k) const;
+
+    /** Merge at min(K1,K2); incompatible rank spaces raise invalid_argument. */
     FastKMV merge(const FastKMV& other) const;
 
     const uint64_t* getRegisters() const { ensureSorted(); return vals_.get(); }
     uint32_t getK()        const { return k_; }
     uint32_t getM()        const { return k_; }
     int      getKmerSize() const { return kmer_size_; }
+    uint64_t getSeed()     const { return seed_; }
     uint32_t size()        const { ensureSorted(); return size_; }
+    Rank::RankMetadata metadata() const;
 
     void printSketch() const;
 
@@ -120,6 +138,7 @@ private:
     mutable uint32_t size_;
     mutable uint64_t threshold_;
     mutable bool     sorted_;
+    bool             sealed_;
 };
 
 } // namespace Sketch

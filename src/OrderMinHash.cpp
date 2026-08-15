@@ -5,6 +5,9 @@
 #include "hash_int.h"
 
 #include <algorithm>
+#include <cctype>
+#include <cstring>
+#include <limits>
 #include <queue>
 
 #include "robin_hood.h"
@@ -64,84 +67,131 @@ inline void inspect_avx2(__m256i va)
 namespace Sketch
 {
 
-OrderMinHash::OrderMinHash(char * seqNew):
-	seq(seqNew)
-{
+namespace {
 
-	if(rc){
-		//TODO:get reverse complement to rcseq
-		int rc_len = strlen(seq);
-		rcseq = new char[rc_len];
-		char table[4] = {'T','G','A','C'};
-		for ( uint64_t i = 0; i < rc_len; i++ )
-		{
-			char base = seq[i];
-
-			base >>= 1;
-			base &= 0x03;
-			rcseq[rc_len - i - 1] = table[base];
-
-		}
-	
+std::string normalizeOrderSequence(const std::string& input) {
+	std::string result;
+	result.reserve(input.size());
+	for (const unsigned char raw : input) {
+		char base = static_cast<char>(std::toupper(raw));
+		if (base == 'U') base = 'T';
+		if (base != 'A' && base != 'C' && base != 'G' && base != 'T')
+			throw std::invalid_argument(
+				"OrderMinHash sequence contains a non-ACGT base");
+		result.push_back(base);
 	}
+	return result;
+}
+
+std::string reverseComplementOrder(const std::string& sequence) {
+	std::string result(sequence.size(), 'N');
+	for (size_t index = 0; index < sequence.size(); ++index) {
+		char complement = 'N';
+		switch (sequence[index]) {
+			case 'A': complement = 'T'; break;
+			case 'C': complement = 'G'; break;
+			case 'G': complement = 'C'; break;
+			case 'T': complement = 'A'; break;
+			default: throw std::logic_error(
+				"OrderMinHash normalized sequence is invalid");
+		}
+		result[sequence.size() - index - 1] = complement;
+	}
+	return result;
+}
+
+uint64_t orderParameterFingerprint(int l, bool reverse_complement) {
+	const uint64_t shape = static_cast<uint32_t>(l) |
+		(static_cast<uint64_t>(reverse_complement) << 32);
+	return Rank::RankStream::fmix64(shape, UINT64_C(0x6f726465726d6831));
+}
+
+size_t checkedOrderBytes(int k, int l, int m) {
+	if (k <= 0 || k > 32 || l < 0 || l > 5 || m <= 0)
+		throw std::invalid_argument(
+			"OrderMinHash requires k in [1,32], l in [0,5], and m > 0");
+	const size_t block = static_cast<size_t>(std::max(l, 1)) *
+		static_cast<size_t>(k);
+	if (static_cast<size_t>(m) >
+		std::numeric_limits<size_t>::max() / block)
+		throw std::overflow_error("OrderMinHash sketch size overflow");
+	return block * static_cast<size_t>(m);
+}
+
+} // namespace
+
+OrderMinHash::OrderMinHash(char * seqNew) {
+	if (seqNew == nullptr)
+		throw std::invalid_argument("OrderMinHash sequence must not be null");
+	buildSketch(std::string(seqNew));
+}
+
+OrderMinHash::OrderMinHash(const std::string& sequence) {
+	buildSketch(sequence);
+}
+
+void OrderMinHash::buildSketch(char * seqNew) {
+	if (seqNew != nullptr) sequence_ = normalizeOrderSequence(seqNew);
+	else if (sequence_.empty())
+		throw std::logic_error("OrderMinHash has no sequence to rebuild");
 	sketch();
 }
 
-void OrderMinHash::buildSketch(char * seqNew = NULL)
-{
-	// rebuild sketch using old data
-	if(seqNew == NULL)
-	{
-		if(seq == NULL)
-		{
-			cerr << "WARNING: no data found" << endl;
-			return;
-		}
-
-		if(rc){
-			int rc_len = strlen(seq);
-
-			if(rcseq != NULL){
-				delete [] rcseq;
-				rcseq = NULL;
-			}
-
-			rcseq = new char[rc_len];
-			reverseComplement(seq, rcseq, rc_len);
-		}
-		sketch();
-	} else {
-		seq = seqNew;
-
-		if(rc){
-			int rc_len = strlen(seq);
-
-			if(rcseq != NULL){
-				delete [] rcseq;
-				rcseq = NULL;
-			}
-
-			rcseq = new char[rc_len];
-			reverseComplement(seq, rcseq, rc_len);
-		
-		}
-		sketch();
-
-	}
+void OrderMinHash::buildSketch(const std::string& sequence) {
+	sequence_ = normalizeOrderSequence(sequence);
+	sketch();
 }
+
+OrderMinHash OrderMinHash::fromSketch(const OSketch& restored,
+		uint64_t seed, bool reverse_complement) {
+	const size_t expected = checkedOrderBytes(
+		restored.k, restored.l, restored.m);
+	if (restored.data.size() != expected ||
+		(reverse_complement
+			? restored.rcdata.size() != expected
+			: !restored.rcdata.empty()))
+		throw std::invalid_argument(
+			"OrderMinHash restored payload has inconsistent dimensions");
+	const auto valid_base = [](char base) {
+		return base == 'A' || base == 'C' || base == 'G' || base == 'T';
+	};
+	if (!std::all_of(restored.data.begin(), restored.data.end(), valid_base) ||
+		!std::all_of(restored.rcdata.begin(), restored.rcdata.end(), valid_base))
+		throw std::invalid_argument(
+			"OrderMinHash restored payload contains invalid bases");
+	OrderMinHash result;
+	result.m_k = restored.k;
+	result.m_l = restored.l;
+	result.m_m = restored.m;
+	result.rc = reverse_complement;
+	result.mtSeed = seed;
+	result.sk = restored;
+	result.sealed_ = true;
+	return result;
+}
+
 void OrderMinHash::sketch()
 {
+	const size_t sketch_bytes = checkedOrderBytes(m_k, m_l, m_m);
+	if (sequence_.size() < static_cast<size_t>(m_k))
+		throw std::invalid_argument(
+			"OrderMinHash sequence is shorter than its k-mer size");
 	sk.k = m_k;		
 	sk.l = m_l;		
 	sk.m = m_m;		
 
-	sk.data.resize(std::max(sk.l, 1) * sk.m * sk.k);
-	compute_sketch(sk.data.data(), this->seq);
+	sk.data.assign(sketch_bytes, 0);
+	compute_sketch(sk.data.data(), sequence_.c_str());
 
 	if(rc){
-		sk.rcdata.resize(std::max(sk.l, 1) * sk.m * sk.k);
-		compute_sketch(sk.rcdata.data(), this->rcseq);
+		rc_sequence_ = reverseComplementOrder(sequence_);
+		sk.rcdata.assign(sketch_bytes, 0);
+		compute_sketch(sk.rcdata.data(), rc_sequence_.c_str());
+	} else {
+		rc_sequence_.clear();
+		sk.rcdata.clear();
 	}
+	sealed_ = true;
 }
 
 inline void OrderMinHash::compute_sketch(char * ptr, const char * seq){
@@ -419,7 +469,8 @@ static void omh_pos(const std::string& seq, unsigned k, unsigned l, unsigned m, 
 	return;
 }
 
-double OrderMinHash::compare_sketches(const OSketch& sk1, const OSketch& sk2, ssize_t m, bool circular) {
+double OrderMinHash::compare_sketches(const OSketch& sk1, const OSketch& sk2,
+		ssize_t m, bool circular) const {
 	if(sk1.k != sk2.k || sk1.l != sk2.l) return -1; // Different k or l
 	if(m < 0) m = std::min(sk1.m, sk2.m);
 	if(m > sk1.m || m > sk2.m) return -1;  // Too short
@@ -438,7 +489,8 @@ double OrderMinHash::compare_sketches(const OSketch& sk1, const OSketch& sk2, ss
 	return std::max(fwd_score, bwd_score);
 }
 
-double OrderMinHash::compare_sketch_pair(const char* p1, const char* p2, unsigned m, unsigned k, unsigned l, bool circular) {
+double OrderMinHash::compare_sketch_pair(const char* p1, const char* p2,
+		unsigned m, unsigned k, unsigned l, bool circular) const {
 	if(m == 0) return 0.0;
 	const unsigned block = std::max(l, (unsigned)1) * k;
 	unsigned count = 0;
@@ -458,8 +510,30 @@ double OrderMinHash::compare_sketch_pair(const char* p1, const char* p2, unsigne
 	return (double)count / m;
 }
 
-double OrderMinHash::similarity(OrderMinHash & omh2){
-	return compare_sketches(this->sk, omh2.getSektch());	
+double OrderMinHash::similarity(const OrderMinHash & omh2) const {
+	if (!sealed_ || !omh2.sealed_)
+		throw std::logic_error(
+			"OrderMinHash comparison requires built sketches");
+	metadata().requireSameFamily(
+		omh2.metadata(), "OrderMinHash::similarity", true);
+	return compare_sketches(sk, omh2.sk);
+}
+
+Rank::RankMetadata OrderMinHash::metadata() const {
+	Rank::RankMetadata meta;
+	meta.canonicalization = rc
+		? Rank::Canonicalization::Lexicographic2BitReverseComplementV1
+		: Rank::Canonicalization::ForwardOnlyV1;
+	meta.hash_profile = Rank::HashProfile::OrderMinHashV1;
+	meta.backend = Rank::Backend::OrderMinHash;
+	meta.weight_semantics = Rank::WeightSemantics::UnweightedSet;
+	meta.resolution_kind = Rank::ResolutionKind::OrderSampleCount;
+	meta.fingerprint_bits = 64;
+	meta.kmer_size = static_cast<uint16_t>(m_k);
+	meta.resolution = static_cast<uint32_t>(m_m);
+	meta.seed = mtSeed;
+	meta.parameter_fingerprint = orderParameterFingerprint(m_l, rc);
+	return meta;
 }
 
 inline uint64_t hash_to_uint(const char * kmer, int k)

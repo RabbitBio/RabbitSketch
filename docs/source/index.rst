@@ -1,10 +1,14 @@
-.. rabbitsketch documentation master file, created by
-   sphinx-quickstart on Fri Dec 27 07:49:03 2024.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+RabbitSketch 2
+==============
 
-Welcome to rabbitsketch's documentation!
-========================================
+RabbitSketch is a C++17/Python genomic sketch library with one FASTX build
+contract, nine algorithms, and a unified in-memory query planner.
+
+Start with the repository `README <../../README.md>`_ and the
+`practical API guide <../rabbitsketch2_practical_api.md>`_. Statistical rules
+are documented in the
+`unified query contract <../rabbitsketch2_unified_query.md>`_ and summarized in
+the `compatibility matrix <../rabbitsketch2_compatibility_matrix.md>`_.
 
 .. toctree::
    :maxdepth: 2
@@ -12,8 +16,8 @@ Welcome to rabbitsketch's documentation!
 
 
 
-Indices and tables
-==================
+Reference links
+===============
 
 * :ref:`genindex`
 * :ref:`modindex`

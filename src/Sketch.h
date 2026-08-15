@@ -13,9 +13,12 @@
 #include "histoSketch.h"
 #include "HyperLogLog.h"
 #include "SetSketch.h"
+#include "rank/RankMetadata.h"
 //#include "Kssd.h"
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
+#include <stdexcept>
 #if defined(_MSC_VER)
 #include <BaseTsd.h>
 typedef SSIZE_T ssize_t;
@@ -143,8 +146,14 @@ namespace Sketch{
     public:
       /// minhash init with parameters
       MinHash(int k = 21, int size = 1000, uint32_t seed = 42, bool rc = true):
-        kmerSize(k), sketchSize(size), seed(seed), use64(true), noncanonical(!rc)
+        kmerSpace(0.0), minHashHeap(nullptr), kmerSize(k),
+        alphabetSize(4), seed(seed), sketchSize(size),
+        noncanonical(!rc), use64(true)
     {
+      if (kmerSize < 1 || kmerSize > 32)
+        throw std::invalid_argument("MinHash k-mer size must be in [1, 32]");
+      if (sketchSize < 2)
+        throw std::invalid_argument("MinHash sketch size must be at least 2");
       minHashHeap = new MinHashHeap(use64, sketchSize);
 
       this->kmerSpace = pow(alphabetSize, kmerSize);
@@ -163,6 +172,11 @@ namespace Sketch{
       }
       MinHash(const MinHash&)            = delete;
       MinHash& operator=(const MinHash&) = delete;
+
+      static std::unique_ptr<MinHash> fromHashes(
+          int kmer_size, uint32_t maximum_sketch_size, uint32_t seed,
+          bool reverse_complement, const std::vector<uint64_t>& hashes,
+          double estimated_cardinality, uint64_t total_length);
 
       /* for the containment of sequences(genomes).
        * the size of minHashHeap(as sketchSize) is proportatd with the sequence(genome) length.
@@ -202,14 +216,22 @@ namespace Sketch{
       void loadMinHashes(vector<uint64_t> hashArr);
 
       /// return totalSeqence length, including multiple updates
-      uint64_t getTotalLength(){return totalLength;}
+      uint64_t getTotalLength() const {return totalLength;}
 
       ///Estimate the cardinality count
-      int count(){ return minHashHeap->estimateSetSize();}
+      int count(){
+        return static_cast<int>(cardinality());
+      }
+      double cardinality() {
+        if (minHashHeap && needToList)
+          estimatedCardinality_ = minHashHeap->estimateSetSize();
+        return estimatedCardinality_;
+      }
+      Rank::RankMetadata metadata() const;
       // parameters
 
       /// return kmerSize
-      int getKmerSize() { return kmerSize; }
+      int getKmerSize() const { return kmerSize; }
 
       // return alphabet size
       //uint32_t getAlphabetSize() { return alphabetSize; }
@@ -222,13 +244,14 @@ namespace Sketch{
       //save file name
       string fileName;
       /// return hash seed
-      uint32_t getSeed() {return seed; }
+      uint32_t getSeed() const {return seed; }
 
       /// return sketch size
-      uint32_t getMaxSketchSize() {return sketchSize; }
+      uint32_t getMaxSketchSize() const {return sketchSize; }
 
       /// return whether to use reverse complement
-      bool isReverseComplement() { return !noncanonical; }
+      bool isReverseComplement() const { return !noncanonical; }
+      bool isSealed() const noexcept { return sealed_; }
 
       /// Materialize the hash list AND release the build-only scratch state.
       ///
@@ -242,6 +265,9 @@ namespace Sketch{
       /// One-way operation: calling update() after finalize() is UB.
       /// Mirrors Kssd::finalize() and BinDash::finalize().
       void finalize() {
+          if (sealed_) return;
+          if (minHashHeap && needToList)
+              estimatedCardinality_ = minHashHeap->estimateSetSize();
           ensureHeapToListed();
           if (minHashHeap) {
               delete minHashHeap;
@@ -253,13 +279,14 @@ namespace Sketch{
           // is a no-op when size == capacity but cheap regardless.
           reference.hashesSorted.hashes64.shrink_to_fit();
           reference.hashesSorted.hashes32.shrink_to_fit();
+          sealed_ = true;
       }
 
       /// Returns the finalized bottom-k sorted hash list for inverted-index use.
       /// Calls finalize() internally; result is valid until the sketch is modified.
       /// The returned reference points into the internal Reference struct — zero copy.
       const std::vector<uint64_t>& getHashesSorted() {
-          ensureHeapToListed();
+          finalize();
           return reference.hashesSorted.hashes64;
       }
 
@@ -284,6 +311,8 @@ namespace Sketch{
       MinHashHeap * minHashHeap;
       Reference reference;
       uint64_t totalLength = 0;
+      double estimatedCardinality_ = 0.0;
+      bool sealed_ = false;
 
       double pValue(uint64_t x, uint64_t lengthRef, uint64_t lengthQuery, double kmerSpace, uint64_t sketchSize);
       void heapToList();
@@ -291,7 +320,7 @@ namespace Sketch{
 
       //parameters
       int kmerSize;
-      uint32_t alphabetSize; //nuc sequences
+      uint32_t alphabetSize = 4; //nuc sequences
       uint32_t seed;
       uint64_t sketchSize; //minHashesPerWindow
       bool noncanonical;
@@ -309,6 +338,9 @@ namespace Sketch{
     int rev_add_move;
     int half_outctx_len;
     int * shuffled_dim;
+    // Owns the malloc-allocated table while preserving the historical raw
+    // pointer field used by existing APIs. Copies share the immutable table.
+    std::shared_ptr<int> shuffled_dim_owner;
     int dim_start;
     int dim_end;
     unsigned int kmer_size;
@@ -318,9 +350,22 @@ namespace Sketch{
     uint64_t tupmask;
     uint64_t undomask0;
     uint64_t undomask1;
+    uint64_t shuffle_fingerprint;
     phmap::flat_hash_map<uint32_t, int> shuffled_map;
 
   private:
+    static int _checked_dim_end(int half_k_, int half_subk_, int drlevel_) {
+      if (half_k_ < half_subk_ || half_k_ > 16 ||
+          half_subk_ < 3 || half_subk_ > 7 || drlevel_ < 0)
+        throw std::invalid_argument(
+          "kssd_parameter_t requires half_subk<=half_k<=16, "
+          "half_subk in [3,7], and drlevel>=0");
+      if (half_subk_ - drlevel_ < 3)
+        throw std::invalid_argument(
+          "kssd_parameter_t: half_subk - drlevel must be >= 3");
+      return 1 << (4 * (half_subk_ - drlevel_));
+    }
+
     // shared init: compute bit-masks and populate shuffled_map from shuffled_dim
     void _init_masks_and_map() {
       int comp_bittl = 64 - 4 * half_k;
@@ -332,7 +377,10 @@ namespace Sketch{
       int dim_size  = 1 << (4 * half_subk);
       int dim_limit = 1 << (4 * (half_subk - drlevel));
       shuffled_map.reserve(dim_size);
+      shuffle_fingerprint = UINT64_C(1469598103934665603);
       for (int t = 0; t < dim_size; t++) {
+        shuffle_fingerprint ^= static_cast<uint32_t>(shuffled_dim[t]);
+        shuffle_fingerprint *= UINT64_C(1099511628211);
         if (shuffled_dim[t] >= 0 && shuffled_dim[t] < dim_limit)
           shuffled_map.emplace(t, shuffled_dim[t]);
       }
@@ -344,17 +392,16 @@ namespace Sketch{
     // seed (348842630), guaranteeing reproducible results without extra files.
     kssd_parameter_t(int half_k_ = 10, int half_subk_ = 6, int drlevel_ = 3)
       : half_k(half_k_), half_subk(half_subk_), drlevel(drlevel_),
-        half_outctx_len(half_k_ - half_subk_),
         rev_add_move(4 * half_k_ - 2),
-        kmer_size(2 * half_k_),
+        half_outctx_len(half_k_ - half_subk_), shuffled_dim(nullptr),
         dim_start(0),
-        dim_end(1 << (4 * (half_subk_ - drlevel_))),
+        dim_end(_checked_dim_end(half_k_, half_subk_, drlevel_)),
+        kmer_size(2 * half_k_),
         hashSize(2000), hashLimit(static_cast<int>(2000 * LD_FCTR))
     {
-      if (half_subk_ - drlevel_ < 3)
-        throw std::invalid_argument(
-          "kssd_parameter_t: half_subk - drlevel must be >= 3");
       shuffled_dim = generate_shuffle_dim(half_subk_);
+      shuffled_dim_owner = std::shared_ptr<int>(
+        shuffled_dim, [](int* pointer) { std::free(pointer); });
       _init_masks_and_map();
     }
 
@@ -363,18 +410,20 @@ namespace Sketch{
     kssd_parameter_t(int half_k_, int half_subk_, int drlevel_,
                      const string& shuffle_file)
       : half_k(half_k_), half_subk(half_subk_), drlevel(drlevel_),
-        half_outctx_len(half_k_ - half_subk_),
         rev_add_move(4 * half_k_ - 2),
-        kmer_size(2 * half_k_),
+        half_outctx_len(half_k_ - half_subk_), shuffled_dim(nullptr),
         dim_start(0),
-        dim_end(1 << (4 * (half_subk_ - drlevel_))),
+        dim_end(_checked_dim_end(half_k_, half_subk_, drlevel_)),
+        kmer_size(2 * half_k_),
         hashSize(2000), hashLimit(static_cast<int>(2000 * LD_FCTR))
     {
-      if (half_subk_ - drlevel_ < 3)
-        throw std::invalid_argument(
-          "kssd_parameter_t: half_subk - drlevel must be >= 3");
       auto result  = Sketch::read_shuffled_file(shuffle_file);
       shuffled_dim = std::get<3>(result);
+      if (shuffled_dim == nullptr)
+        throw std::invalid_argument(
+          "kssd_parameter_t: failed to load shuffle dictionary");
+      shuffled_dim_owner = std::shared_ptr<int>(
+        shuffled_dim, [](int* pointer) { std::free(pointer); });
       _init_masks_and_map();
     }
   };
@@ -400,27 +449,30 @@ namespace Sketch{
       // Takes a shared_ptr so all Kssd objects built from the same parameters
       // share one copy of the two large tables (shuffled_dim + shuffled_map).
       // Previously a value-copy was made per object, wasting ~192 MB each.
-      Kssd(std::shared_ptr<const kssd_parameter_t> params)
-        : params_ptr_(std::move(params)),
+      Kssd(std::shared_ptr<const kssd_parameter_t> params,
+           uint64_t seed = 42)
+        : id(0),
+        params_ptr_(requireParams(std::move(params))),
+        half_k_(params_ptr_->half_k),
+        half_subk_(params_ptr_->half_subk),
+        drlevel_(params_ptr_->drlevel),
+        shuffled_dim_(params_ptr_->shuffled_dim),
         dim_size_(1 << (4 * params_ptr_->half_subk)),
         use64((params_ptr_->half_k - params_ptr_->drlevel) > 8),
         half_outctx_len(params_ptr_->half_outctx_len),
         rev_add_move(params_ptr_->rev_add_move),
-        half_k_(params_ptr_->half_k),
-        drlevel_(params_ptr_->drlevel),
-        half_subk_(params_ptr_->half_subk),
         kmer_size(params_ptr_->kmer_size),
         dim_start(params_ptr_->dim_start),
         dim_end(params_ptr_->dim_end),
         hashSize(params_ptr_->hashSize),
         hashLimit(params_ptr_->hashLimit),
+        component_num(0),
         tupmask(params_ptr_->tupmask),
         domask(params_ptr_->domask),
         undomask0(params_ptr_->undomask0),
         undomask1(params_ptr_->undomask1),
-        shuffled_dim_(params_ptr_->shuffled_dim),
         shuffled_map_(&params_ptr_->shuffled_map),
-        component_num(0)
+        seed_(seed)
     {
     }
 
@@ -450,18 +502,40 @@ namespace Sketch{
       std::string fileName;
       vector<uint32_t> storeHashes();
       vector<uint64_t> storeHashes64();
+      const vector<uint32_t>& getHashes() const { return hashList; }
+      const vector<uint64_t>& getHashes64() const { return hashList64; }
       void update(const char* seq);
+      uint64_t getShuffleFingerprint() const {
+        return params_ptr_->shuffle_fingerprint;
+      }
+      double admissionProbability() const;
+      uint32_t admissionDimensionCount() const {
+        return static_cast<uint32_t>(dim_end - dim_start);
+      }
+      uint32_t dimensionUniverseSize() const {
+        return static_cast<uint32_t>(dim_size_);
+      }
+      Rank::RankMetadata metadata() const;
+      /**
+       * Exact state-only projection to a sparser (larger) drlevel.
+       * The native reduced tuples retain the shuffled dimension rank needed
+       * for filtering/remapping.  A denser state cannot be reconstructed.
+       */
+      Kssd project(int target_drlevel) const;
       // Compact sketch storage after all update() calls: shrinks the sorted
       // hashList vector to its exact size (dropping any capacity overshoot
       // accumulated by multi-contig merges) and releases the hashSet's heap.
       // Single-threaded; call once per sketch before pairwise distance loop.
       void finalize();
+      bool isSealed() const noexcept { return sealed_; }
       bool existFile(string fileName);
       bool isFastaList(string inputList);
       bool isFastqList(string inputList);
       bool isFastaGZList(string inputList);
       bool isFastqGZList(string inputList);
       int id;
+      // Different drlevels compare at max(drlevel_a, drlevel_b), the common
+      // exactly-projectable sparse resolution.
       double jaccard(Kssd* kssd);
       double distance(Kssd* kssd);
 
@@ -480,11 +554,18 @@ namespace Sketch{
       void convertSketch(vector<Kssd*>& sketches, sketchInfo_t& info, string inputDir, int numThreads);
       void tri_dist(vector<Kssd*>& sketches, string outputFile, int kmer_size, double maxDist, int numThreads);
       void dist(vector<Kssd*>& ref_sketches, vector<sketch_t>& query_sketches, string outputFile, int kmer_size, double maxDist, int numThreads);
-      int get_half_subk();
-      int get_drlevel();
-      int get_half_k();
+      int get_half_subk() const;
+      int get_drlevel() const;
+      int get_half_k() const;
 
     private:
+      static std::shared_ptr<const kssd_parameter_t> requireParams(
+          std::shared_ptr<const kssd_parameter_t> params) {
+        if (!params)
+          throw std::invalid_argument("Kssd parameters must not be null");
+        return params;
+      }
+
       // Shared ownership of the parameter block (shuffled_dim + shuffled_map).
       // All Kssd objects built from the same parameters point to one instance.
       std::shared_ptr<const kssd_parameter_t> params_ptr_;
@@ -513,10 +594,11 @@ namespace Sketch{
       void SetToList64();
       void SetToList();
 
-      static const int BaseMap[128];
-
       // Pointer into params_ptr_->shuffled_map — no per-object copy.
       const phmap::flat_hash_map<uint32_t, int>* shuffled_map_;
+
+      uint64_t seed_;
+      bool sealed_ = false;
 
   };
 
@@ -767,7 +849,7 @@ namespace Sketch{
   //OMinHash
   struct OSketch {
     //std::string       name;
-    int               k, l, m;
+    int               k = 0, l = 0, m = 0;
     std::vector<char> data;
     std::vector<char> rcdata;
 
@@ -782,13 +864,19 @@ namespace Sketch{
 
     public:
       /// OrderMinHash constructor
-      OrderMinHash() : seq(nullptr), rcseq(nullptr), m_k(21), m_l(2), m_m(500), rc(false), mtSeed(32)  {};
+      OrderMinHash() = default;
       /// OrderMinHash constructor for sketching sequences using default parameters
       OrderMinHash(char * seqNew);
-      ~OrderMinHash() {if (rcseq != NULL) delete rcseq;};
+      explicit OrderMinHash(const std::string& sequence);
+      ~OrderMinHash() = default;
+
+      /** Restore a validated immutable native sketch. */
+      static OrderMinHash fromSketch(const OSketch& sketch,
+          uint64_t seed, bool reverse_complement);
 
       /// return sketch result in `OSketch` type
-      OSketch getSektch(){ return sk;}
+      OSketch getSektch() const { return sk; }
+      const OSketch& getSketch() const noexcept { return sk; }
 
       /** \rst
         Build a `OrderMinHash` sketch.
@@ -798,59 +886,62 @@ namespace Sketch{
         \endrst
         */
       void buildSketch(char * seqNew);
+      void buildSketch(const std::string& sequence);
 
       /** 
         Return similarity between two `OrderMinHash` sketches. In `OrderMinHash` class, there is no jaccard function provied. Because `OrderMinHash` is a proxy of edit distance instead of jaccard index.
         */
-      double similarity(OrderMinHash & omh2);
+      double similarity(const OrderMinHash & omh2) const;
 
       /// Return distance between two `OrderMinHash` sketches
-      double distance(OrderMinHash & omh2)
+      double distance(const OrderMinHash & omh2) const
       {
         return (double)1.0 - similarity(omh2);
       }
 
       /// Set parameter `kmerSize`: default 21.
-      void setK(int k){ m_k = k; }
+      void setK(int k){ m_k = k; sealed_ = false; }
 
       /// Set parameter `l`: default 2 (normally 2 - 5).
-      void setL(int l){ m_l = l; }
+      void setL(int l){ m_l = l; sealed_ = false; }
 
       /// Set parameter `m`: default 500.
-      void setM(int m){ m_m = m; }
+      void setM(int m){ m_m = m; sealed_ = false; }
 
       /// Set seed value for random generator: default 32.
-      void setSeed(uint64_t seedNew) { mtSeed = seedNew; }
+      void setSeed(uint64_t seedNew) { mtSeed = seedNew; sealed_ = false; }
 
       /** 
         Choose whether to deal with reverse complement sequences: default false.
         Reverse complement is normally used in biological sequences such as DNA or protein sequences.
         */
-      void setReverseComplement(bool isRC){rc = isRC;}
+      void setReverseComplement(bool isRC){rc = isRC; sealed_ = false;}
 
       /// Return parameter `kmerSize`.
-      int getK(){return m_k;}	
+      int getK() const noexcept {return m_k;}
 
       /// Return parameter `l`.
-      int getL(){return m_l;}	
+      int getL() const noexcept {return m_l;}
 
       /// Return parameter `m`.
-      int getM(){return m_m;}		
+      int getM() const noexcept {return m_m;}
 
       /// Return random generator seed value.
-      uint64_t getSeed() { return mtSeed; }
+      uint64_t getSeed() const noexcept { return mtSeed; }
 
       /// Test whether to deal with reverse complement kmers.
-      bool isReverseComplement(){return rc;}
+      bool isReverseComplement() const noexcept {return rc;}
+      bool isSealed() const noexcept { return sealed_; }
+      Rank::RankMetadata metadata() const;
 
     private:
-
-      char * seq = NULL;
-      char * rcseq = NULL;
+      std::string sequence_;
+      std::string rc_sequence_;
       //Parameters parameters;
       int m_k = 21, m_l = 2, m_m = 500;
       //reverse complement
       bool rc = false;
+      bool sealed_ = false;
       OSketch sk;
       uint64_t mtSeed = 32; //default value
 
@@ -859,40 +950,46 @@ namespace Sketch{
       inline void compute_sketch(char * ptr, const char * seq);
 
       double compare_sketches(const OSketch& sk1, const OSketch& sk2, 
-          ssize_t m = -1, bool circular = false);
+          ssize_t m = -1, bool circular = false) const;
       double compare_sketch_pair(const char* p1, const char* p2,
-          unsigned m, unsigned k, unsigned l, bool circular);
+          unsigned m, unsigned k, unsigned l, bool circular) const;
 
   };
 
   class HyperLogLog{
 
     public:
-      HyperLogLog(int np, int kmerlen = 32)
-        : core_(1uL<<np,0),
-          np_(np),
-          kmerLen_(kmerlen),
-          is_calculated_(0),
-          estim_(EstimationMethod::ERTL_MLE),
-          jestim_(JointEstimationMethod::ERTL_JOINT_MLE),
-          track_witnesses_(false) {}
+      explicit HyperLogLog(int np, int kmerlen = 32);
 
       // Witness-tracking constructor: when true, every register update also
       // records the 64-bit hash of the k-mer that "won" the register.
       // Used by the inverted-index --hll path (mirrors SetSketch witnesses).
-      // Memory cost: 8 * (1 << np) extra bytes per sketch.
-      HyperLogLog(int np, bool track_witnesses, int kmerlen = 32)
-        : core_(1uL<<np,0),
-          witnesses_(track_witnesses ? (1uL<<np) : 0, 0),
-          np_(np),
-          kmerLen_(kmerlen),
-          is_calculated_(0),
-          estim_(EstimationMethod::ERTL_MLE),
-          jestim_(JointEstimationMethod::ERTL_JOINT_MLE),
-          track_witnesses_(track_witnesses) {}
+      // Memory cost: 8 * (1 << np) bytes.
+      HyperLogLog(int np, bool track_witnesses, int kmerlen = 32);
+
+      /// Seed-aware constructor. The four-argument order avoids ambiguity with
+      /// the historical (precision, track_witnesses, kmer_length) overload.
+      HyperLogLog(int np, int kmerlen, uint64_t seed, bool track_witnesses);
+
+      /** Restore a validated native register state without original sequence. */
+      static HyperLogLog fromRegisters(
+          uint32_t precision,
+          int kmer_size,
+          uint64_t seed,
+          const std::vector<uint8_t>& registers);
 
       ~HyperLogLog(){};
       void update(char* seq);
+      /**
+       * Add an already coordinated 64-bit RankStream fingerprint.
+       * This bypasses sequence canonicalization and hashing; callers are
+       * responsible for following the contract reported by metadata().
+       */
+      void addFingerprint(uint64_t fingerprint);
+      /// Exact HLL precision down-projection. Projected lower-precision states
+      /// intentionally drop witnesses because native high-p winners do not
+      /// contain enough information to reconstruct low-p winner identities.
+      HyperLogLog project(uint32_t target_precision) const;
       HyperLogLog merge(const HyperLogLog &other) const;
       void printSketch();
       double distance(const HyperLogLog &h2) const {return 1.0 - jaccard_index(h2);}
@@ -902,6 +999,10 @@ namespace Sketch{
       double cardinality() const { return creport(); }
       /// Raw register array. Used by external LSH banding.
       const std::vector<uint8_t>& getCore() const { return core_; }
+      uint32_t getPrecision() const { return np_; }
+      int getKmerSize() const { return kmerLen_; }
+      uint64_t getSeed() const { return seed_; }
+      Rank::RankMetadata metadata() const;
       /// Per-register "winning" k-mer hash – only populated when constructed
       /// with track_witnesses=true. Used by inverted-index --index mode as
       /// high-entropy candidate keys (mirrors SetSketch witnesses).
@@ -947,6 +1048,7 @@ namespace Sketch{
       mutable double value_; //cardinality
       uint32_t np_; // 10-20
       int      kmerLen_;    // k-mer length used in update() (default 32)
+      uint64_t seed_;       // coordinated RankStream seed
       mutable uint8_t is_calculated_;
       EstimationMethod                        estim_;
       JointEstimationMethod                  jestim_;

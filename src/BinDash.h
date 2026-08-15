@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <vector>
 #include <cstring>
+#include "rank/RankMetadata.h"
 
 namespace Sketch {
 
@@ -36,6 +37,13 @@ public:
                      int      kmer_size    = 21,
                      uint32_t bbits        = 16,
                      uint64_t seed         = 42);
+
+    static BinDash fromPacked(uint32_t sketchsize64,
+                              int kmer_size,
+                              uint32_t bbits,
+                              uint64_t seed,
+                              uint32_t raw_nonempty,
+                              const std::vector<uint64_t>& signatures);
 
     ~BinDash() = default;
     BinDash(const BinDash&) = default;
@@ -57,6 +65,7 @@ public:
      * called explicitly before multi-threaded distance computation.
      */
     void finalize();
+    bool isSealed() const noexcept { return finalized_; }
 
     /**
      * Estimated Jaccard similarity in [0, 1].
@@ -79,6 +88,8 @@ public:
      * ANI = (2J / (1+J))^(1/k) where k is the sketch k-mer size.
      */
     double ani(const BinDash& other) const;
+    double cardinality() const { return cardinalityEstimate(); }
+    Rank::RankMetadata metadata() const;
 
     const uint64_t* getSignatures() const { return usigs_.data(); }
     uint32_t getNumWords()    const { return sketchsize64_ * bbits_; }
@@ -87,6 +98,11 @@ public:
     int      getKmerSize()    const { return kmer_size_; }
     size_t   memoryBytes()    const { return usigs_.size() * sizeof(uint64_t); }
     uint32_t getRawNonempty() const { return raw_nonempty_; }
+    uint64_t getSeed()        const { return seed_; }
+    const std::vector<uint64_t>& packedSignatures() const {
+        ensureFinalized();
+        return usigs_;
+    }
 
     /**
      * Count matching b-bit values between two flat packed sketches.

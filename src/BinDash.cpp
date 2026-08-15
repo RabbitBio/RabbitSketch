@@ -21,6 +21,7 @@
 #include <cstring>
 #include <immintrin.h>
 #include <limits>
+#include <stdexcept>
 
 using namespace Sketch;
 
@@ -67,9 +68,48 @@ BinDash::BinDash(uint32_t sketchsize64, int kmer_size,
       finalized_(false),
       raw_nonempty_(0)
 {
-    assert(sketchsize64 > 0);
-    assert(kmer_size >= 1 && kmer_size <= 32);
-    assert(bbits >= 1 && bbits <= 64);
+    if (sketchsize64 == 0)
+        throw std::invalid_argument("BinDash sketchsize64 must be positive");
+    if (kmer_size < 1 || kmer_size > 32)
+        throw std::invalid_argument("BinDash k-mer size must be in [1, 32]");
+    if (bbits < 1 || bbits > 64)
+        throw std::invalid_argument("BinDash b-bit width must be in [1, 64]");
+}
+
+BinDash BinDash::fromPacked(uint32_t sketchsize64,
+                            int kmer_size,
+                            uint32_t bbits,
+                            uint64_t seed,
+                            uint32_t raw_nonempty,
+                            const std::vector<uint64_t>& signatures) {
+    BinDash result(sketchsize64, kmer_size, bbits, seed);
+    const size_t expected = static_cast<size_t>(sketchsize64) * bbits;
+    if (signatures.size() != expected)
+        throw std::invalid_argument(
+            "BinDash packed signature word count is inconsistent");
+    if (raw_nonempty > result.nbins_)
+        throw std::invalid_argument(
+            "BinDash raw nonempty count exceeds the number of bins");
+    result.usigs_ = signatures;
+    result.raw_nonempty_ = raw_nonempty;
+    std::vector<uint64_t>().swap(result.signs_);
+    result.finalized_ = true;
+    return result;
+}
+
+Rank::RankMetadata BinDash::metadata() const {
+    Rank::RankMetadata meta;
+    meta.backend = Rank::Backend::BinDash;
+    meta.hash_profile = Rank::HashProfile::BinDashDoubleFmixV1;
+    meta.weight_semantics = Rank::WeightSemantics::UnweightedSet;
+    meta.resolution_kind = Rank::ResolutionKind::RegisterCount;
+    meta.fingerprint_bits = static_cast<uint8_t>(bbits_);
+    meta.kmer_size = static_cast<uint16_t>(kmer_size_);
+    meta.resolution = nbins_;
+    meta.seed = seed_;
+    meta.parameter_fingerprint = Rank::RankStream::fmix64(
+        bbits_, UINT64_C(0x62696e646173682d));
+    return meta;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -81,7 +121,10 @@ void BinDash::update(const char* seq) {
 }
 
 void BinDash::update(const char* seq, uint64_t length) {
-    finalized_ = false;
+    if (finalized_)
+        throw std::logic_error("BinDash::update called after finalize");
+    if (seq == nullptr && length != 0)
+        throw std::invalid_argument("BinDash::update sequence must not be null");
 
     const int K = kmer_size_;
     if (length < static_cast<uint64_t>(K)) return;
@@ -254,8 +297,7 @@ uint64_t BinDash::countSameBits(const uint64_t* a, const uint64_t* b,
 // ═══════════════════════════════════════════════════════════════════════════
 
 double BinDash::jaccardPacked(const BinDash& other) const {
-    assert(sketchsize64_ == other.sketchsize64_);
-    assert(bbits_ == other.bbits_);
+    metadata().requireSameFamily(other.metadata(), "BinDash::jaccard");
 
     ensureFinalized();
     other.ensureFinalized();
@@ -264,7 +306,7 @@ double BinDash::jaccardPacked(const BinDash& other) const {
                                                    sketchsize64_, bbits_);
     const double maxnbits = static_cast<double>(nbins_);
     const double p_match  = static_cast<double>(samebits) / maxnbits;
-    const double p_random = 1.0 / static_cast<double>(1ULL << bbits_);
+    const double p_random = std::ldexp(1.0, -static_cast<int>(bbits_));
     double j = (p_match - p_random) / (1.0 - p_random);
     if (j < 0.0) j = 0.0;
     if (j > 1.0) j = 1.0;

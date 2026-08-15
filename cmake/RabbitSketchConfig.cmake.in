@@ -1,0 +1,10 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(ZLIB)
+if(@OpenMP_CXX_FOUND@)
+  find_dependency(OpenMP)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/RabbitSketchTargets.cmake")
+check_required_components(RabbitSketch)

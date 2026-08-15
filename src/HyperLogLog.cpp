@@ -1,11 +1,71 @@
 //#include <zlib.h>
 #include "HyperLogLog.h"
 #include "Sketch.h"
+#include "api/RuntimeInfo.h"
 #include "MurmurHash3.h"
-#include "hash_int.h"
+#include "rank/RankStream.h"
+#include "rank/CanonicalKmer.h"
 #include <immintrin.h>
+#include <stdexcept>
 
 using namespace Sketch;
+
+namespace {
+
+static size_t hll_register_count(int precision) {
+	if (precision < 4 || precision > 20) {
+		throw std::invalid_argument("HLL precision must be in [4, 20]");
+	}
+	return size_t(1) << precision;
+}
+
+static void validate_hll_kmer_size(int kmer_size) {
+	if (kmer_size < 1 || kmer_size > 32) {
+		throw std::invalid_argument("HLL k-mer size must be in [1, 32]");
+	}
+}
+
+} // namespace
+
+HyperLogLog::HyperLogLog(int np, int kmerlen)
+	: HyperLogLog(np, kmerlen, 42, false) {}
+
+HyperLogLog::HyperLogLog(int np, bool track_witnesses, int kmerlen)
+	: HyperLogLog(np, kmerlen, 42, track_witnesses) {}
+
+HyperLogLog::HyperLogLog(int np, int kmerlen, uint64_t seed,
+	                     bool track_witnesses)
+	: core_(hll_register_count(np), 0),
+	  witnesses_(track_witnesses ? hll_register_count(np) : 0, 0),
+	  value_(0.0), np_(static_cast<uint32_t>(np)), kmerLen_(kmerlen),
+	  seed_(seed), is_calculated_(0),
+	  estim_(EstimationMethod::ERTL_MLE),
+	  jestim_(JointEstimationMethod::ERTL_JOINT_MLE),
+	  track_witnesses_(track_witnesses) {
+	validate_hll_kmer_size(kmerlen);
+}
+
+HyperLogLog HyperLogLog::fromRegisters(
+	uint32_t precision,
+	int kmer_size,
+	uint64_t seed,
+	const std::vector<uint8_t>& registers) {
+	HyperLogLog result(static_cast<int>(precision), kmer_size, seed, false);
+	if (registers.size() != result.core_.size())
+		throw std::invalid_argument(
+			"HyperLogLog::fromRegisters register count does not match precision");
+	const uint8_t maximum_rank = static_cast<uint8_t>(65 - precision);
+	if (std::any_of(registers.begin(), registers.end(),
+	                [maximum_rank](uint8_t rank) {
+		                return rank > maximum_rank;
+	                }))
+		throw std::invalid_argument(
+			"HyperLogLog::fromRegisters found an invalid register rank");
+	result.core_ = registers;
+	result.value_ = 0.0;
+	result.is_calculated_ = 0;
+	return result;
+}
 
 // ── SIMD equal-register counter ───────────────────────────────────────────────
 // Counts positions where a[i] == b[i] for arrays of n uint8_t registers.
@@ -14,26 +74,8 @@ static int hll_count_equal_regs(const uint8_t* __restrict__ a,
                                  const uint8_t* __restrict__ b,
                                  int n)
 {
-	int count = 0, i = 0;
-#if defined(__AVX512BW__)
-	for (; i + 64 <= n; i += 64) {
-		__m512i va = _mm512_loadu_si512((const void*)(a + i));
-		__m512i vb = _mm512_loadu_si512((const void*)(b + i));
-		count += (int)__builtin_popcountll(
-		    (uint64_t)_mm512_cmpeq_epi8_mask(va, vb));
-	}
-#endif
-#if defined(__AVX2__)
-	for (; i + 32 <= n; i += 32) {
-		__m256i va = _mm256_loadu_si256((const __m256i*)(a + i));
-		__m256i vb = _mm256_loadu_si256((const __m256i*)(b + i));
-		__m256i eq = _mm256_cmpeq_epi8(va, vb);
-		count += (int)__builtin_popcount((uint32_t)_mm256_movemask_epi8(eq));
-	}
-#endif
-	for (; i < n; i++)
-		count += (int)(a[i] == b[i]);
-	return count;
+	return static_cast<int>(Runtime::countEqualBytes(
+		a, b, static_cast<size_t>(n)));
 }
 
 
@@ -111,43 +153,26 @@ void HyperLogLog::compTwoSketch(const std::vector<uint8_t> &sketch1, const std::
 // Rolling-hash optimized update():
 //   - No seqRev buffer: rev_enc is computed from seq by complement-on-read (saves
 //     full reverse-complement pass and cache pressure).
-//   - No upfront to-upper: 256-entry LUT encodes A/a->0, C/c->1, G/g->2, T/t->3
+	//   - No upfront to-upper: the shared LUT encodes A/a->0, C/c->1, G/g->2, T/t->3
 //     so rolling uses one table lookup per base.
 //   - Window invalid_count: only when invalid_count==0 do we add the k-mer (N etc.).
 //   - Canonical = min(fwd_enc, rev_enc) with encoding A=0,C=1,G=2,T=3 (lex order).
 //   - Optional future: per-thread or block-local core_ buffer, merge at end, to
 //     reduce random writes when doing multi-threaded batch updates (p=12..16).
-	// A=65,C=67,G=71,T=84; a=97,c=99,g=103,t=116 -> 0,1,2,3.
-	static const uint8_t ENCODE_LUT[256] = {
-		255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-		255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-		255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-		255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-		255,  0,255,  1,255,255,255,  2,255,255,255,255,255,255,255,255,
-		255,255,255,255,  3,255,255,255,255,255,255,255,255,255,255,255,
-		255,  0,255,  1,255,255,255,  2,255,255,255,255,255,255,255,255,
-		255,255,255,255,  3,255,255,255,255,255,255,255,255,255,255,255,
-		255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-		255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-		255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-		255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-		255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-		255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-		255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-		255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-	};
-	// A=0, C=1, G=2, T=3 at indices 'A','a','C','c','G','g','T','t'; 255 elsewhere.
-	// Complement encoding: comp(e) = (e<=3) ? (3-e) : 255.
-	#define ENC(c)   (ENCODE_LUT[(uint8_t)(c)])
-	#define COMP(e)  ((uint8_t)((e) <= 3 ? 3 - (e) : 255))
-	#define VALID(e) ((e) <= 3)
+	#define ENC(c)   (Rank::encodeBase((uint8_t)(c)))
+	#define COMP(e)  (Rank::complementBase((e)))
+	#define VALID(e) (Rank::validBase((e)))
 
 	void HyperLogLog::update(char* seq) {
+	if (seq == nullptr) {
+		throw std::invalid_argument("HyperLogLog::update sequence must not be null");
+	}
 	const uint64_t LENGTH = strlen(seq);
 	const int KMERLEN = kmerLen_;
 	// For k<32 the forward encoding only uses 2*k bits; mask off stale upper bits.
 	const uint64_t kmer_mask = (KMERLEN >= 32) ? UINT64_MAX : ((1ULL << (2 * KMERLEN)) - 1);
 	if (LENGTH < (uint64_t)KMERLEN) return;
+	is_calculated_ = 0;
 
 	uint32_t qq = q();
 
@@ -199,7 +224,7 @@ void HyperLogLog::compTwoSketch(const std::vector<uint8_t> &sketch1, const std::
 		uint64_t hashvalv[8];
 		#if defined __AVX512F__ && defined __AVX512DQ__
 		__m512i vb = _mm512_loadu_si512((void*)resv);
-		__m512i vseed = _mm512_set1_epi64(42);
+			__m512i vseed = _mm512_set1_epi64((int64_t)seed_);
 		__m512i va = _mm512_xor_epi64(vb, vseed);
 		__m512i vtmp = _mm512_srli_epi64(va, 33);
 		vb = _mm512_xor_epi64(va, vtmp);
@@ -212,7 +237,7 @@ void HyperLogLog::compTwoSketch(const std::vector<uint8_t> &sketch1, const std::
 		_mm512_storeu_si512(hashvalv, vb);
 		#else
 		for (int j = 0; j < lanes; j++)
-			hashvalv[j] = mc::murmur3_fmix(resv[j], 42);
+				hashvalv[j] = Rank::RankStream::fmix64(resv[j], seed_);
 		#endif
 
 		uint64_t indexv[8], lztv[8];
@@ -260,11 +285,11 @@ void HyperLogLog::compTwoSketch(const std::vector<uint8_t> &sketch1, const std::
 	}
 
 	// Remainder: continue rolling from position N; only add when invalid_count==0.
-	for (uint64_t i = N; i < LENGTH - KMERLEN; ++i)
-	{
-		if (invalid_count == 0) {
-			uint64_t res = (fwd_enc <= rev_enc) ? fwd_enc : rev_enc;
-			uint64_t hashval = mc::murmur3_fmix(res, 42);
+		for (uint64_t i = N; i <= LENGTH - KMERLEN; ++i)
+		{
+			if (invalid_count == 0) {
+				uint64_t res = (fwd_enc <= rev_enc) ? fwd_enc : rev_enc;
+				uint64_t hashval = Rank::RankStream::fmix64(res, seed_);
 			const uint32_t index = hashval >> qq;
 			const uint8_t lzt = clz(((hashval << 1) | 1) << (np_ - 1)) + 1;
 			if (track_witnesses_) {
@@ -279,13 +304,15 @@ void HyperLogLog::compTwoSketch(const std::vector<uint8_t> &sketch1, const std::
 			++clz_counts_[clz(((hashval << 1) | 1) << (np_ - 1)) + 1];
 #endif
 		}
-		uint8_t ef_out = ENC(seq[i]);
-		uint8_t ef_in  = ENC(seq[i + KMERLEN]);
-		if (!VALID(ef_out)) invalid_count--;
-		if (!VALID(ef_in))  invalid_count++;
-		fwd_enc = ((fwd_enc << 2) | (VALID(ef_in) ? (ef_in & 3u) : 0u)) & kmer_mask;
-		uint8_t er_in = VALID(ef_in) ? (COMP(ef_in) & 3u) : 0u;
-		rev_enc = (rev_enc >> 2) | ((uint64_t)er_in << (2 * (KMERLEN - 1)));
+			if (i < LENGTH - KMERLEN) {
+				uint8_t ef_out = ENC(seq[i]);
+				uint8_t ef_in  = ENC(seq[i + KMERLEN]);
+				if (!VALID(ef_out)) invalid_count--;
+				if (!VALID(ef_in))  invalid_count++;
+				fwd_enc = ((fwd_enc << 2) | (VALID(ef_in) ? (ef_in & 3u) : 0u)) & kmer_mask;
+				uint8_t er_in = VALID(ef_in) ? (COMP(ef_in) & 3u) : 0u;
+				rev_enc = (rev_enc >> 2) | ((uint64_t)er_in << (2 * (KMERLEN - 1)));
+			}
 	}
 	#undef ENC
 	#undef COMP
@@ -338,15 +365,67 @@ void HyperLogLog::compTwoSketch(const std::vector<uint8_t> &sketch1, const std::
 //}
 //
 
-HyperLogLog HyperLogLog::merge(const HyperLogLog &other) const {
-	if(other.p() != p())
-		throw std::runtime_error(std::string("p (") + std::to_string(p()) + " != other.p (" + std::to_string(other.p()));
-	HyperLogLog ret(*this);
-	//ret += other;
-	//ret.core_ = max(core_, other.core_);
-	for(uint64_t i=0; i<m(); ++i){
-		ret.core_[i] = std::max(core_[i],other.core_[i]); 
+HyperLogLog HyperLogLog::project(uint32_t target_precision) const {
+	if (target_precision < 4 || target_precision > np_) {
+		throw std::invalid_argument(
+			"HyperLogLog::project target precision must be in [4, source precision]");
 	}
+	if (target_precision == np_) return *this;
+
+	HyperLogLog ret(static_cast<int>(target_precision), kmerLen_, seed_, false);
+	const uint32_t delta = np_ - target_precision;
+	const uint32_t suffix_mask = (uint32_t(1) << delta) - 1;
+
+	for (uint32_t high_index = 0; high_index < core_.size(); ++high_index) {
+		const uint8_t high_rank = core_[high_index];
+		if (high_rank == 0) continue;
+
+		const uint32_t low_index = high_index >> delta;
+		const uint32_t suffix = high_index & suffix_mask;
+		uint8_t candidate = 0;
+		if (suffix == 0) {
+			candidate = static_cast<uint8_t>(delta + high_rank);
+		} else {
+#if defined(__GNUC__) || defined(__clang__)
+			const uint32_t leading = static_cast<uint32_t>(__builtin_clz(suffix))
+				- (32u - delta);
+#else
+			uint32_t leading = 0;
+			uint32_t bit = uint32_t(1) << (delta - 1);
+			while ((suffix & bit) == 0) { ++leading; bit >>= 1; }
+#endif
+			candidate = static_cast<uint8_t>(leading + 1);
+		}
+		ret.core_[low_index] = std::max(ret.core_[low_index], candidate);
+	}
+	ret.is_calculated_ = 0;
+	return ret;
+}
+
+HyperLogLog HyperLogLog::merge(const HyperLogLog &other) const {
+	metadata().requireSameFamily(other.metadata(), "HyperLogLog::merge",
+	                             /*allow_resolution_change=*/true);
+	const uint32_t common_precision = std::min(np_, other.np_);
+	HyperLogLog left = (np_ == common_precision) ? *this : project(common_precision);
+	HyperLogLog right = (other.np_ == common_precision)
+		? other : other.project(common_precision);
+
+	const bool keep_witnesses = left.track_witnesses_ && right.track_witnesses_;
+	HyperLogLog ret(static_cast<int>(common_precision), kmerLen_, seed_,
+	                keep_witnesses);
+	for (uint64_t i = 0; i < ret.m(); ++i) {
+		ret.core_[i] = std::max(left.core_[i], right.core_[i]);
+		if (keep_witnesses) {
+			if (left.core_[i] > right.core_[i])
+				ret.witnesses_[i] = left.witnesses_[i];
+			else if (left.core_[i] < right.core_[i])
+				ret.witnesses_[i] = right.witnesses_[i];
+			else
+				ret.witnesses_[i] = std::min(
+					left.witnesses_[i], right.witnesses_[i]);
+		}
+	}
+	ret.is_calculated_ = 0;
 	return ret;
 }
 
@@ -360,7 +439,7 @@ inline void HyperLogLog::addh(const std::string &element) {
 	//add(std::hash<std::string>{}(element));
 	uint64_t res[2];
 	int len = element.length();
-	const uint32_t seed = 42;
+	const uint32_t seed = static_cast<uint32_t>(seed_);
 	MurmurHash3_x64_128(element.c_str(), len, seed, res);
 	add(res[0]);
 	
@@ -372,13 +451,10 @@ inline void HyperLogLog::addh(const std::string &element) {
 
 //TODO: clz is a function in clz.h
 inline void HyperLogLog::add(uint64_t hashval) {
+	is_calculated_ = 0;
 	const uint32_t index(hashval >> q());
 	const uint8_t lzt(clz(((hashval << 1)|1) << (np_ - 1)) + 1);
 	if (track_witnesses_) {
-		// Strict-greater so witness records the first hash that achieved
-		// the current max (deterministic given hash function & input order).
-		// Two sketches that share a register-i witness ⇒ both saw the same
-		// k-mer that was the leading-zero champion of bucket i ⇒ k-mer ∈ A∩B.
 		if (lzt > core_[index]) {
 			core_[index] = lzt;
 			witnesses_[index] = hashval;
@@ -390,6 +466,10 @@ inline void HyperLogLog::add(uint64_t hashval) {
 	++clz_counts_[clz(((hashval << 1)|1) << (np_ - 1)) + 1];
 #endif
 }
+
+void HyperLogLog::addFingerprint(uint64_t fingerprint) {
+	add(fingerprint);
+}
 //Added by liumy to show sketch for testing. 
 void HyperLogLog::printSketch(){
 	fprintf(stdout,"Sketch info: [");
@@ -400,6 +480,7 @@ void HyperLogLog::printSketch(){
 }
 
 double HyperLogLog::union_size(const HyperLogLog &other) const {
+	metadata().requireSameFamily(other.metadata(), "HyperLogLog::union_size");
 	if(jestim_ != JointEstimationMethod::ERTL_JOINT_MLE) {
 		assert(m() == other.m()|| !std::fprintf(stderr, "sizes don't match! Size1: %zu. Size2: %zu\n", m(), other.m()));
 		std::array<uint32_t,64> counts{0};
@@ -417,6 +498,15 @@ double HyperLogLog::union_size(const HyperLogLog &other) const {
 
 
 double HyperLogLog::jaccard_index(const HyperLogLog &h2) const {
+	metadata().requireSameFamily(h2.metadata(), "HyperLogLog::jaccard_index",
+	                             /*allow_resolution_change=*/true);
+	if (np_ != h2.np_) {
+		const uint32_t common_precision = std::min(np_, h2.np_);
+		HyperLogLog left = (np_ == common_precision) ? *this : project(common_precision);
+		HyperLogLog right = (h2.np_ == common_precision)
+			? h2 : h2.project(common_precision);
+		return left.jaccard_index(right);
+	}
 	if(jestim_ == JointEstimationMethod::ERTL_JOINT_MLE) {
 		auto full_cmps = ertl_joint(*this, h2);
 		const double denom = full_cmps[0] + full_cmps[1] + full_cmps[2];
@@ -623,8 +713,18 @@ ERTL_MLE_EST: return ertl_ml_estimate(counts, p, 64 - p, relerr);
 // ── equalRegisterFraction ─────────────────────────────────────────────────────
 double HyperLogLog::equalRegisterFraction(const HyperLogLog& other) const
 {
+	metadata().requireSameFamily(other.metadata(),
+	                             "HyperLogLog::equalRegisterFraction",
+	                             /*allow_resolution_change=*/true);
+	if (np_ != other.np_) {
+		const uint32_t common_precision = std::min(np_, other.np_);
+		HyperLogLog left = (np_ == common_precision) ? *this : project(common_precision);
+		HyperLogLog right = (other.np_ == common_precision)
+			? other : other.project(common_precision);
+		return left.equalRegisterFraction(right);
+	}
 	const int n = (int)core_.size();
-	if(n == 0 || n != (int)other.core_.size()) return 0.0;
+	if(n == 0) return 0.0;
 	return (double)hll_count_equal_regs(core_.data(), other.core_.data(), n) / n;
 }
 
@@ -647,9 +747,10 @@ double HyperLogLog::containment(const HyperLogLog& other) const
 	const double card_a = creport();
 	if (card_a <= 0.0) return 0.0;
 	const double card_b = other.creport();
-	const double us     = union_size(other);
-	const double inter  = card_a + card_b - us;
-	return (inter > 0.0) ? inter / card_a : 0.0;
+	const double j = jaccard_index(other);
+	if (j <= 0.0) return 0.0;
+	const double estimate = j * (card_a + card_b) / (card_a * (1.0 + j));
+	return std::min(1.0, std::max(0.0, estimate));
 }
 
 // ── ani ──────────────────────────────────────────────────────────────────────
@@ -662,6 +763,15 @@ double HyperLogLog::ani(const HyperLogLog& other, int kmer_size) const
 	return std::pow(2.0 * j / (1.0 + j), 1.0 / static_cast<double>(kmer_size));
 }
 
-
-
-
+Rank::RankMetadata HyperLogLog::metadata() const {
+	Rank::RankMetadata meta;
+	meta.backend = Rank::Backend::HLL;
+	meta.hash_profile = Rank::HashProfile::Murmur3Fmix64V1;
+	meta.weight_semantics = Rank::WeightSemantics::UnweightedSet;
+	meta.resolution_kind = Rank::ResolutionKind::RegisterPrecisionBits;
+	meta.fingerprint_bits = 64;
+	meta.kmer_size = static_cast<uint16_t>(kmerLen_);
+	meta.resolution = np_;
+	meta.seed = seed_;
+	return meta;
+}

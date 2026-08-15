@@ -1,6 +1,2 @@
-#python < 3.12
-#pip==22.3 
-#setuptools==65.0
-pybind11[global]
-pymp-pypi==0.5.0
-fastx==0.0.3
+# RabbitSketch has no Python runtime dependencies. Build requirements are
+# declared in pyproject.toml and installed automatically by pip.

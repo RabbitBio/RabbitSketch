@@ -8,12 +8,16 @@
  */
 #include "SetSketch.h"
 #include "Sketch.h"
-#include "MurmurHash3.h"
-#include "hash_int.h"
+#include "api/RuntimeInfo.h"
+#include "rank/RankStream.h"
+#include "rank/CanonicalKmer.h"
 #include <immintrin.h>
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <cstdio>
+#include <limits>
+#include <stdexcept>
 
 using namespace Sketch;
 
@@ -34,26 +38,8 @@ namespace {
 static int setsketch_count_equal_regs(const uint8_t* __restrict__ a,
                                        const uint8_t* __restrict__ b,
                                        int n) {
-  int count = 0, i = 0;
-#if defined(__AVX512BW__)
-  for (; i + 64 <= n; i += 64) {
-    __m512i va = _mm512_loadu_si512((const void*)(a + i));
-    __m512i vb = _mm512_loadu_si512((const void*)(b + i));
-    count += (int)__builtin_popcountll(
-        (uint64_t)_mm512_cmpeq_epi8_mask(va, vb));
-  }
-#endif
-#if defined(__AVX2__)
-  for (; i + 32 <= n; i += 32) {
-    __m256i va = _mm256_loadu_si256((const __m256i*)(a + i));
-    __m256i vb = _mm256_loadu_si256((const __m256i*)(b + i));
-    __m256i eq = _mm256_cmpeq_epi8(va, vb);
-    count += (int)__builtin_popcount((uint32_t)_mm256_movemask_epi8(eq));
-  }
-#endif
-  for (; i < n; i++)
-    count += (int)(a[i] == b[i]);
-  return count;
+  return static_cast<int>(Runtime::countEqualBytes(
+      a, b, static_cast<size_t>(n)));
 }
 
 // Count registers where c1[i] > c2[i] and c1[i] < c2[i] in one pass.
@@ -63,40 +49,10 @@ static inline void setsketch_count_greater_less(const uint8_t* __restrict__ a,
                                                  int n,
                                                  int& n_greater,
                                                  int& n_less) {
-  int g = 0, l = 0, i = 0;
-#if defined(__AVX512BW__)
-  for (; i + 64 <= n; i += 64) {
-    __m512i va = _mm512_loadu_si512((const void*)(a + i));
-    __m512i vb = _mm512_loadu_si512((const void*)(b + i));
-    // unsigned a > b  iff  max(a,b) == a  AND  a != b
-    uint64_t mask_eq = (uint64_t)_mm512_cmpeq_epi8_mask(va, vb);
-    __m512i vmax    = _mm512_max_epu8(va, vb);
-    uint64_t mask_amax = (uint64_t)_mm512_cmpeq_epi8_mask(va, vmax);
-    uint64_t mask_g = mask_amax & ~mask_eq;
-    uint64_t mask_l = (~mask_amax) & ~mask_eq;
-    g += __builtin_popcountll(mask_g);
-    l += __builtin_popcountll(mask_l);
-  }
-#endif
-#if defined(__AVX2__)
-  for (; i + 32 <= n; i += 32) {
-    __m256i va = _mm256_loadu_si256((const __m256i*)(a + i));
-    __m256i vb = _mm256_loadu_si256((const __m256i*)(b + i));
-    __m256i veq = _mm256_cmpeq_epi8(va, vb);
-    __m256i vmax = _mm256_max_epu8(va, vb);
-    __m256i va_is_max = _mm256_cmpeq_epi8(va, vmax);
-    __m256i vg = _mm256_andnot_si256(veq, va_is_max);
-    __m256i vl = _mm256_andnot_si256(veq, _mm256_andnot_si256(va_is_max, _mm256_set1_epi8(-1)));
-    g += __builtin_popcount((uint32_t)_mm256_movemask_epi8(vg));
-    l += __builtin_popcount((uint32_t)_mm256_movemask_epi8(vl));
-  }
-#endif
-  for (; i < n; i++) {
-    if (a[i] > b[i]) g++;
-    else if (a[i] < b[i]) l++;
-  }
-  n_greater = g;
-  n_less    = l;
+  const Runtime::ByteRelations relation = Runtime::countByteRelations(
+      a, b, static_cast<size_t>(n));
+  n_greater = static_cast<int>(relation.greater);
+  n_less = static_cast<int>(relation.less);
 }
 
 static inline double setsketch_sum_max_registers(const uint8_t* __restrict__ c1,
@@ -156,25 +112,106 @@ static inline double setsketch_sum_max_registers(const uint8_t* __restrict__ c1,
   }
   return sum;
 }
+
+static double setsketch_partitioned_cardinality_mle(
+    const std::array<size_t, 64>& histogram,
+    size_t registers,
+    double base,
+    double a,
+    uint32_t q,
+    double harmonic_estimate) {
+  if (registers == 0 || histogram[0] == registers) return 0.0;
+
+  // This implementation partitions each item into exactly one register.  If
+  // lambda=n/m is the Poissonized load and C_k=1-exp(-a*b^-k), then
+  //
+  //   P(R<=k) = exp(-lambda*C_k).
+  //
+  // The old harmonic formula replaces C_k by a*b^-k.  That approximation is
+  // excellent at high ranks but causes a large negative bias in the middle
+  // range after linear counting runs out of empty registers.  Maximize the
+  // exact 64-bin register likelihood instead.  Its log likelihood is concave,
+  // so a bracketed score root is deterministic and numerically safe.
+  // Registers 0..q are finite quantization intervals.  q+1 is the
+  // right-censored saturation state, so C_q is needed for both the final
+  // finite interval and the saturated tail.
+  std::array<double, 63> exceed_probability{};
+  for (uint32_t rank = 0; rank <= q; ++rank) {
+    const double scaled = a * std::pow(base, -static_cast<double>(rank));
+    exceed_probability[rank] = -std::expm1(-scaled);
+  }
+
+  auto score = [&](double lambda) {
+    double value = -static_cast<double>(histogram[0]) *
+        exceed_probability[0];
+    for (uint32_t rank = 1; rank <= q; ++rank) {
+      if (histogram[rank] == 0) continue;
+      const double current = exceed_probability[rank];
+      const double delta = exceed_probability[rank - 1] - current;
+      const double contribution = -current +
+          delta / std::expm1(delta * lambda);
+      value += static_cast<double>(histogram[rank]) * contribution;
+    }
+    if (histogram[q + 1] != 0) {
+      const double tail = exceed_probability[q];
+      value += static_cast<double>(histogram[q + 1]) *
+          tail / std::expm1(tail * lambda);
+    }
+    return value;
+  };
+
+  const double harmonic_load = harmonic_estimate /
+      static_cast<double>(registers);
+  double lower = 0.0;
+  double upper = std::max(1.0, 2.0 * harmonic_load);
+  for (int expansion = 0; expansion < 1024 && score(upper) > 0.0;
+       ++expansion) {
+    if (upper > std::numeric_limits<double>::max() / 2.0)
+      return harmonic_estimate;
+    upper *= 2.0;
+  }
+  if (!(score(upper) <= 0.0)) return harmonic_estimate;
+
+  for (int iteration = 0; iteration < 64; ++iteration) {
+    const double middle = lower + (upper - lower) * 0.5;
+    if (score(middle) > 0.0)
+      lower = middle;
+    else
+      upper = middle;
+  }
+  return static_cast<double>(registers) *
+      (lower + (upper - lower) * 0.5);
+}
 } // namespace
 
 // ── Constructor: precompute threshold + base_inv_pow tables ───────────────────
-SetSketch::SetSketch(int np, double base, double a, int kmerlen, bool track_witnesses)
-    : np_(np), q_(62), base_(base), a_(a),
-      min_reg_(0), value_(0.0), is_calculated_(0), kmerLen_(kmerlen) {
-  assert(np >= 4 && np <= 16);
-  assert(base > 1.0);
-  assert(a > 0.0);
+SetSketch::SetSketch(int np, double base, double a, int kmerlen,
+                     bool track_witnesses, uint64_t seed)
+    : track_witnesses_(track_witnesses), np_(np), q_(62), base_(base), a_(a),
+      min_reg_(0), value_(0.0), is_calculated_(0), kmerLen_(kmerlen),
+      seed_(seed) {
+  if (np < 4 || np > 16)
+    throw std::invalid_argument("SetSketch precision must be in [4, 16]");
+  if (!(base > 1.0) || !std::isfinite(base))
+    throw std::invalid_argument("SetSketch base must be finite and greater than 1");
+  if (!(a > 0.0) || !std::isfinite(a))
+    throw std::invalid_argument("SetSketch a must be finite and positive");
+  if (kmerlen < 1 || kmerlen > 32)
+    throw std::invalid_argument("SetSketch k-mer size must be in [1, 32]");
 
   const uint64_t m = 1ULL << np;
   core_.resize(m, 0);
-  track_witnesses_ = track_witnesses;
   if (track_witnesses_) witnesses_.resize(m, 0);
   shift_ = 64 - np;
   mask_u_ = (shift_ >= 64) ? ~0ULL : (1ULL << shift_) - 1;
 
   const double log_base = std::log(base);
-  factor_ = m * (base - 1.0) / (base * log_base * a);
+  // This implementation uses stochastic averaging: each element enters one
+  // of m prefix-selected registers, so every register sees cardinality n/m.
+  // The original single-register estimator therefore needs a second factor m
+  // to return total cardinality rather than mean load per register.
+  factor_ = static_cast<double>(m) * static_cast<double>(m) *
+      (base - 1.0) / (base * log_base * a);
 
   // base^(-k) table
   for (int k = 0; k < 64; k++)
@@ -192,6 +229,31 @@ SetSketch::SetSketch(int np, double base, double a, int kmerlen, bool track_witn
   // Global lower bound
   count_at_min_ = (uint32_t)m;
   global_thresh_ = thresholds_[0];
+}
+
+SetSketch SetSketch::fromRegisters(
+    uint32_t precision,
+    double base,
+    double a,
+    int kmer_size,
+    uint64_t seed,
+    const std::vector<uint8_t>& registers) {
+  SetSketch result(static_cast<int>(precision), base, a, kmer_size,
+                   false, seed);
+  if (registers.size() != result.core_.size())
+    throw std::invalid_argument(
+        "SetSketch::fromRegisters register count does not match precision");
+  if (std::any_of(registers.begin(), registers.end(),
+                  [&result](uint8_t rank) {
+                    return rank > result.q_ + 1;
+                  }))
+    throw std::invalid_argument(
+        "SetSketch::fromRegisters found an invalid register rank");
+  result.core_ = registers;
+  result.value_ = 0.0;
+  result.is_calculated_ = 0;
+  result.recompute_min();
+  return result;
 }
 
 // ── Recompute min_reg_ by scanning all registers ─────────────────────────────
@@ -217,7 +279,7 @@ void SetSketch::add_slow(uint64_t hashval) {
   if (rest < thresholds_[cur]) return;
 
   uint8_t k = cur + 1;
-  while (k < q_ && rest >= thresholds_[k]) ++k;
+  while (k <= q_ && rest >= thresholds_[k]) ++k;
   core_[index] = k;
   if (track_witnesses_) witnesses_[index] = hashval;
   is_calculated_ = 0;
@@ -272,7 +334,12 @@ void SetSketch::ensure_cardinality() const {
   for (size_t i = 0; i < sz; i++) sum += tbl[c[i]];
 #endif
 
-  value_ = (sum > 1e-300) ? factor_ / sum : 0.0;
+  const double harmonic_estimate =
+      (sum > 1e-300) ? factor_ / sum : 0.0;
+  std::array<size_t, 64> histogram{};
+  for (const uint8_t rank : core_) ++histogram[rank];
+  value_ = setsketch_partitioned_cardinality_mle(
+      histogram, sz, base_, a_, q_, harmonic_estimate);
   is_calculated_ = 1;
 }
 
@@ -283,16 +350,25 @@ double SetSketch::cardinality() const {
 
 // ── union_size: inline max + SIMD gather, no allocation ───────────────────────
 double SetSketch::union_size(const SetSketch& other) const {
+  metadata().requireSameFamily(other.metadata(), "SetSketch::union_size");
   const int sz = static_cast<int>(core_.size());
   const double* __restrict__ tbl = base_inv_pow_;
   const uint8_t* __restrict__ c1 = core_.data();
   const uint8_t* __restrict__ c2 = other.core_.data();
   const double sum = setsketch_sum_max_registers(c1, c2, sz, tbl);
 
-  return (sum > 1e-300) ? factor_ / sum : 0.0;
+  const double harmonic_estimate =
+      (sum > 1e-300) ? factor_ / sum : 0.0;
+  std::array<size_t, 64> histogram{};
+  for (int i = 0; i < sz; ++i)
+    ++histogram[std::max(c1[i], c2[i])];
+  return setsketch_partitioned_cardinality_mle(
+      histogram, static_cast<size_t>(sz), base_, a_, q_, harmonic_estimate);
 }
 
 double SetSketch::jaccard_index_inclexcl(const SetSketch& other) const {
+  metadata().requireSameFamily(other.metadata(),
+                               "SetSketch::jaccard_index_inclexcl");
   double us = union_size(other);
   if (us <= 0.0) return 0.0;
   double c1 = cardinality();
@@ -497,12 +573,10 @@ static double setsketch_mle_kernel(const uint8_t* __restrict__ c1,
 }
 
 double SetSketch::jaccard_index_mle(const SetSketch& other) const {
+  metadata().requireSameFamily(other.metadata(),
+                               "SetSketch::jaccard_index_mle");
   const int m = static_cast<int>(core_.size());
-  if (m <= 0 || (int)other.core_.size() != m) return 0.0;
-  if (np_ != other.np_ || base_ != other.base_ || a_ != other.a_) {
-    // Incompatible sketches → fall back to inclusion-exclusion.
-    return jaccard_index_inclexcl(other);
-  }
+  if (m <= 0) return 0.0;
 
   const double c1 = cardinality();
   const double c2 = other.cardinality();
@@ -522,19 +596,43 @@ double SetSketch::jaccardFromCoresMLE(
                               card1, card2, base, q);
 }
 
+SetSketch SetSketch::project(uint32_t target_precision) const {
+  if (target_precision == np_) return *this;
+  if (target_precision < 4 || target_precision > np_) {
+    throw std::invalid_argument(
+        "SetSketch::project target precision must be in [4, source precision]");
+  }
+  throw std::logic_error(
+      "SetSketch native precision folding is not distribution-proven; "
+      "store explicit refinement layers before requesting a lower precision");
+}
+
 SetSketch SetSketch::merge(const SetSketch& other) const {
-  assert(np_ == other.np_ && base_ == other.base_ && a_ == other.a_);
-  SetSketch ret(np_, base_, a_);
-  for (size_t i = 0; i < core_.size(); ++i)
+  metadata().requireSameFamily(other.metadata(), "SetSketch::merge");
+  const bool keep_witnesses = track_witnesses_ && other.track_witnesses_;
+  SetSketch ret(np_, base_, a_, kmerLen_, keep_witnesses, seed_);
+  for (size_t i = 0; i < core_.size(); ++i) {
     ret.core_[i] = std::max(core_[i], other.core_[i]);
+    if (keep_witnesses) {
+      if (core_[i] > other.core_[i])
+        ret.witnesses_[i] = witnesses_[i];
+      else if (core_[i] < other.core_[i])
+        ret.witnesses_[i] = other.witnesses_[i];
+      else
+        ret.witnesses_[i] = std::max(
+            witnesses_[i], other.witnesses_[i]);
+    }
+  }
   ret.is_calculated_ = 0;
   ret.recompute_min();
   return ret;
 }
 
 double SetSketch::equalRegisterFraction(const SetSketch& other) const {
+  metadata().requireSameFamily(other.metadata(),
+                               "SetSketch::equalRegisterFraction");
   const int n = static_cast<int>(core_.size());
-  if (n == 0 || n != static_cast<int>(other.core_.size())) return 0.0;
+  if (n == 0) return 0.0;
   return (double)setsketch_count_equal_regs(core_.data(), other.core_.data(), n) / n;
 }
 
@@ -555,33 +653,19 @@ void SetSketch::printSketch() {
 }
 
 // ── update(seq): rolling k-mer + SIMD hash + INLINE add with global filter ───
-static const uint8_t ENCODE_LUT[256] = {
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,  0,255,  1,255,255,255,  2,255,255,255,255,255,255,255,255,
-    255,255,255,255,  3,255,255,255,255,255,255,255,255,255,255,255,
-    255,  0,255,  1,255,255,255,  2,255,255,255,255,255,255,255,255,
-    255,255,255,255,  3,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-};
-#define ENC(c)   (ENCODE_LUT[(uint8_t)(c)])
-#define COMP(e)  ((uint8_t)((e) <= 3 ? 3 - (e) : 255))
-#define VALID(e) ((e) <= 3)
+#define ENC(c)   (Rank::encodeBase((uint8_t)(c)))
+#define COMP(e)  (Rank::complementBase((e)))
+#define VALID(e) (Rank::validBase((e)))
 
 void SetSketch::update(char* seq) {
+  if (seq == nullptr)
+    throw std::invalid_argument("SetSketch::update sequence must not be null");
   update(seq, strlen(seq));
 }
 
 void SetSketch::update(char* seq, size_t len) {
+  if (seq == nullptr && len != 0)
+    throw std::invalid_argument("SetSketch::update sequence must not be null");
   const uint64_t LENGTH = static_cast<uint64_t>(len);
   const int KMERLEN = kmerLen_;
   const uint64_t fwd_mask = (KMERLEN >= 32) ? UINT64_MAX : ((1ULL << (2 * KMERLEN)) - 1);
@@ -621,13 +705,16 @@ void SetSketch::update(char* seq, size_t len) {
       lane_valid[j] = (invalid_count == 0);
       resv[j] = lane_valid[j] ? ((fwd_enc <= rev_enc) ? fwd_enc : rev_enc) : 0;
 
-      uint8_t ef_out = ENC(seq[i + j]);
-      uint8_t ef_in  = ENC(seq[i + j + KMERLEN]);
-      if (!VALID(ef_out)) invalid_count--;
-      if (!VALID(ef_in))  invalid_count++;
-      fwd_enc = ((fwd_enc << 2) | (VALID(ef_in) ? (ef_in & 3u) : 0u)) & fwd_mask;
-      uint8_t er_in = VALID(ef_in) ? (COMP(ef_in) & 3u) : 0u;
-      rev_enc = (rev_enc >> 2) | ((uint64_t)er_in << (2 * (KMERLEN - 1)));
+      const uint64_t position = i + static_cast<uint64_t>(j);
+      if (position + 1 < total_kmers) {
+        uint8_t ef_out = ENC(seq[position]);
+        uint8_t ef_in  = ENC(seq[position + KMERLEN]);
+        if (!VALID(ef_out)) invalid_count--;
+        if (!VALID(ef_in))  invalid_count++;
+        fwd_enc = ((fwd_enc << 2) | (VALID(ef_in) ? (ef_in & 3u) : 0u)) & fwd_mask;
+        uint8_t er_in = VALID(ef_in) ? (COMP(ef_in) & 3u) : 0u;
+        rev_enc = (rev_enc >> 2) | ((uint64_t)er_in << (2 * (KMERLEN - 1)));
+      }
     }
 
     // ── SIMD hash (identical to HLL) ──────────────────────────────────────
@@ -635,7 +722,7 @@ void SetSketch::update(char* seq, size_t len) {
 #if defined(__AVX512F__) && defined(__AVX512DQ__)
     {
       __m512i vb = _mm512_loadu_si512((void*)resv);
-      __m512i vseed = _mm512_set1_epi64(42);
+      __m512i vseed = _mm512_set1_epi64((int64_t)seed_);
       __m512i va = _mm512_xor_epi64(vb, vseed);
       __m512i vtmp = _mm512_srli_epi64(va, 33);
       vb = _mm512_xor_epi64(va, vtmp);
@@ -652,7 +739,7 @@ void SetSketch::update(char* seq, size_t len) {
       // murmur3_fmix across 8 lanes using two 256-bit registers (4 lanes each)
       const __m256i C1   = _mm256_set1_epi64x(0xff51afd7ed558ccdLL);
       const __m256i C2   = _mm256_set1_epi64x(0xc4ceb9fe1a85ec53LL);
-      const __m256i SEED = _mm256_set1_epi64x(42LL);
+      const __m256i SEED = _mm256_set1_epi64x((long long)seed_);
       __m256i vb0 = _mm256_loadu_si256((const __m256i*)resv);
       __m256i vb1 = _mm256_loadu_si256((const __m256i*)(resv + 4));
       // lanes 0-3
@@ -680,7 +767,7 @@ void SetSketch::update(char* seq, size_t len) {
     }
 #else
     for (int j = 0; j < lanes; j++)
-      hashvalv[j] = mc::murmur3_fmix(resv[j], 42);
+      hashvalv[j] = Rank::RankStream::fmix64(resv[j], seed_);
 #endif
 
     // ── SIMD index/rest extraction + global filter ────────────────────────
@@ -707,7 +794,7 @@ void SetSketch::update(char* seq, size_t len) {
           if (rest < thresh[cur]) continue;
 
           uint8_t k = cur + 1;
-          while (k < qmax && rest >= thresh[k]) ++k;
+          while (k <= qmax && rest >= thresh[k]) ++k;
           core[idx] = k;
           if (wit) wit[idx] = hashvalv[j];
           loc_is_calc = 0;
@@ -752,7 +839,7 @@ void SetSketch::update(char* seq, size_t len) {
           if (rest < thresh[cur]) continue;
 
           uint8_t k = cur + 1;
-          while (k < qmax && rest >= thresh[k]) ++k;
+          while (k <= qmax && rest >= thresh[k]) ++k;
           core[idx] = k;
           if (wit) wit[idx] = hashvalv[j];
           loc_is_calc = 0;
@@ -768,7 +855,7 @@ void SetSketch::update(char* seq, size_t len) {
     // Scalar path with global filter
     for (int j = 0; j < lanes; j++) {
       if (!lane_valid[j]) continue;
-      uint64_t rest = hashvalv[j] & mask;
+      const uint64_t rest = hashvalv[j] & mask;
       if (rest < loc_global_thresh) continue;
 
       uint32_t idx = (uint32_t)(hashvalv[j] >> shift);
@@ -776,7 +863,7 @@ void SetSketch::update(char* seq, size_t len) {
       if (rest < thresh[cur]) continue;
 
       uint8_t k = cur + 1;
-      while (k < qmax && rest >= thresh[k]) ++k;
+      while (k <= qmax && rest >= thresh[k]) ++k;
       core[idx] = k;
       if (wit) wit[idx] = hashvalv[j];
       loc_is_calc = 0;
@@ -793,14 +880,14 @@ void SetSketch::update(char* seq, size_t len) {
   for (uint64_t i = N; i < total_kmers; ++i) {
     if (invalid_count == 0) {
       uint64_t res = (fwd_enc <= rev_enc) ? fwd_enc : rev_enc;
-      uint64_t hashval = mc::murmur3_fmix(res, 42);
-      uint64_t rest = hashval & mask;
+      uint64_t hashval = Rank::RankStream::fmix64(res, seed_);
+      const uint32_t idx = (uint32_t)(hashval >> shift);
+      const uint64_t rest = hashval & mask;
       if (rest >= loc_global_thresh) {
-        uint32_t idx = (uint32_t)(hashval >> shift);
         uint8_t cur = core[idx];
         if (rest >= thresh[cur]) {
           uint8_t k = cur + 1;
-          while (k < qmax && rest >= thresh[k]) ++k;
+          while (k <= qmax && rest >= thresh[k]) ++k;
           core[idx] = k;
           if (wit) wit[idx] = hashval;
           loc_is_calc = 0;
@@ -811,13 +898,15 @@ void SetSketch::update(char* seq, size_t len) {
         }
       }
     }
-    uint8_t ef_out = ENC(seq[i]);
-    uint8_t ef_in  = ENC(seq[i + KMERLEN]);
-    if (!VALID(ef_out)) invalid_count--;
-    if (!VALID(ef_in))  invalid_count++;
-    fwd_enc = ((fwd_enc << 2) | (VALID(ef_in) ? (ef_in & 3u) : 0u)) & fwd_mask;
-    uint8_t er_in = VALID(ef_in) ? (COMP(ef_in) & 3u) : 0u;
-    rev_enc = (rev_enc >> 2) | ((uint64_t)er_in << (2 * (KMERLEN - 1)));
+    if (i + 1 < total_kmers) {
+      uint8_t ef_out = ENC(seq[i]);
+      uint8_t ef_in  = ENC(seq[i + KMERLEN]);
+      if (!VALID(ef_out)) invalid_count--;
+      if (!VALID(ef_in))  invalid_count++;
+      fwd_enc = ((fwd_enc << 2) | (VALID(ef_in) ? (ef_in & 3u) : 0u)) & fwd_mask;
+      uint8_t er_in = VALID(ef_in) ? (COMP(ef_in) & 3u) : 0u;
+      rev_enc = (rev_enc >> 2) | ((uint64_t)er_in << (2 * (KMERLEN - 1)));
+    }
   }
 
   // Write back locals. If min tracking was exhausted, rebuild once at end.
@@ -836,6 +925,7 @@ void SetSketch::update(char* seq, size_t len) {
 // C(this ⊆ other) = (|A| + |B| - |AUB|) / |A|
 double SetSketch::containment(const SetSketch& other) const
 {
+  metadata().requireSameFamily(other.metadata(), "SetSketch::containment");
   const double card_a = cardinality();
   if (card_a <= 0.0) return 0.0;
   const double card_b = other.cardinality();
@@ -852,6 +942,21 @@ double SetSketch::ani(const SetSketch& other, int kmer_size) const
   if (j <= 0.0) return 0.0;
   if (j >= 1.0) return 1.0;
   return std::pow(2.0 * j / (1.0 + j), 1.0 / static_cast<double>(kmer_size));
+}
+
+Rank::RankMetadata SetSketch::metadata() const {
+  Rank::RankMetadata meta;
+  meta.backend = Rank::Backend::SetSketch;
+  meta.hash_profile = Rank::HashProfile::Murmur3Fmix64V1;
+  meta.weight_semantics = Rank::WeightSemantics::UnweightedSet;
+  meta.resolution_kind = Rank::ResolutionKind::RegisterPrecisionBits;
+  meta.fingerprint_bits = 64;
+  meta.kmer_size = static_cast<uint16_t>(kmerLen_);
+  meta.resolution = np_;
+  meta.seed = seed_;
+  meta.parameter_fingerprint =
+      Rank::parameterFingerprint(base_, a_, q_);
+  return meta;
 }
 
 // ── inverted index: block key extraction ─────────────────────────────────────

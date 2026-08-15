@@ -1,4 +1,4 @@
-#include <omp.h>
+#include "api/OpenMPCompat.h"
 #include "Sketch.h"
 #include <cstdio>
 #include <math.h>
@@ -21,6 +21,8 @@
 #include <unordered_map>
 #include <unordered_set>
 #include "common.h"
+#include "rank/CanonicalKmer.h"
+#include "rank/RankStream.h"
 #define COMPONENT_SZ 7
 //#define MIN_SUBCTX_DIM_SMP_SZ 4096
 #define _64MASK 0xffffffffffffffffLLU
@@ -399,18 +401,6 @@ namespace Sketch{
 	//}
 	//
 
-	const int Kssd::BaseMap[128] =
-	{
-		-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-		-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-		-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-		-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-		-1, 0, -1, 1, -1, -1, -1, 2, -1, -1, -1, -1, -1, -1, -1, -1,
-		-1, -1, -1, -1, 3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-		-1, 0, -1, 1, -1, -1, -1, 2, -1, -1, -1, -1, -1, -1, -1, -1,
-		-1, -1, -1, -1, 3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1
-	};
-
 	//kssd_parameter_t Kssd::initParameter(int half_k, int half_subk, int drlevel, int * shuffled_dim){
 	//		// init kssd parameters
 	//		if(half_subk - drlevel < 3){
@@ -550,11 +540,9 @@ namespace Sketch{
 		int half_k = shuffled_info->dim_shuffle_stat.k;
 		int half_subk = shuffled_info->dim_shuffle_stat.subk;
 		int drlevel = shuffled_info->dim_shuffle_stat.drlevel;
-		//std::unique_ptr<int[]> shuffled_dim_ptr(new int[1 << (4 * half_subk)]);
-		int*  shuffled_dim_ptr = new int[1 << (4 * half_subk)];
-		std::copy(shuffled_info->shuffled_dim, shuffled_info->shuffled_dim + (1 << (4 * half_subk)), shuffled_dim_ptr);
-		//std::copy(shuffled_info->shuffled_dim, shuffled_info->shuffled_dim + (1 << (4 * half_subk)), shuffled_dim_ptr.get());
-		//return std::make_tuple(half_k, half_subk, drlevel, std::move(shuffled_dim_ptr));
+		// Transfer ownership of the malloc-allocated table to kssd_parameter_t.
+		int* shuffled_dim_ptr = shuffled_info->shuffled_dim;
+		std::free(shuffled_info);
 		return std::make_tuple(half_k, half_subk, drlevel, shuffled_dim_ptr);
 
 	}
@@ -568,8 +556,8 @@ namespace Sketch{
 		}
 		else//not the first update the hashList, need merge.
 		{
-			for(int i = 0; i < hashList.size(); i++)
-				hashSet.insert(hashList[i]);
+			for (const uint32_t hash : hashList)
+				hashSet.insert(hash);
 			hashList.clear();
 			for(auto &x : hashSet)
 			{
@@ -596,8 +584,8 @@ namespace Sketch{
 		}
 		else//not the first update the hashList, need merge.
 		{
-			for(int i = 0; i < hashList64.size(); i++)
-				hashSet64.insert(hashList64[i]);
+			for (const uint64_t hash : hashList64)
+				hashSet64.insert(hash);
 			hashList64.clear();
 			for(auto &x : hashSet64)
 			{
@@ -612,26 +600,33 @@ namespace Sketch{
 		std::sort(hashList64.begin(), hashList64.end());
 	}
 
-
-	int Kssd::get_half_k(){
+	int Kssd::get_half_k() const{
 		return half_k_;
 	}
 
-	int Kssd::get_half_subk(){
+	int Kssd::get_half_subk() const{
 		return half_subk_;
 	}
-	int Kssd::get_drlevel(){
+	int Kssd::get_drlevel() const{
 		return drlevel_;
 	}
 
 	void Kssd::loadHashes64(std::vector<uint64_t> hashArr){
+		if (sealed_)
+			throw std::logic_error("Kssd::loadHashes64 called after finalize");
 		hashList64 = hashArr;
 	}
 	void Kssd::loadHashes(std::vector<uint32_t> hashArr){
+		if (sealed_)
+			throw std::logic_error("Kssd::loadHashes called after finalize");
 		hashList = hashArr;
 	}
 
 	void Kssd::update(const char* seq){
+		if (sealed_)
+			throw std::logic_error("Kssd::update called after finalize");
+		if (seq == nullptr)
+			throw std::invalid_argument("Kssd::update sequence must not be null");
 		const int length = strlen(seq);
 		if (length < kmer_size) return;
 
@@ -652,13 +647,13 @@ namespace Sketch{
 			if (hashSet.capacity() < static_cast<size_t>(estimated))
 				hashSet.reserve(estimated);
 		}
-
 		uint64_t tuple = 0LLU, rvs_tuple = 0LLU;
 		int base = 1;
 
 		for (int i = 0; i < length; i++) {
-			const int basenum = BaseMap[(unsigned char)seq[i]];
-			if (__builtin_expect(basenum != -1, 1)) {
+			const uint8_t basenum = Rank::encodeBase(
+				static_cast<unsigned char>(seq[i]));
+			if (__builtin_expect(Rank::validBase(basenum), 1)) {
 				tuple     = ((tuple << 2) | basenum) & tupmask;
 				rvs_tuple = (rvs_tuple >> 2) + (((uint64_t)basenum ^ 3LLU) << rev_add_move);
 				base++;
@@ -667,8 +662,9 @@ namespace Sketch{
 					const uint64_t uni_tuple = (tuple < rvs_tuple) ? tuple : rvs_tuple;
 					const uint32_t dim_id    = static_cast<uint32_t>((uni_tuple & domask) >> dom_shift);
 
+
 				auto it = shuffled_map_->find(dim_id);
-				if (it == shuffled_map_->end()) continue;
+				if (it == shuffled_map_->end() || it->second >= dim_end) continue;
 
 					const uint64_t dr_tuple =
 						(((uni_tuple & undomask0) |
@@ -698,6 +694,7 @@ namespace Sketch{
 	// and free any residual hashSet allocation.  For 200k bacterial sketches
 	// this typically cuts peak RSS roughly in half during the dist phase.
 	void Kssd::finalize() {
+		if (sealed_) return;
 		if (use64) {
 			hashList64.shrink_to_fit();
 			phmap::flat_hash_set<uint64_t>().swap(hashSet64);
@@ -705,6 +702,87 @@ namespace Sketch{
 			hashList.shrink_to_fit();
 			phmap::flat_hash_set<uint32_t>().swap(hashSet);
 		}
+		sealed_ = true;
+	}
+
+	double Kssd::admissionProbability() const {
+		const double admitted = static_cast<double>(dim_end - dim_start);
+		const double dimensions = static_cast<double>(
+			UINT64_C(1) << (4 * half_subk_));
+		return admitted / dimensions;
+	}
+
+	Rank::RankMetadata Kssd::metadata() const {
+		Rank::RankMetadata meta;
+		meta.backend = Rank::Backend::KSSD;
+		meta.hash_profile = Rank::HashProfile::Murmur3Fmix64V1;
+		meta.weight_semantics = Rank::WeightSemantics::UnweightedSet;
+		meta.resolution_kind = Rank::ResolutionKind::KssdDrLevel;
+		meta.fingerprint_bits = 64;
+		meta.kmer_size = static_cast<uint16_t>(kmer_size);
+		meta.resolution = static_cast<uint32_t>(drlevel_);
+		meta.seed = seed_;
+		const uint64_t shape =
+			(static_cast<uint64_t>(half_k_) << 32) |
+			static_cast<uint32_t>(half_subk_);
+		meta.parameter_fingerprint = Rank::RankStream::fmix64(
+			params_ptr_->shuffle_fingerprint ^ shape,
+			UINT64_C(0x6b7373642d72736b));
+		return meta;
+	}
+
+	Kssd Kssd::project(int target_drlevel) const {
+		if (target_drlevel < drlevel_)
+			throw std::invalid_argument(
+				"Kssd::project cannot reconstruct a denser drlevel");
+		if (half_subk_ - target_drlevel < 3)
+			throw std::invalid_argument(
+				"Kssd::project requires half_subk - target_drlevel >= 3");
+
+		const bool same_resolution = target_drlevel == drlevel_;
+		Kssd projected(params_ptr_, seed_);
+		projected.drlevel_ = target_drlevel;
+		projected.dim_end = 1 << (4 * (half_subk_ - target_drlevel));
+		projected.use64 = (half_k_ - target_drlevel) > 8;
+
+		if (same_resolution) {
+			projected.hashList = hashList;
+			projected.hashList64 = hashList64;
+			return projected;
+		}
+
+		const int source_rank_bits = 4 * (half_subk_ - drlevel_);
+		const int target_rank_bits = 4 * (half_subk_ - target_drlevel);
+		const uint64_t source_rank_mask =
+			(UINT64_C(1) << source_rank_bits) - 1;
+		const uint64_t target_rank_limit =
+			UINT64_C(1) << target_rank_bits;
+
+		auto append_projected = [&](uint64_t reduced_tuple) {
+			const uint64_t dimension_rank =
+				reduced_tuple & source_rank_mask;
+			if (dimension_rank >= target_rank_limit) return;
+			const uint64_t outer_context =
+				reduced_tuple >> source_rank_bits;
+			const uint64_t target_tuple =
+				(outer_context << target_rank_bits) | dimension_rank;
+			if (projected.use64)
+				projected.hashList64.push_back(target_tuple);
+			else
+				projected.hashList.push_back(static_cast<uint32_t>(target_tuple));
+		};
+
+		if (use64) {
+			if (projected.use64) projected.hashList64.reserve(hashList64.size());
+			else projected.hashList.reserve(hashList64.size());
+			for (const uint64_t reduced_tuple : hashList64)
+				append_projected(reduced_tuple);
+		} else {
+			projected.hashList.reserve(hashList.size());
+			for (const uint32_t reduced_tuple : hashList)
+				append_projected(reduced_tuple);
+		}
+		return projected;
 	}
 
 	vector<uint32_t> Kssd::storeHashes(){
@@ -906,6 +984,23 @@ namespace Sketch{
 
 	double Kssd::jaccard(Kssd* kssd)
 	{
+		if (kssd == nullptr)
+			throw std::invalid_argument("Kssd::jaccard sketch must not be null");
+		if (half_k_ != kssd->half_k_ ||
+		    half_subk_ != kssd->half_subk_ ||
+		    params_ptr_->shuffle_fingerprint !=
+		        kssd->params_ptr_->shuffle_fingerprint)
+			throw std::invalid_argument(
+				"Kssd::jaccard: incompatible KSSD parameters or shuffle table");
+		if (drlevel_ != kssd->drlevel_) {
+			const int common_drlevel = std::max(drlevel_, kssd->drlevel_);
+			Kssd left = project(common_drlevel);
+			Kssd right = kssd->project(common_drlevel);
+			return left.jaccard(&right);
+		}
+		if (use64 != kssd->use64)
+			throw std::logic_error(
+				"Kssd::jaccard: equal drlevel selected different tuple widths");
 		if (use64) {
 			const auto& a = hashList64;
 			const auto& b = kssd->hashList64;
@@ -1088,10 +1183,11 @@ namespace Sketch{
 			//vector<uint64_t> sketcharr64 = sketches[i]->storeHashes64();
 			if(i % progress_bar_size == 0) cerr << "=====finish: " << i << endl;
 			int tid = omp_get_thread_num();
-			fprintf(fpIndexArr[tid], "%s\t%s\n", file_name, dist_file_list[tid].c_str());
+			fprintf(fpIndexArr[tid], "%s\t%s\n", file_name.c_str(),
+			        dist_file_list[tid].c_str());
 			memset(intersectionArr[tid], 0, numRef * sizeof(int));
 			if(use64){
-				for(size_t j = 0; j < sketcharr.size(); j++){
+				for(size_t j = 0; j < sketches[i].hashList64.size(); j++){
 					uint64_t hash64 = sketches[i].hashList64[j];
 					//if(!(dict[hash64/64] & (0x8000000000000000LLU >> (hash64 % 64))))	continue;
 					if(hash_map_arr.count(hash64) == 0) continue;

@@ -24,7 +24,7 @@
  */
 
 #include "fastkmv.h"
-#include "hash_int.h"
+#include "rank/CanonicalKmer.h"
 #include <cmath>
 
 // Default: single fmix (faster). Define FASTKMV_DOUBLE_FMUX for two rounds (legacy).
@@ -43,6 +43,7 @@
 #include <climits>
 #include <limits>
 #include <memory>
+#include <stdexcept>
 
 using namespace Sketch;
 
@@ -53,27 +54,9 @@ using namespace Sketch;
 //   canonical = min(fwd_enc, rev_enc)  on the packed 2-bit integer.
 // ═══════════════════════════════════════════════════════════════════════════
 
-static const uint8_t FKMV_ENC_LUT[256] = {
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,  0,255,  1,255,255,255,  2,255,255,255,255,255,255,255,255,
-    255,255,255,255,  3,255,255,255,255,255,255,255,255,255,255,255,
-    255,  0,255,  1,255,255,255,  2,255,255,255,255,255,255,255,255,
-    255,255,255,255,  3,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-};
-#define FKMV_ENC(c)   (FKMV_ENC_LUT[(uint8_t)(c)])
-#define FKMV_COMP(e)  ((uint8_t)((e) <= 3 ? 3-(e) : 255))
-#define FKMV_VALID(e) ((e) <= 3)
+#define FKMV_ENC(c)   (Rank::encodeBase((uint8_t)(c)))
+#define FKMV_COMP(e)  (Rank::complementBase((e)))
+#define FKMV_VALID(e) (Rank::validBase((e)))
 
 #ifdef __AVX2__
 static inline __m256i avx2_mullo_epi64(__m256i a, __m256i b) {
@@ -96,12 +79,55 @@ FastKMV::FastKMV(uint32_t k, int kmer_size, uint64_t seed)
       vals_(new uint64_t[k * 2]),
       size_(0),
       threshold_(UINT64_MAX),
-      sorted_(false)
+      sorted_(false),
+      sealed_(false)
 {
-    assert(k > 1);
-    assert(kmer_size >= 1 && kmer_size <= 32);
+    if (k <= 1) {
+        throw std::invalid_argument("FastKMV K must be greater than 1");
+    }
+    if (kmer_size < 1 || kmer_size > 32) {
+        throw std::invalid_argument("FastKMV k-mer size must be in [1, 32]");
+    }
     // Warmup: append-only until buf full → compactify (see insertKey).
     // Sentinels UINT64_MAX are applied in compactify / merge, not here.
+}
+
+FastKMV FastKMV::fromRegisters(
+    uint32_t k,
+    int kmer_size,
+    uint64_t seed,
+    const std::vector<uint64_t>& registers) {
+    FastKMV result(k, kmer_size, seed);
+    if (registers.size() > k)
+        throw std::invalid_argument(
+            "FastKMV::fromRegisters state exceeds configured K");
+    for (size_t index = 0; index < registers.size(); ++index) {
+        if (registers[index] > KEY_MAX)
+            throw std::invalid_argument(
+                "FastKMV::fromRegisters found a key wider than 53 bits");
+        if (index != 0 && registers[index - 1] >= registers[index])
+            throw std::invalid_argument(
+                "FastKMV::fromRegisters requires sorted distinct keys");
+    }
+    result.size_ = static_cast<uint32_t>(registers.size());
+    std::copy(registers.begin(), registers.end(), result.vals_.get());
+    if (result.size_ < k)
+        std::fill(result.vals_.get() + result.size_,
+                  result.vals_.get() + k, UINT64_MAX);
+    result.threshold_ = result.size_ == k
+        ? result.vals_[k - 1] : UINT64_MAX;
+    result.sorted_ = true;
+    return result;
+}
+
+Rank::HashProfile FastKMV::runtimeHashProfile() noexcept {
+#ifdef FASTKMV_NO_FMUX
+    return Rank::HashProfile::CanonicalBits;
+#elif defined(FASTKMV_DOUBLE_FMUX)
+    return Rank::HashProfile::Murmur3Fmix64Twice;
+#else
+    return Rank::HashProfile::Murmur3Fmix64V1;
+#endif
 }
 
 FastKMV::FastKMV(const FastKMV& o)
@@ -110,7 +136,8 @@ FastKMV::FastKMV(const FastKMV& o)
       vals_(new uint64_t[o.buf_cap_]),
       size_(o.size_),
       threshold_(o.threshold_),
-      sorted_(o.sorted_)
+      sorted_(o.sorted_),
+      sealed_(o.sealed_)
 {
     std::copy(o.vals_.get(), o.vals_.get() + size_, vals_.get());
     if (sorted_ && size_ < k_)
@@ -126,6 +153,7 @@ FastKMV& FastKMV::operator=(FastKMV other) {
     std::swap(size_,      other.size_);
     std::swap(threshold_, other.threshold_);
     std::swap(sorted_,    other.sorted_);
+    std::swap(sealed_,    other.sealed_);
     return *this;
 }
 
@@ -203,7 +231,7 @@ void FastKMV::addHash(uint64_t h) {
 #ifdef FASTKMV_NO_FMUX
     insertKey(h >> 11);
 #else
-    uint64_t h1 = mc::murmur3_fmix(h, seed_);
+    uint64_t h1 = Rank::RankStream::fmix64(h, seed_);
     insertKey(h1 >> 11);
 #endif
 }
@@ -213,10 +241,17 @@ void FastKMV::addHash(uint64_t h) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 void FastKMV::finalize() {
-    // No-op: the lex-rolling path allocates no per-sequence buffer.
+    ensureSorted();
+    sealed_ = true;
 }
 
 void FastKMV::update(const char* seq, uint64_t length) {
+    if (sealed_) {
+        throw std::logic_error("FastKMV::update called after finalize");
+    }
+    if (seq == nullptr && length != 0) {
+        throw std::invalid_argument("FastKMV::update sequence must not be null");
+    }
     const int K = kmer_size_;
     if (length < static_cast<uint64_t>(K)) return;
 
@@ -344,7 +379,7 @@ void FastKMV::update(const char* seq, uint64_t length) {
             vt = _mm256_srli_epi64(va, 33);
             vb = _mm256_xor_si256(va, vt);
 
-#ifndef PMH_FAST_HASH
+#if FASTKMV_FMUX_ROUNDS >= 2
             va = _mm256_xor_si256(vb, vs);
             vt = _mm256_srli_epi64(va, 33);
             vb = _mm256_xor_si256(va, vt);
@@ -382,9 +417,9 @@ void FastKMV::update(const char* seq, uint64_t length) {
 #ifdef FASTKMV_NO_FMUX
             uint64_t key = resv[j] >> 11;
 #else
-            uint64_t h0 = mc::murmur3_fmix(resv[j], loc_seed);
+            uint64_t h0 = Rank::RankStream::fmix64(resv[j], loc_seed);
 #if FASTKMV_FMUX_ROUNDS >= 2
-            uint64_t h1 = mc::murmur3_fmix(h0, loc_seed);
+            uint64_t h1 = Rank::RankStream::fmix64(h0, loc_seed);
 #else
             uint64_t h1 = h0;
 #endif
@@ -403,9 +438,9 @@ void FastKMV::update(const char* seq, uint64_t length) {
 #ifdef FASTKMV_NO_FMUX
             uint64_t key = canon >> 11;
 #else
-            uint64_t h0 = mc::murmur3_fmix(canon, loc_seed);
+            uint64_t h0 = Rank::RankStream::fmix64(canon, loc_seed);
 #if FASTKMV_FMUX_ROUNDS >= 2
-            uint64_t h1 = mc::murmur3_fmix(h0, loc_seed);
+            uint64_t h1 = Rank::RankStream::fmix64(h0, loc_seed);
 #else
             uint64_t h1 = h0;
 #endif
@@ -453,25 +488,29 @@ static uint64_t fkmv_scalar_intersect(const uint64_t* list1, uint64_t size1,
 }
 
 double FastKMV::jaccard(const FastKMV& other, double min_jaccard) const {
-    assert(k_ == other.k_);
+    metadata().requireSameFamily(other.metadata(), "FastKMV::jaccard",
+                                 /*allow_resolution_change=*/true);
     ensureSorted();
     other.ensureSorted();
 
     const uint64_t* __restrict__ a = vals_.get();
     const uint64_t* __restrict__ b = other.vals_.get();
-    const uint64_t sa = size_;
-    const uint64_t sb = other.size_;
-    const uint64_t k  = k_;
+    const uint64_t k  = std::min<uint32_t>(k_, other.k_);
+    const uint64_t sa = std::min<uint64_t>(size_, k);
+    const uint64_t sb = std::min<uint64_t>(other.size_, k);
 
     if (sa == 0 || sb == 0) return 0.0;
 
     // Jaccard-threshold prefilter (active iff min_jaccard > 0):
-    // KMV denominator d ≤ k, so to reach J ≥ min_jaccard the number of
-    // matching hashes must satisfy common ≥ ceil(min_jaccard * k).  When
-    // the achievable common falls below this bound we abort and return
-    // 0.0, which is strictly below any positive threshold.
+    // A full sketch guarantees a final KMV denominator of k. If both sketches
+    // are partial, they contain their exact sets and the denominator is at
+    // least max(sa,sb). This lower bound yields a necessary (never merely
+    // sufficient) match count and therefore preserves threshold recall.
+    const uint64_t denominator_lower_bound = (sa == k || sb == k)
+        ? k : std::max(sa, sb);
     const uint64_t need = (min_jaccard > 0.0)
-        ? static_cast<uint64_t>(std::ceil(min_jaccard * static_cast<double>(k)))
+        ? static_cast<uint64_t>(std::ceil(
+              min_jaccard * static_cast<double>(denominator_lower_bound)))
         : 0ULL;
     if (need > 0 && std::min(sa, sb) < need) return 0.0;
 
@@ -670,18 +709,40 @@ double FastKMV::ani(const FastKMV& other) const {
 // merge  –  sorted merge of two bottom-k lists, take k smallest distinct
 // ═══════════════════════════════════════════════════════════════════════════
 
+FastKMV FastKMV::project(uint32_t target_k) const {
+    if (target_k <= 1 || target_k > k_) {
+        throw std::invalid_argument(
+            "FastKMV::project target K must be in [2, source K]");
+    }
+    ensureSorted();
+
+    FastKMV ret(target_k, kmer_size_, seed_);
+    ret.size_ = std::min(size_, target_k);
+    std::copy(vals_.get(), vals_.get() + ret.size_, ret.vals_.get());
+    if (ret.size_ < target_k) {
+        std::fill(ret.vals_.get() + ret.size_,
+                  ret.vals_.get() + target_k, UINT64_MAX);
+    }
+    ret.threshold_ = (ret.size_ == target_k)
+        ? ret.vals_[target_k - 1] : UINT64_MAX;
+    ret.sorted_ = true;
+    return ret;
+}
+
 FastKMV FastKMV::merge(const FastKMV& other) const {
-    assert(k_ == other.k_ && kmer_size_ == other.kmer_size_);
+    metadata().requireSameFamily(other.metadata(), "FastKMV::merge",
+                                 /*allow_resolution_change=*/true);
     ensureSorted();
     other.ensureSorted();
 
-    FastKMV ret(k_, kmer_size_, seed_);
+    const uint32_t common_k = std::min(k_, other.k_);
+    FastKMV ret(common_k, kmer_size_, seed_);
 
     const uint64_t* a = vals_.get();
     const uint64_t* b = other.vals_.get();
     uint32_t ia = 0, ib = 0;
 
-    while (ret.size_ < k_ && ia < size_ && ib < other.size_) {
+    while (ret.size_ < common_k && ia < size_ && ib < other.size_) {
         if (a[ia] == UINT64_MAX && b[ib] == UINT64_MAX) break;
         uint64_t next;
         if (a[ia] == b[ib]) {
@@ -695,16 +756,30 @@ FastKMV FastKMV::merge(const FastKMV& other) const {
         }
         ret.vals_[ret.size_++] = next;
     }
-    while (ret.size_ < k_ && ia < size_ && a[ia] != UINT64_MAX) {
+    while (ret.size_ < common_k && ia < size_ && a[ia] != UINT64_MAX) {
         ret.vals_[ret.size_++] = a[ia++];
     }
-    while (ret.size_ < k_ && ib < other.size_ && b[ib] != UINT64_MAX) {
+    while (ret.size_ < common_k && ib < other.size_ && b[ib] != UINT64_MAX) {
         ret.vals_[ret.size_++] = b[ib++];
     }
 
-    ret.threshold_ = (ret.size_ >= k_) ? ret.vals_[k_ - 1] : UINT64_MAX;
+    ret.threshold_ = (ret.size_ >= common_k)
+        ? ret.vals_[common_k - 1] : UINT64_MAX;
     ret.sorted_ = true;
     return ret;
+}
+
+Rank::RankMetadata FastKMV::metadata() const {
+    Rank::RankMetadata meta;
+    meta.backend = Rank::Backend::FastKMV;
+    meta.weight_semantics = Rank::WeightSemantics::UnweightedSet;
+    meta.resolution_kind = Rank::ResolutionKind::BottomK;
+    meta.fingerprint_bits = 53;
+    meta.kmer_size = static_cast<uint16_t>(kmer_size_);
+    meta.resolution = k_;
+    meta.seed = seed_;
+    meta.hash_profile = runtimeHashProfile();
+    return meta;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

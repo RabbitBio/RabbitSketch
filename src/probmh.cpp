@@ -27,6 +27,7 @@
  */
 
 #include "probmh.h"
+#include "api/RuntimeInfo.h"
 #include "hash_int.h"
 
 #include <immintrin.h>
@@ -37,6 +38,7 @@
 #include <cmath>
 #include <limits>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 
 // ── AVX2 64-bit lane multiply helper (no AVX-512DQ needed) ───────────────────
@@ -483,12 +485,14 @@ uint32_t ProbMHPermStream::next(uint64_t& rng) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 void ProbMinHash4::finalize() noexcept {
+    if (sealed_) return;
     // Drop this sketch's reference to the shared TED table.  Actual memory is
     // freed only when the last sketch with this m goes away (the global cache
     // also holds a strong reference, so by design it persists).
     ted_params_.reset();
     firstBoundaryInv_ = 0.0;
     perm_.clear();                // ~8 KB: val_[] + ver_arr_[], update-only
+    sealed_ = true;
 }
 
 std::shared_ptr<const ProbMinHash4::TedParam[]>
@@ -560,16 +564,24 @@ ProbMinHash4::getOrBuildTedParams(uint32_t m, double& out_firstBoundaryInv) {
 }
 
 ProbMinHash4::ProbMinHash4(uint32_t m, int kmer_size, uint64_t seed,
-                           uint32_t max_L)
+                           uint32_t max_L,
+                           Rank::WeightSemantics weight_semantics)
     : m_(m), kmer_size_(kmer_size), seed_(seed),
       max_L_((max_L == 0) ? m : std::min(max_L, m)),
       total_weight_(0.0),
+      weight_semantics_(weight_semantics),
       tracker_(m),
       perm_(m),
       winners_(new uint64_t[m]())   // zero-initialised; 0 = "not yet set"
 {
-    assert(m > 1);
-    assert(kmer_size >= 1 && kmer_size <= 32);
+    if (m <= 1)
+        throw std::invalid_argument("ProbMinHash register count must exceed 1");
+    if (kmer_size < 1 || kmer_size > 32)
+        throw std::invalid_argument("ProbMinHash k-mer size must be in [1, 32]");
+    const uint8_t semantics = static_cast<uint8_t>(weight_semantics);
+    if (semantics < static_cast<uint8_t>(Rank::WeightSemantics::UnweightedSet) ||
+        semantics > static_cast<uint8_t>(Rank::WeightSemantics::UserSupplied))
+        throw std::invalid_argument("ProbMinHash weight semantics are invalid");
     tracker_.reset(std::numeric_limits<double>::infinity());
 
     // Share-by-pointer: O(1) when the m-cache is warm (after the first
@@ -581,10 +593,12 @@ ProbMinHash4::ProbMinHash4(const ProbMinHash4& o)
     : m_(o.m_), kmer_size_(o.kmer_size_), seed_(o.seed_),
       max_L_(o.max_L_),
       total_weight_(o.total_weight_),
+      weight_semantics_(o.weight_semantics_),
       ted_params_(o.ted_params_),              // share, no deep copy
       firstBoundaryInv_(o.firstBoundaryInv_),
       tracker_(o.m_),
-      perm_(o.m_)
+      perm_(o.m_),
+      sealed_(o.sealed_)
 {
     // Copy leaves then rebuild internal nodes in O(m) instead of m × update().
     std::copy(o.tracker_.leaves(), o.tracker_.leaves() + m_,
@@ -600,12 +614,64 @@ ProbMinHash4& ProbMinHash4::operator=(ProbMinHash4 other) {
     std::swap(seed_,             other.seed_);
     std::swap(max_L_,            other.max_L_);
     std::swap(total_weight_,     other.total_weight_);
+    std::swap(weight_semantics_, other.weight_semantics_);
     std::swap(ted_params_,       other.ted_params_);
     std::swap(firstBoundaryInv_, other.firstBoundaryInv_);
     Sketch::swap(tracker_,       other.tracker_);
     Sketch::swap(perm_,          other.perm_);
     std::swap(winners_,          other.winners_);
+    std::swap(sealed_,           other.sealed_);
     return *this;
+}
+
+ProbMinHash4 ProbMinHash4::fromRegisters(
+    uint32_t m,
+    int kmer_size,
+    uint64_t seed,
+    uint32_t max_L,
+    Rank::WeightSemantics weight_semantics,
+    double total_weight,
+    const std::vector<double>& registers,
+    const std::vector<uint64_t>& winners) {
+    if (registers.size() != m || winners.size() != m)
+        throw std::invalid_argument(
+            "ProbMinHash restored register/winner counts must equal m");
+    if (!(total_weight >= 0.0) || !std::isfinite(total_weight))
+        throw std::invalid_argument(
+            "ProbMinHash restored total weight must be finite and nonnegative");
+    ProbMinHash4 result(m, kmer_size, seed, max_L, weight_semantics);
+    for (uint32_t index = 0; index < m; ++index) {
+        const double value = registers[index];
+        if (std::isnan(value) || value < 0.0)
+            throw std::invalid_argument(
+                "ProbMinHash restored register is NaN or negative");
+        result.tracker_.leaves()[index] = value;
+        result.winners_[index] = winners[index];
+    }
+    result.tracker_.build_from_leaves();
+    result.total_weight_ = total_weight;
+    return result;
+}
+
+Rank::RankMetadata ProbMinHash4::metadata() const {
+    Rank::RankMetadata meta;
+    meta.backend = Rank::Backend::ProbMinHash;
+    meta.hash_profile = Rank::HashProfile::ProbMinHashRaceV1;
+    meta.weight_semantics = weight_semantics_;
+    meta.resolution_kind = Rank::ResolutionKind::RegisterCount;
+    meta.fingerprint_bits = 64;
+    meta.kmer_size = static_cast<uint16_t>(kmer_size_);
+    meta.resolution = m_;
+    meta.seed = seed_;
+    meta.parameter_fingerprint = Rank::RankStream::fmix64(
+        max_L_, UINT64_C(0x70726f626d682d34));
+    return meta;
+}
+
+void ProbMinHash4::requireMutable(const char* operation) const {
+    if (sealed_)
+        throw std::logic_error(std::string(operation) +
+                               " called after finalize");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -614,7 +680,11 @@ ProbMinHash4& ProbMinHash4::operator=(ProbMinHash4 other) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 void ProbMinHash4::addHash(uint64_t h, double weight) {
+    requireMutable("ProbMinHash4::addHash");
     if (!(weight > 0.0)) return;
+    if (weight != 1.0 &&
+        weight_semantics_ == Rank::WeightSemantics::UnweightedSet)
+        weight_semantics_ = Rank::WeightSemantics::UserSupplied;
     total_weight_ += weight;
     addHashFromRng(mc::murmur3_fmix(h, seed_), weight);
 }
@@ -678,11 +748,15 @@ void ProbMinHash4::addHashFromRng(uint64_t rng, double weight) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 void ProbMinHash4::update(const char* seq, uint64_t length) {
+    requireMutable("ProbMinHash4::update");
     updateWeightedImpl(seq, length, nullptr, 1.0);
 }
 
 void ProbMinHash4::updateWeighted(const char* seq, uint64_t length,
                                   double weight_each) {
+    requireMutable("ProbMinHash4::updateWeighted");
+    if (weight_semantics_ == Rank::WeightSemantics::UnweightedSet)
+        weight_semantics_ = Rank::WeightSemantics::UserSupplied;
     if (!(weight_each > 0.0))
         return;
     updateWeightedImpl(seq, length, nullptr, weight_each);
@@ -690,6 +764,9 @@ void ProbMinHash4::updateWeighted(const char* seq, uint64_t length,
 
 void ProbMinHash4::updateWeighted(const char* seq, uint64_t length,
                                   const double* weight_per_kmer_start) {
+    requireMutable("ProbMinHash4::updateWeighted");
+    if (weight_semantics_ == Rank::WeightSemantics::UnweightedSet)
+        weight_semantics_ = Rank::WeightSemantics::UserSupplied;
     updateWeightedImpl(seq, length, weight_per_kmer_start, 1.0);
 }
 
@@ -1002,6 +1079,9 @@ void ProbMinHash4::updateWeightedImpl(const char* seq, uint64_t length,
 // ═══════════════════════════════════════════════════════════════════════════
 
 void ProbMinHash4::updateEntropy(const char* seq, uint64_t length, double w_min) {
+    requireMutable("ProbMinHash4::updateEntropy");
+    if (weight_semantics_ == Rank::WeightSemantics::UnweightedSet)
+        weight_semantics_ = Rank::WeightSemantics::UserSupplied;
     const int K = kmer_size_;
     if (length < static_cast<uint64_t>(K)) return;
 
@@ -1311,7 +1391,7 @@ void ProbMinHash4::updateEntropy(const char* seq, uint64_t length, double w_min)
 // ═══════════════════════════════════════════════════════════════════════════
 
 double ProbMinHash4::jaccard(const ProbMinHash4& other) const {
-    assert(m_ == other.m_);
+    metadata().requireSameFamily(other.metadata(), "ProbMinHash4::jaccard");
     const double* __restrict__ a = tracker_.leaves();
     const double* __restrict__ b = other.tracker_.leaves();
     const double inf = std::numeric_limits<double>::infinity();
@@ -1350,16 +1430,15 @@ double ProbMinHash4::jaccard(const ProbMinHash4& other) const {
 }
 
 double ProbMinHash4::jaccard_weighted(const ProbMinHash4& other) const {
-    assert(m_ == other.m_);
+    metadata().requireSameFamily(
+        other.metadata(), "ProbMinHash4::jaccard_weighted");
     const uint64_t* __restrict__ a = winners_.get();
     const uint64_t* __restrict__ b = other.winners_.get();
-    int count = 0;
     // Count registers where the SAME element (same rng) won in both sketches.
     // This is correct even when the element has different weights in A vs B:
     // same h → same rng (murmur3_fmix(h, seed_)) → same winners_ entry.
     // P(collision in register k) = WJ = Σmin(wA,wB)/Σmax(wA,wB).
-    for (uint32_t k = 0; k < m_; ++k)
-        count += (a[k] != 0 && a[k] == b[k]) ? 1 : 0;
+    const size_t count = Runtime::countEqualNonZeroU64(a, b, m_);
     return static_cast<double>(count) / static_cast<double>(m_);
 }
 
@@ -1378,7 +1457,7 @@ double ProbMinHash4::distance(const ProbMinHash4& other) const {
 
 double ProbMinHash4::containment(const ProbMinHash4& other) const {
     if (total_weight_ <= 0.0) return 0.0;
-    const double j = jaccard(other);
+    const double j = jaccard_weighted(other);
     if (j <= 0.0) return 0.0;
     const double w_b = other.total_weight_;
     return j * (total_weight_ + w_b) / (total_weight_ * (1.0 + j));
@@ -1402,8 +1481,8 @@ double ProbMinHash4::ani(const ProbMinHash4& other) const {
 // ═══════════════════════════════════════════════════════════════════════════
 
 ProbMinHash4 ProbMinHash4::merge(const ProbMinHash4& other) const {
-    assert(m_ == other.m_ && kmer_size_ == other.kmer_size_);
-    ProbMinHash4 ret(m_, kmer_size_, seed_);
+    metadata().requireSameFamily(other.metadata(), "ProbMinHash4::merge");
+    ProbMinHash4 ret(m_, kmer_size_, seed_, max_L_, weight_semantics_);
     ret.total_weight_ = total_weight_ + other.total_weight_;
 
     const double* __restrict__ a = tracker_.leaves();
@@ -1426,6 +1505,11 @@ ProbMinHash4 ProbMinHash4::merge(const ProbMinHash4& other) const {
 #endif
     for (; k < m_; ++k)
         r[k] = std::min(a[k], b[k]);
+
+    for (uint32_t index = 0; index < m_; ++index) {
+        ret.winners_[index] = a[index] <= b[index]
+            ? winners_[index] : other.winners_[index];
+    }
 
     // Single O(m) sweep to build the tournament-tree internal nodes.
     ret.tracker_.build_from_leaves();

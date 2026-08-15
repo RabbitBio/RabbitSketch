@@ -42,6 +42,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstring>
+#include "rank/RankMetadata.h"
 
 namespace Sketch {
 
@@ -113,7 +114,19 @@ public:
     explicit ProbMinHash4(uint32_t m = 1024,
                           int      kmer_size = 21,
                           uint64_t seed = 42,
-                          uint32_t max_L = 0);
+                          uint32_t max_L = 0,
+                          Rank::WeightSemantics weight_semantics =
+                              Rank::WeightSemantics::UnweightedSet);
+
+    static ProbMinHash4 fromRegisters(
+        uint32_t m,
+        int kmer_size,
+        uint64_t seed,
+        uint32_t max_L,
+        Rank::WeightSemantics weight_semantics,
+        double total_weight,
+        const std::vector<double>& registers,
+        const std::vector<uint64_t>& winners);
 
     ~ProbMinHash4() = default;
     ProbMinHash4(const ProbMinHash4&);
@@ -137,6 +150,7 @@ public:
      * Must not call update() / addHash() after finalize().
      */
     void finalize() noexcept;
+    bool isSealed() const noexcept { return sealed_; }
 
     /** Every k-mer occurrence uses the same weight @p weight_each (> 0). */
     void updateWeighted(const char* seq, uint64_t length, double weight_each);
@@ -223,10 +237,16 @@ public:
      * The pointer remains valid as long as the sketch is alive and unmodified.
      */
     const double* getRegisters() const noexcept { return tracker_.leaves(); }
+    const uint64_t* getWinners() const noexcept { return winners_.get(); }
 
     int      getKmerSize()  const { return kmer_size_; }
     uint32_t getM()         const { return m_; }
     uint32_t getMaxL()      const { return max_L_; }
+    uint64_t getSeed()      const { return seed_; }
+    Rank::WeightSemantics weightSemantics() const {
+        return weight_semantics_;
+    }
+    Rank::RankMetadata metadata() const;
 
     void printSketch() const;
 
@@ -266,6 +286,7 @@ private:
     void updateWeightedImpl(const char* seq, uint64_t length,
                             const double* weight_per_kmer_start,
                             double uniform_weight);
+    void requireMutable(const char* operation) const;
 
     // Packed TED (Truncated-Exponential Distribution) parameters.
     // Replaces five separate arrays (boundaries_, ted_rate_, ted_c1/c2/c3_)
@@ -289,6 +310,7 @@ private:
     uint64_t           seed_;
     uint32_t           max_L_;    // Route C: max updates per element (m_ = unlimited)
     double             total_weight_;  // accumulated sum of all element weights
+    Rank::WeightSemantics weight_semantics_;
 
     // Shared, immutable.  Constructor copies a pointer; no per-sketch malloc
     // or transcendental recomputation when m is identical across sketches.
@@ -306,6 +328,7 @@ private:
     // Used by jaccard_weighted() to correctly estimate weighted Jaccard
     // WJ = Σmin(wA,wB) / Σmax(wA,wB) via addHash(hash, count).
     std::unique_ptr<uint64_t[]>  winners_;        // [m]; 0 = unset sentinel
+    bool sealed_ = false;
 };
 
 // ── One-Permutation ProbMinHash (Route A) ──────────────────────────────────

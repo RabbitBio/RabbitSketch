@@ -1,113 +1,132 @@
-![RabbitSketch](sketch.png)
-RabbitSketch is a highly optimized sketching library that exploits the power of modern multi-core CPUs. It supports various sketching algorithms including MinHash, OrderMinHash, and HyperLogLog. RabbitSketch achieves significant speedups compared to existing implementations, ranging from 2.30x to 49.55x.In addition, we provide flexible and easy-to-use interfaces for both Python and C++. The similarity analysis of 455GB genomic data can be completed in about 5 minutes using RabbitSketch with Python code.
-Detailed API documentation at https://rabbitsketch.readthedocs.io/en/latest
-## Getting Started
-A Linux system on a recent x86_64 CPU is required.
+# RabbitSketch 2
 
-### Installing (C++ interface) 
+RabbitSketch is a high-performance C++17/Python library for genomic sketching.
+It provides one streaming FASTA/FASTQ build contract and one query result model
+across nine algorithms while preserving each algorithm's native estimator.
 
+The high-level API focuses on in-memory workflows: configure one or more
+algorithms, read the input once, receive typed `BuiltSketch` objects, and query
+compatible sketches. Unsupported comparisons return a reason instead of being
+silently interpreted as zero similarity.
 
-```bash
-cd RabbitSketch
-mkdir build
-cd build
-cmake -DCXXAPI=ON .. -DCMAKE_INSTALL_PREFIX=.
-make
-make install
-export LD_LIBRARY_PATH=`pwd`/lib:$LD_LIBRARY_PATH
-```
+## Algorithms
 
+| Algorithm | Sampling model | Primary queries | Exact common resolution |
+|---|---|---|---|
+| Legacy MinHash | bottom-k | set metrics, ANI | smaller K |
+| FastKMV | bottom-k | set metrics, ANI | smaller K |
+| FracMinHash | scaled | set metrics, ANI | larger scaled value |
+| HyperLogLog | register precision | cardinality-derived set metrics | lower precision |
+| SetSketch | register precision | cardinality-derived set metrics | same precision only |
+| KSSD | reduction level | Jaccard, distance, ANI | sparser reduction |
+| ProbMinHash | native registers | set or weighted metrics | same register count |
+| BinDash | b-bit bins | set metrics, ANI | same bin count |
+| OrderMinHash | ordered samples | order similarity/distance | shorter prefix |
 
-### Testing (C++)
+The FASTX builder accepts DNA and RNA from plain or gzip FASTA/FASTQ, standard
+input, or in-memory records. It supports multiline records, canonical k-mers,
+ambiguous-base policies, Phred filtering, homopolymer compression,
+frequency-aware ProbMinHash, and file/record/collection aggregation. Multiple
+algorithms consume the same normalized input pass.
 
-If the Kssd algorithm is used, the shuffled file must first be generated. You can generate the shuffled file in the `shuf_file/` directory by running `exe_generate_shuf_file`. Here, L represents the drlevel, and K represents halfk. By default, we use `L3K10.shuf`.
+Queries are same-backend by design. The planner validates k-mer size, seed,
+canonicalization, hash profile, weight semantics, backend parameters, and
+resolution before selecting a native estimator.
 
-```bash
-cd ../examples/
-#default install dir: ../build/
-make 
-#./exe_generate_shuf_file
-./exe_SKETCH_ALGORITHM FILE_PATH threshold(0.05) thread_num 
-```
-We will get the distance among large-scale genome sequences.
+## Build and install
 
-```bash
-./exe_generate_shuf_file
-./exe_main genome1.fna genome2.fna
-```
-We will get the distance between genome1 and genome2 with different algorithm
-
-
-### PYTHON bind
-
-## ⚠️ Note on `fastx` Installation
-The current version of `fastx` (0.0.3) may fail to install on recent Python versions (e.g., Python 3.10+ or 3.12) due to an invalid `python_requires` specifier in its `setup.py` (`'>=3.5.*'` is not a valid version constraint).
-This is due to incompatibility with newer versions of pip and setuptools, which enforce stricter PEP 440 validation.
-To work around this issue, you can downgrade `pip` and `setuptools` as recommended in `requirement.txt` before installing.
-Python < 3.12 is required.
-
-**pip install:**
-```bash
-cd RabbitSketch
-pip install pip==22.3 setuptools==65.0
-pip install -r requirement.txt
-pip install . --user
-```
-or
-
-**conda install:**
-```bash
-#python 3.9 is require in this version
-conda create -n py39_env python=3.9
-conda activate py39_env
-conda config --add channels defaults
-conda config --add channels bioconda
-conda config --add channels conda-forge
-conda install rabbitsketch
-```
-
-**test using bpython or python**
+Requirements: CMake 3.16+, a C++17 compiler, zlib, and optionally OpenMP.
+Linux is the tested deployment target.
 
 ```bash
-#pip install -r requirement.txt 
-cd examples
-python rabbitsketch_pymp.py #require fastx
+cmake -S . -B build \
+  -DCXXAPI=ON \
+  -DRABBITSKETCH_BUILD_TESTS=ON \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
+cmake --install build --prefix /your/prefix
 ```
-We will get the Jaccard index among large-scale genome sequences with Python API. 
 
+Installed CMake consumers can use:
 
-## Tested Platforms and Compilation Fix
+```cmake
+find_package(RabbitSketch 2 CONFIG REQUIRED)
+target_link_libraries(my_program PRIVATE RabbitSketch::rabbitsketch)
+```
 
-We have conducted extensive deployment tests to ensure cross-platform compatibility. The following operating system versions have been successfully tested:
+The install also provides `rabbitsketch.pc`. Python 3.8+ uses an isolated
+PEP 517 build and has no Python runtime dependency on NumPy, `fastx`, or `pymp`:
 
-- **Debian**: 9.11, 9.9, 10.2, 11.1, 11.3, 12.0, 12.9  
-- **Ubuntu**: 14.04, 16.04, 18.04, 22.04, 24.04  
-- **AlmaLinux**: 8.10, 9.5  
-- **Rocky Linux**: 8.6, 9.5  
-- **CentOS Stream**: 8, 9  
-- **CentOS**: 7.6, 7.9  
-- **Fedora**: 39, 40  
+```bash
+python -m pip install .
+```
 
-If you encounter any compatibility issues on these or other platforms, please report them in our GitHub issues section.
+## Python example
 
-### **Fixing `CMake uv_spawn` Failure on Fedora 39**
+```python
+import rabbitsketch as rs
 
-During our tests, we identified an issue on Fedora 39 where running `cmake` may fail.
-This issue is caused by an **incompatible or outdated `libuv`** version provided by the system. Manually compiling and installing the latest `libuv` resolves this problem.
+fast = rs.SketchConfig()
+fast.algorithm = rs.Algorithm.FastKMV
+fast.sampling = rs.SamplingMode.BottomK
+fast.kmer_size = 21
+fast.resolution = 1024
 
-#### **Solution: Manually Compile `libuv`**
-1. Install build dependencies:
-   ```bash
-   sudo dnf install -y autoconf automake libtool gcc gcc-c++
+frac = rs.SketchConfig()
+frac.algorithm = rs.Algorithm.FracMinHash
+frac.sampling = rs.SamplingMode.Scaled
+frac.kmer_size = 21
+frac.scaled = 1000
+frac.aggregation = rs.AggregationMode.OneSketchPerRecord
 
-2. Clone and compile the latest `libuv`
-   To manually compile and install the latest `libuv`, follow these steps:
+results = rs.build_fastx("sample.fq.gz", [fast, frac])
+query = results[0].sketch.query(results[0].sketch)
+assert query.estimate_available and query.jaccard == 1.0
+```
 
-   ```bash
-   git clone https://github.com/libuv/libuv.git
-   cd libuv
-   sh autogen.sh
-   ./configure --prefix=/usr
-   make -j$(nproc)
-   sudo make install
-   
+`FastxReader` is an iterator, and `MultiSketchBuilder` accepts in-memory
+`FastxRecord` objects. Expensive native updates, builds, and queries release the
+Python GIL.
+
+## C++ example
+
+```cpp
+#include "api/SketchBuilder.h"
+
+Sketch::API::SketchConfig config;
+config.algorithm = Sketch::API::Algorithm::FastKMV;
+config.sampling = Sketch::API::SamplingMode::BottomK;
+config.kmer_size = 21;
+config.resolution = 1024;
+
+auto built = Sketch::API::buildFastx("sample.fa.gz", {config});
+auto result = built.at(0).sketch.query(built.at(0).sketch);
+if (!result.estimate_available)
+    throw std::runtime_error(result.plan.reason);
+```
+
+Low-level algorithm classes remain available for applications that need direct
+updates, projections, merges, or native query methods.
+
+## Correctness and portability
+
+- A rejected query has `estimate_available == false`; inspect `plan.reason`.
+- Weighted ProbMinHash and unweighted set sketches have different estimands.
+- OrderMinHash exposes order metrics, not set Jaccard.
+- ANI and Mash distance are model-derived from k-mer similarity, not alignments.
+- SetSketch precision folding is rejected until a valid native rule exists.
+
+Release builds are portable by default and do not use `-march=native`. Hot
+comparison loops select scalar, SSE2, AVX2, or AVX-512 implementations at
+runtime. Python exposes the selection through `runtime_info()`;
+`RABBITSKETCH_SIMD=scalar` forces the scalar path for diagnosis. Local builds
+may opt into `-DRABBITSKETCH_NATIVE_ARCH=ON`.
+
+More detail is available in the [practical API guide](docs/rabbitsketch2_practical_api.md),
+[unified query contract](docs/rabbitsketch2_unified_query.md), and
+[compatibility matrix](docs/rabbitsketch2_compatibility_matrix.md).
+
+## License
+
+RabbitSketch is distributed under the MIT License; see [LICENSE.txt](LICENSE.txt).

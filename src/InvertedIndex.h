@@ -17,7 +17,7 @@
 #include "phmap.h"
 #include "common.h"
 
-#include <omp.h>
+#include "api/OpenMPCompat.h"
 #include <cstdint>
 #include <cstdio>
 #include <cstring>

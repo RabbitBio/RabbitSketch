@@ -1,81 +1,93 @@
 import os
-import re
-import sys
+import pathlib
 import platform
+import re
 import subprocess
+import sys
+
 import pybind11
-from setuptools import setup, Extension
+from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
-from distutils.version import LooseVersion
+
+
+ROOT = pathlib.Path(__file__).resolve().parent
+VERSION = "2.0.0"
 
 
 class CMakeExtension(Extension):
-    def __init__(self, name, sourcedir=''):
-        Extension.__init__(self, name, sources=[])
-        self.sourcedir = os.path.abspath(sourcedir)
+    def __init__(self, name, source_directory=""):
+        super().__init__(name, sources=[])
+        self.source_directory = str(pathlib.Path(source_directory).resolve())
 
 
 class CMakeBuild(build_ext):
     def run(self):
         try:
-            out = subprocess.check_output(['cmake', '--version'])
-        except OSError:
-            raise RuntimeError("CMake must be installed to build the following extensions: " +
-                               ", ".join(e.name for e in self.extensions))
+            output = subprocess.check_output(["cmake", "--version"], text=True)
+        except (OSError, subprocess.CalledProcessError) as error:
+            raise RuntimeError("CMake >= 3.16 is required to build rabbitsketch") from error
+        match = re.search(r"version\s+(\d+)\.(\d+)(?:\.(\d+))?", output)
+        if not match or tuple(int(part or 0) for part in match.groups()) < (3, 16, 0):
+            raise RuntimeError("CMake >= 3.16 is required to build rabbitsketch")
+        super().run()
 
+    def build_extension(self, extension):
+        output_directory = pathlib.Path(
+            self.get_ext_fullpath(extension.name)
+        ).resolve().parent
+        configuration = "Debug" if self.debug else "Release"
+        cmake_arguments = [
+            f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={output_directory}{os.sep}",
+            f"-DPython3_EXECUTABLE={sys.executable}",
+            f"-DCMAKE_PREFIX_PATH={sys.prefix}",
+            f"-Dpybind11_DIR={pybind11.get_cmake_dir()}",
+            "-DCXXAPI=OFF",
+            "-DRABBITSKETCH_BUILD_TESTS=OFF",
+            "-DRABBITSKETCH_NATIVE_ARCH=OFF",
+        ]
+        build_arguments = ["--config", configuration]
         if platform.system() == "Windows":
-            cmake_version = LooseVersion(re.search(r'version\s*([\d.]+)', out.decode()).group(1))
-            if cmake_version < '3.1.0':
-                raise RuntimeError("CMake >= 3.1.0 is required on Windows")
-
-        for ext in self.extensions:
-            self.build_extension(ext)
-
-    def build_extension(self, ext):
-        extdir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))
-        # required for auto-detection of auxiliary "native" libs
-        if not extdir.endswith(os.path.sep):
-            extdir += os.path.sep
-
-        cmake_args = ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + extdir,
-                      '-DPYTHON_EXECUTABLE=' + sys.executable,
-                      '-DCMAKE_PREFIX_PATH=' + sys.prefix,
-                      '-Dpybind11_DIR=' + pybind11.get_cmake_dir()
-                     ]
-
-        cfg = 'Debug' if self.debug else 'Release'
-        build_args = ['--config', cfg]
-
-        if platform.system() == "Windows":
-            cmake_args += ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_{}={}'.format(cfg.upper(), extdir)]
+            cmake_arguments.append(
+                f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_{configuration.upper()}="
+                f"{output_directory}{os.sep}"
+            )
             if sys.maxsize > 2**32:
-                cmake_args += ['-A', 'x64']
-            build_args += ['--', '/m']
+                cmake_arguments.extend(["-A", "x64"])
         else:
-            cmake_args += ['-DCMAKE_BUILD_TYPE=' + cfg]
-            build_args += ['--', '-j2']
+            cmake_arguments.append(f"-DCMAKE_BUILD_TYPE={configuration}")
+        parallel = self.parallel or min(2, os.cpu_count() or 1)
+        build_arguments.extend(["--parallel", str(parallel)])
 
-        env = os.environ.copy()
-        env['CXXFLAGS'] = '{} -DVERSION_INFO=\\"{}\\"'.format(env.get('CXXFLAGS', ''),
-                                                              self.distribution.get_version())
-        if not os.path.exists(self.build_temp):
-            os.makedirs(self.build_temp)
-        subprocess.check_call(['cmake', ext.sourcedir] + cmake_args, cwd=self.build_temp, env=env)
-        subprocess.check_call(['cmake', '--build', '.'] + build_args, cwd=self.build_temp)
-        def build_extension(self, ext):
-            print("Building extension for:", ext.name)  # Add debug info
-        subprocess.check_call(['cmake', ext.sourcedir] + cmake_args, cwd=self.build_temp, env=env)
-        subprocess.check_call(['cmake', '--build', '.'] + build_args, cwd=self.build_temp)
-        print("Build completed")  # Add debug info
+        build_directory = pathlib.Path(self.build_temp) / extension.name
+        build_directory.mkdir(parents=True, exist_ok=True)
+        subprocess.check_call(
+            ["cmake", "-S", extension.source_directory, "-B", str(build_directory),
+             *cmake_arguments],
+        )
+        subprocess.check_call(
+            ["cmake", "--build", str(build_directory), *build_arguments],
+        )
+
 
 setup(
-    name='rabbitsketch',
-    version='0.0.3',
-    author='Zekun Yin',
-    author_email='zekun.yin@mail.sdu.edu.cn',
-    description='a python package for sequence sketching',
-    long_description='a python package for sequence sketching',
-    ext_modules=[CMakeExtension('rabbitsketch')],
-    cmdclass=dict(build_ext=CMakeBuild),
+    name="rabbitsketch",
+    version=VERSION,
+    author="Zekun Yin",
+    author_email="zekun.yin@mail.sdu.edu.cn",
+    description="High-performance genomic sketching and unified queries",
+    long_description=(ROOT / "README.md").read_text(encoding="utf-8"),
+    long_description_content_type="text/markdown",
+    license="MIT",
+    python_requires=">=3.8",
+    ext_modules=[CMakeExtension("rabbitsketch", ROOT)],
+    cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
+    classifiers=[
+        "Development Status :: 4 - Beta",
+        "Intended Audience :: Science/Research",
+        "License :: OSI Approved :: MIT License",
+        "Programming Language :: C++",
+        "Programming Language :: Python :: 3",
+        "Topic :: Scientific/Engineering :: Bio-Informatics",
+    ],
 )
