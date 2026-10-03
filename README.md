@@ -127,6 +127,20 @@ More detail is available in the [practical API guide](docs/rabbitsketch2_practic
 [unified query contract](docs/rabbitsketch2_unified_query.md), and
 [compatibility matrix](docs/rabbitsketch2_compatibility_matrix.md).
 
+## Benchmark and algorithm selection workflows
+
+The [benchmark suite](benchmarks/README.md) provides synthetic screening,
+metric-specific validation, measured all-vs-all workloads, a constraint-based
+ANI advisor and independent genome/mixed-indel validation.
+See the [detailed selection analysis](RabbitSketch2_algorithm_selection_analysis.md)
+and [external validation](RabbitSketch2_robustness_validation.md) for data,
+uncertainty and failed recommendations. Published summary tables and plots
+are included; large raw datasets remain in the experiment archive.
+
+The suite uses a versioned SetSketch correction in an isolated benchmark
+checkout. The correction ships as a reviewable patch; this update does not
+silently replace the production estimator.
+
 ## License
 
 RabbitSketch is distributed under the MIT License; see [LICENSE.txt](LICENSE.txt).

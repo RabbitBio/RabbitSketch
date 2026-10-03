@@ -1,0 +1,7 @@
+algorithm,status,regimes,frontier_regimes,frontier_fraction,robustly_dominated_regimes,meaningful_resource_advantage,scope,specialized_metric_protection
+minhash,retain_pending_evidence,84,30,0.35714285714285715,7,True,general_set_jaccard_only,False
+fracminhash,retain_pending_evidence,84,82,0.9761904761904762,0,True,general_set_jaccard_only,False
+hll,retain_pending_evidence,84,84,1.0,0,True,general_set_jaccard_only,True
+setsketch,retain_pending_evidence,84,84,1.0,0,True,general_set_jaccard_only,True
+probminhash,retain_pending_evidence,84,15,0.17857142857142858,19,True,general_set_jaccard_only,True
+bindash,retain_pending_evidence,84,84,1.0,0,True,general_set_jaccard_only,False

@@ -1,0 +1,20 @@
+{
+  "confidence": "descriptive real validation; assemblies reused between pairs, no IID pair significance claims",
+  "crossover": "fixed largest-payload configurations; both_observed_precision_pass marks acceptable accuracy; not optimal parameter switching",
+  "k": [
+    20,
+    24
+  ],
+  "pairs": 200,
+  "raw_sha256": "3756b47b90d2737fac99a6e0510e2c32e3f01615e30ef32992405439c70f8ad4",
+  "reuse": "all tested native configurations within budget, post-hoc observed MAE gate; warm same-pair cost model, not all-vs-all",
+  "rows": 32400,
+  "scope": "native general-set Jaccard, exact canonical k-mer truth; no ANI/abundance/containment claims",
+  "seeds": [
+    42,
+    101,
+    202
+  ],
+  "source": "/home/bigssd/zt/rabbitsketch2_benchmark/runs/real_validation_20261001",
+  "unique_genomes": 396
+}

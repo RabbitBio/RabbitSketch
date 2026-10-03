@@ -1,0 +1,47 @@
+[
+  {
+    "both_zero_fraction_mean": 0.0,
+    "default_estimate_mean": 0.0020056877730647684,
+    "default_mae": 0.0019425406015270911,
+    "exact_match_to_original": true,
+    "ground_truth": 0.001001001001001001,
+    "inclexcl_mae": 0.005528771933142326,
+    "k": 20,
+    "n_a": 10000,
+    "n_b": 100000,
+    "precision": 12,
+    "range_fallback_count": 0,
+    "replicates": 20,
+    "static_fallback_mae": 0.0445991029638822
+  },
+  {
+    "both_zero_fraction_mean": 0.00126953125,
+    "default_estimate_mean": 1.0013560888116261e-09,
+    "default_mae": 0.0010009999996449122,
+    "exact_match_to_original": true,
+    "ground_truth": 0.001001001001001001,
+    "inclexcl_mae": 0.0024851169240707478,
+    "k": 20,
+    "n_a": 10000,
+    "n_b": 100000,
+    "precision": 14,
+    "range_fallback_count": 0,
+    "replicates": 20,
+    "static_fallback_mae": 0.27864513334574953
+  },
+  {
+    "both_zero_fraction_mean": 0.1890472412109375,
+    "default_estimate_mean": 0.05571550898377944,
+    "default_mae": 0.054714507982778424,
+    "exact_match_to_original": true,
+    "ground_truth": 0.001001001001001001,
+    "inclexcl_mae": 0.000674021399254822,
+    "k": 20,
+    "n_a": 10000,
+    "n_b": 100000,
+    "precision": 16,
+    "range_fallback_count": 0,
+    "replicates": 20,
+    "static_fallback_mae": 2.037444425448797
+  }
+]

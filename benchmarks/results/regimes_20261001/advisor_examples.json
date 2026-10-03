@@ -1,0 +1,59 @@
+[
+  {
+    "status": "validated_in_this_suite",
+    "reference_family": "substitution",
+    "ani_bin": "99–100",
+    "target_mae_fraction": 0.001,
+    "target_p95_fraction": 0.002,
+    "pair_budget_bytes": 8192,
+    "incident_queries_per_object": 1,
+    "cost_calibration_N": 10000,
+    "cost_scope": "64-thread mixed-bacterial all-vs-all throughput, excluding input parsing and matrix serialization; not isolated-pair latency",
+    "choice": {
+      "algorithm": "minhash",
+      "parameter": 512,
+      "k": 24,
+      "calibration_mae": 0.0003308786695938,
+      "calibration_p95": 0.0012226942846667,
+      "validation_mae": 0.0003402373128204,
+      "validation_p95": 0.0011074210733316,
+      "max_observed_pair_bytes": 8192.0,
+      "validation_pass": true,
+      "modeled_seconds_per_object": 0.00023898555301732173
+    }
+  },
+  {
+    "status": "validated_in_this_suite",
+    "reference_family": "substitution",
+    "ani_bin": "99–100",
+    "target_mae_fraction": 0.001,
+    "target_p95_fraction": 0.002,
+    "pair_budget_bytes": 8192,
+    "incident_queries_per_object": 10000,
+    "cost_calibration_N": 10000,
+    "cost_scope": "64-thread mixed-bacterial all-vs-all throughput, excluding input parsing and matrix serialization; not isolated-pair latency",
+    "choice": {
+      "algorithm": "bindash",
+      "parameter": 512,
+      "k": 24,
+      "calibration_mae": 0.0002304417245026,
+      "calibration_p95": 0.0007552407365317,
+      "validation_mae": 0.0002960230865842,
+      "validation_p95": 0.0013616786940758,
+      "max_observed_pair_bytes": 2048.0,
+      "validation_pass": true,
+      "modeled_seconds_per_object": 0.0003593069159260326
+    }
+  },
+  {
+    "status": "no_calibration_candidate",
+    "reference_family": "mash142",
+    "ani_bin": "80–90",
+    "target_mae_fraction": 0.001,
+    "target_p95_fraction": 0.002,
+    "pair_budget_bytes": 8192,
+    "incident_queries_per_object": 10000,
+    "cost_calibration_N": 10000,
+    "cost_scope": "64-thread mixed-bacterial all-vs-all throughput, excluding input parsing and matrix serialization; not isolated-pair latency"
+  }
+]

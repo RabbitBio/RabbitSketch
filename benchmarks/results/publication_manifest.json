@@ -1,0 +1,963 @@
+{
+  "base_commit": "8db783ea75f597068b72705272ae207c94194e83",
+  "target_repository": "RabbitBio/RabbitSketch",
+  "target_branch": "lib",
+  "included": [
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/VALIDATION.md",
+      "published": "benchmarks/results/systematic_20261001/VALIDATION.md",
+      "source_sha256": "996551e1ed3baed534815d4fa80bbd4b4ac1e944c5874ead0d31349906138caf",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/analysis.log",
+      "published": "benchmarks/results/systematic_20261001/analysis.log",
+      "source_sha256": "b4f42d9648ddc9779727f0eb142489658b36a7c16c518f17f9c1870393e3b48c",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/analysis_version.json",
+      "published": "benchmarks/results/systematic_20261001/analysis_version.json",
+      "source_sha256": "b20586d1c55778eba6acd3ee71aec47242acb99f543c50ea8863ccc610debbf9",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/completion.json",
+      "published": "benchmarks/results/systematic_20261001/completion.json",
+      "source_sha256": "62fa1ced959f73cd2636ff9687bdc4f7b471c9da642acc33cfbbe8ebd0946c11",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/original_six_configurations.csv",
+      "published": "benchmarks/results/systematic_20261001/original_six_configurations.csv",
+      "source_sha256": "ac6503b8c7e89765aac627552a16e7baa0b178b1b7a5d7fbe6c370a539739b9d",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/original_six_decisions.csv",
+      "published": "benchmarks/results/systematic_20261001/original_six_decisions.csv",
+      "source_sha256": "1bbf5e4b5c56773512fa6e3e5a4fd3ed71ac5acb4237a5b2b6c6ff143cb70d4e",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/original_six_manifest.json",
+      "published": "benchmarks/results/systematic_20261001/original_six_manifest.json",
+      "source_sha256": "a8d96fcf424f68efc5e25c3296d780fffd3ca1f09476d1c5c477054156ceb6f7",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/real_accuracy.pdf",
+      "published": "benchmarks/results/systematic_20261001/real_accuracy.pdf",
+      "source_sha256": "16e54414ddff0cf6116abb5a4b081ecc78d2705141c34bf0fe1382eb222f489b",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/real_accuracy.png",
+      "published": "benchmarks/results/systematic_20261001/real_accuracy.png",
+      "source_sha256": "8a19d8c3195bf2f6f6a11d951b65b29b25269a4b2ebfd4b7c3c38320f0d38a8e",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/real_analysis.log",
+      "published": "benchmarks/results/systematic_20261001/real_analysis.log",
+      "source_sha256": "088b65f17558c52e79aa2a842d3080deabf3ceb058992468b71ffe24d847b83d",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/real_budget_selected.csv",
+      "published": "benchmarks/results/systematic_20261001/real_budget_selected.csv",
+      "source_sha256": "9b6e214ac6176a69d0f034524c2fc4eb83abbbb0ef2732fd956b51cdf043777e",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/real_configurations.csv",
+      "published": "benchmarks/results/systematic_20261001/real_configurations.csv",
+      "source_sha256": "3346798caf0967a3e88814dc6b2c7108d8e0dbb8f595c8a4744461428e0f5b09",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/real_crossovers.csv",
+      "published": "benchmarks/results/systematic_20261001/real_crossovers.csv",
+      "source_sha256": "26e178de7af3cae39b8e0169bbe18c3687c411a8ec7674849bfbce659b0972b5",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/real_jaccard_ranges.csv",
+      "published": "benchmarks/results/systematic_20261001/real_jaccard_ranges.csv",
+      "source_sha256": "8d8b9c723833e83aba5edb492b88b3c6af0f8e3c40f47f55f9c1401aa73139e1",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/real_manifest.json",
+      "published": "benchmarks/results/systematic_20261001/real_manifest.json",
+      "source_sha256": "0316db63177ddc0c3aac2ec8c8d839f5cb163d0636688ea20e712e8349626b73",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/real_pairwise_comparisons.csv",
+      "published": "benchmarks/results/systematic_20261001/real_pairwise_comparisons.csv",
+      "source_sha256": "8b142f317ee7d0d50adb39002a76fd0d54a60c078528b7c53a29dc66b937e3b8",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/real_reuse_observed.csv",
+      "published": "benchmarks/results/systematic_20261001/real_reuse_observed.csv",
+      "source_sha256": "9d04cde14d310dee9c1efa085dcbeae08b51bff8fede917cc6839ec8aff3ee05",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/real_summary.csv",
+      "published": "benchmarks/results/systematic_20261001/real_summary.csv",
+      "source_sha256": "92e7ca2b1e8af7de9e282a3f1c7dcc9a8e7c08c418f46dc409c0b848c478ccda",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/real_tiers.csv",
+      "published": "benchmarks/results/systematic_20261001/real_tiers.csv",
+      "source_sha256": "0a8e72d973f4d27f8b2206492e1c60478c7d8d7c52a4fd16b5b3dbee3778a560",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/real_tradeoffs.pdf",
+      "published": "benchmarks/results/systematic_20261001/real_tradeoffs.pdf",
+      "source_sha256": "e569f4cd628ca3c2ce2bf081330c143b6b110b113f70e5a016ab1c149102e497",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/real_tradeoffs.png",
+      "published": "benchmarks/results/systematic_20261001/real_tradeoffs.png",
+      "source_sha256": "1e04133e2be40809d787e6d390224527be070982b229d7c9f80e100c8cf22776",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/report.md",
+      "published": "benchmarks/results/systematic_20261001/report.md",
+      "source_sha256": "d3dd2488dbe6284e30cfce638646aed05e672229e0fb795e13c1c8b3e3079a9d",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/selection_map.pdf",
+      "published": "benchmarks/results/systematic_20261001/selection_map.pdf",
+      "source_sha256": "513c6f63f341cdf62a4b89690bac189b08db9c30c22e1cff435cedb6b671768d",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/selection_map.png",
+      "published": "benchmarks/results/systematic_20261001/selection_map.png",
+      "source_sha256": "ebebb708397fb529ab81635c5c4aa7b475f0ce6d4d56d8f221a86a0eade424f7",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/setsketch_before_after.csv",
+      "published": "benchmarks/results/systematic_20261001/setsketch_before_after.csv",
+      "source_sha256": "b97b6f5f7918defa7682026147c1d69ea5a4d394e9440e9910780d8eb6d1717b",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/setsketch_corrected_configurations.csv",
+      "published": "benchmarks/results/systematic_20261001/setsketch_corrected_configurations.csv",
+      "source_sha256": "94c9e4ee9bad593ce5813371b3d4ee305baae098335b724b320bc240a168416f",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/setsketch_ctest.log",
+      "published": "benchmarks/results/systematic_20261001/setsketch_ctest.log",
+      "source_sha256": "09572a495bbcf3adb9fec8a3617babdf25f009705d1c7c4bb43a2b3ccdd056fb",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/setsketch_partitioned_joint.patch",
+      "published": "benchmarks/results/systematic_20261001/setsketch_partitioned_joint.patch",
+      "source_sha256": "c9432c48134e4d76a2e3fef06ffa093dcd34e461c05ef7f3975052b7d235badc",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/synthetic_budget_selected.csv",
+      "published": "benchmarks/results/systematic_20261001/synthetic_budget_selected.csv",
+      "source_sha256": "654217869e03fe6bef0422354dcff77f69eab46312365f2402d0d37a5cb2b077",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/synthetic_configurations.csv",
+      "published": "benchmarks/results/systematic_20261001/synthetic_configurations.csv",
+      "source_sha256": "a0f49d4303c485aa61adb1fbca5d3ef00a5699403bcc90cddd272f8ca7394c11",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/synthetic_coverage.csv",
+      "published": "benchmarks/results/systematic_20261001/synthetic_coverage.csv",
+      "source_sha256": "f783c93905faa26c3af20dbea200782ac0923dfeba60905813f12e4cc93bbf2b",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/synthetic_coverage.pdf",
+      "published": "benchmarks/results/systematic_20261001/synthetic_coverage.pdf",
+      "source_sha256": "48d0abed1c5fc0bd333e43c9144ee56b277d0ee32852ddf39f28e4970c6bf321",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/synthetic_coverage.png",
+      "published": "benchmarks/results/systematic_20261001/synthetic_coverage.png",
+      "source_sha256": "61622b44233ce1947c613a803f89e3fe4e6d833a1f7cf4a4d34b300822e05aa9",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/synthetic_dimensions.csv",
+      "published": "benchmarks/results/systematic_20261001/synthetic_dimensions.csv",
+      "source_sha256": "11c654b7c7c08b74347b485d91afcb0f3bcadbd28f5088399befa1ec1d02e6be",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/synthetic_frontiers.csv",
+      "published": "benchmarks/results/systematic_20261001/synthetic_frontiers.csv",
+      "source_sha256": "32fd35e5e7ed0bc83b9727d1b51d4a15c7a84b22d1a30269c5bcfb2356f49949",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/synthetic_hll_setsketch.csv",
+      "published": "benchmarks/results/systematic_20261001/synthetic_hll_setsketch.csv",
+      "source_sha256": "fadf29444f7fb1f2c14396a7241d7c09dab51c58cd0cc94678be04a3e3c9e1c0",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/synthetic_imbalance_matched.csv",
+      "published": "benchmarks/results/systematic_20261001/synthetic_imbalance_matched.csv",
+      "source_sha256": "ee3d15ec679489a54e82fc28afbb2918a3e2966d74bbc4f36ebc3018090a50b9",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/synthetic_manifest.json",
+      "published": "benchmarks/results/systematic_20261001/synthetic_manifest.json",
+      "source_sha256": "b454e186653e710816048322be8e71941253b8eee207c32a0dce5093a4c2a4e6",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/synthetic_paired_comparisons.csv",
+      "published": "benchmarks/results/systematic_20261001/synthetic_paired_comparisons.csv",
+      "source_sha256": "95e814d23ba5e83382692131a15267c63286bca247d2218666fd36e67f3020ee",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/systematic_20261001/synthetic_winners.csv",
+      "published": "benchmarks/results/systematic_20261001/synthetic_winners.csv",
+      "source_sha256": "3979e43bab5572314e7b39219444a420742cebbbd4a4809eec7f44e878482393",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/METRIC_AUDIT.md",
+      "published": "benchmarks/results/regimes_20261001/METRIC_AUDIT.md",
+      "source_sha256": "487690ee4befb9989fd029fe2baed6d32c342d9467c235cfdf6a23c3da91851b",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/PROTOCOL.md",
+      "published": "benchmarks/results/regimes_20261001/PROTOCOL.md",
+      "source_sha256": "c7c7d2cc065308552bfb1aa5976bf55777edab71c636703dfa5407172a38a876",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/README.md",
+      "published": "benchmarks/results/regimes_20261001/README.md",
+      "source_sha256": "afa1b737366d95848fcba877835602f01e02913170e391c94e48f4eeaeb028c0",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/advisor_examples.json",
+      "published": "benchmarks/results/regimes_20261001/advisor_examples.json",
+      "source_sha256": "325e501e70331ce9c5b4f7b865e87e0bca7b365b763c527635a2edeca50fee5b",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/alignment_audit_summary.json",
+      "published": "benchmarks/results/regimes_20261001/alignment_audit_summary.json",
+      "source_sha256": "ccfdcec3d59891c197704443e510ac8af427c5c001404d162c3eaac9633c5e9d",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/alignment_exact_model_errors.csv",
+      "published": "benchmarks/results/regimes_20261001/alignment_exact_model_errors.csv",
+      "source_sha256": "c5098a464870e9395f72ab2e1f6e6bd56ec56a8f0808f4f95154bb53b7306cc3",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/alignment_references.csv",
+      "published": "benchmarks/results/regimes_20261001/alignment_references.csv",
+      "source_sha256": "ac6ace2e453c800d59f63abae86bdd7e1685bb126fc8a7dfb95e279f5aba2d2e",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/alignment_sketch_accuracy.csv",
+      "published": "benchmarks/results/regimes_20261001/alignment_sketch_accuracy.csv",
+      "source_sha256": "81322d68cf39d87009fcddc04ea248a8fd714b2ddf1917e7598678574de23c51",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/ani_audit.json",
+      "published": "benchmarks/results/regimes_20261001/ani_audit.json",
+      "source_sha256": "bbce289050d6cadc9694765059a0c1bf8c117bb6f66665d0c11e719cbaf64594",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/ani_budget_accuracy.csv",
+      "published": "benchmarks/results/regimes_20261001/ani_budget_accuracy.csv",
+      "source_sha256": "7b6d35b66bf80340e2420da3007e39e5838b79ce59e17798bd70bdea14aa6749",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/ani_build_batches.csv",
+      "published": "benchmarks/results/regimes_20261001/ani_build_batches.csv",
+      "source_sha256": "9b4d6a492aacc0689265477f7164e74bbcdc466b27979677c15f16d2861645c9",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/ani_config_accuracy.csv",
+      "published": "benchmarks/results/regimes_20261001/ani_config_accuracy.csv",
+      "source_sha256": "c9a983aac9183a6ccc90a9874cae6a9631cac73414830b9d17cc4c38831e5c06",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/ani_error_decomposition.pdf",
+      "published": "benchmarks/results/regimes_20261001/ani_error_decomposition.pdf",
+      "source_sha256": "f3129f91a3658061ab5b994a0d18d099c080efdf673c825d6f5c4dc62082cc94",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/ani_error_decomposition.png",
+      "published": "benchmarks/results/regimes_20261001/ani_error_decomposition.png",
+      "source_sha256": "9746ede9bc6238017499e2096d1fa435759164c9a24485e52fa81abeb7087efa",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/ani_exact_model_errors.csv",
+      "published": "benchmarks/results/regimes_20261001/ani_exact_model_errors.csv",
+      "source_sha256": "60360de9ee93556f1bc3bd307a7ce4c85cc9c3d4ef4eeef4c02d67e6a437f87d",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/ani_model_error_summary.csv",
+      "published": "benchmarks/results/regimes_20261001/ani_model_error_summary.csv",
+      "source_sha256": "4d769dbc990e73300149a97ca942c37829bab1a4226ec466262b35eae565e42d",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/ani_pair_config.csv",
+      "published": "benchmarks/results/regimes_20261001/ani_pair_config.csv.gz",
+      "source_sha256": "45e815c356f40ab903e035571efbd069fdda657bc0359b9b6dc75efa8a8e6911",
+      "encoding": "gzip, uncompressed bytes unchanged"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/ani_references.csv",
+      "published": "benchmarks/results/regimes_20261001/ani_references.csv",
+      "source_sha256": "2142d393106ce3ebe84e8fe9366f5d359cb4f7825c61a7d3c4cc00cfb0fa849c",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/ani_threshold_errors.csv",
+      "published": "benchmarks/results/regimes_20261001/ani_threshold_errors.csv",
+      "source_sha256": "57c2139d449d6adaa0563a839fc33d9b81d5901756f96bac1453b3e14790c92b",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/ani_zero_rate.csv",
+      "published": "benchmarks/results/regimes_20261001/ani_zero_rate.csv",
+      "source_sha256": "8b890fd04d71aacbb248296b8cb6fd8f4dd715068cb831b46563fde0d551bb1c",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/cardinality_accuracy.csv",
+      "published": "benchmarks/results/regimes_20261001/cardinality_accuracy.csv",
+      "source_sha256": "d31621ff117368773474ae3ed39f57d99d2468872c9718bdefd07fd87977cdd8",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/cardinality_audit.json",
+      "published": "benchmarks/results/regimes_20261001/cardinality_audit.json",
+      "source_sha256": "99d8634f3019c13e0e5f64d0460c51b9ad35d868bbba60a8a3edfa95cd2b13bb",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/cardinality_build.csv",
+      "published": "benchmarks/results/regimes_20261001/cardinality_build.csv",
+      "source_sha256": "819573bd60f36b1809455ea97620f21eb103df3da63f80f2e4345dac71c7d34c",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/cardinality_build_batches.csv",
+      "published": "benchmarks/results/regimes_20261001/cardinality_build_batches.csv",
+      "source_sha256": "2eae09875047637c87f9fa79264bbdbb9de6b9fa01c801b331cb59a49f45be07",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/cardinality_objects.csv",
+      "published": "benchmarks/results/regimes_20261001/cardinality_objects.csv",
+      "source_sha256": "55b07b9e591e88210aba7b2b5a015e608f8d61b43597321bc30dbb6cc72795be",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/cardinality_tradeoff.pdf",
+      "published": "benchmarks/results/regimes_20261001/cardinality_tradeoff.pdf",
+      "source_sha256": "738c5e17659d153c83736d655511f287774bc57f91e4667712f001b3cd082ba9",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/cardinality_tradeoff.png",
+      "published": "benchmarks/results/regimes_20261001/cardinality_tradeoff.png",
+      "source_sha256": "df920e05ec205810c36e51cb045b924a8a5bff099f8d0836ed095929a9b09e26",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/completion.json",
+      "published": "benchmarks/results/regimes_20261001/completion.json",
+      "source_sha256": "5ebadab278329ea2f2f22fd90a546be4eca4825140073f6a7a58f82aab0d16c5",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/containment_audit.json",
+      "published": "benchmarks/results/regimes_20261001/containment_audit.json",
+      "source_sha256": "4279f829f8f482ae586bf1cada2d194baf703ba2adedb04b26e577e064342c2d",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/containment_boundaries.pdf",
+      "published": "benchmarks/results/regimes_20261001/containment_boundaries.pdf",
+      "source_sha256": "7a42f28d8f5420609be0abbf363118d79f9ded5af457a261492718cedc7a09da",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/containment_boundaries.png",
+      "published": "benchmarks/results/regimes_20261001/containment_boundaries.png",
+      "source_sha256": "c637719eaf0575c0280f9ed0bec3f02c8f1f33e44d1ac81e3790f3f19f1d4b13",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/containment_budget_accuracy.csv",
+      "published": "benchmarks/results/regimes_20261001/containment_budget_accuracy.csv",
+      "source_sha256": "64445ca4d734b2f86740684db9fa79fa591969e87d62b2ba652da203e6901843",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/containment_build_batches.csv",
+      "published": "benchmarks/results/regimes_20261001/containment_build_batches.csv",
+      "source_sha256": "b5a765f008e02d056fd281a7a3fb40fa8889e1b787e9488425cbf35e5f1a5ac6",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/containment_config_accuracy.csv",
+      "published": "benchmarks/results/regimes_20261001/containment_config_accuracy.csv",
+      "source_sha256": "f2135c05306b7bd274e05e08ca3e9d5fb6df0b72c2d1d87de1c2c176a2b45bdb",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/containment_exact_truth.csv",
+      "published": "benchmarks/results/regimes_20261001/containment_exact_truth.csv",
+      "source_sha256": "4cba306f98bce23e43bebb1506219e764ecd186aba39d149e5451911b521c4c3",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/containment_native_accuracy.csv",
+      "published": "benchmarks/results/regimes_20261001/containment_native_accuracy.csv",
+      "source_sha256": "d5a261d60c68bddef63e0365f86557d12ea1ffe41527a1708dc93036dd2a8cd3",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/containment_query_cost.csv",
+      "published": "benchmarks/results/regimes_20261001/containment_query_cost.csv",
+      "source_sha256": "26b4651983015113c96404646ec39bcb0fc8726a8e6c7ea27d86096cbdc62362",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/containment_reverse_accuracy.csv",
+      "published": "benchmarks/results/regimes_20261001/containment_reverse_accuracy.csv",
+      "source_sha256": "3c8e3e7b54e3645e94eaa6b0c9f1aaa20571de3c9eca46a32e1677f1bda9fde5",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/containment_selected_rows.csv.gz",
+      "published": "benchmarks/results/regimes_20261001/containment_selected_rows.csv.gz",
+      "source_sha256": "cf90ee22d1d8ffad4c9bd2739ce6a0644905ec7476f4d278e1b5b5344de1f742",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/heldout_selection.csv",
+      "published": "benchmarks/results/regimes_20261001/heldout_selection.csv",
+      "source_sha256": "9a96c2b0380b7e9ca6fcd938fe5f8dfdd63449b91c044ea63b870dcc5609e50d",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/paired_ani_intervals.csv",
+      "published": "benchmarks/results/regimes_20261001/paired_ani_intervals.csv",
+      "source_sha256": "ad5284c5a09b173208b9819af0cb6b61379163b0fa339522ed451b315274eb6f",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/report.md",
+      "published": "benchmarks/results/regimes_20261001/report.md",
+      "source_sha256": "be33ab5c5eaf6bb48ee5f4f336857b8e2826a361c586205ce8e8293252a2329a",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/selection_mash142.pdf",
+      "published": "benchmarks/results/regimes_20261001/selection_mash142.pdf",
+      "source_sha256": "6623185f093a12b1873d01ba6facf357a19d955b07c807a8db584a9905520a4a",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/selection_mash142.png",
+      "published": "benchmarks/results/regimes_20261001/selection_mash142.png",
+      "source_sha256": "8321a20e74a5ac86475c805153e2ddc190931c909be3d5949275eca4de089467",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/selection_substitution.pdf",
+      "published": "benchmarks/results/regimes_20261001/selection_substitution.pdf",
+      "source_sha256": "ce51852066f17c83f00a98b89536ad32c5cf34af52c2f0b9879b548d395bd7b6",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/selection_substitution.png",
+      "published": "benchmarks/results/regimes_20261001/selection_substitution.png",
+      "source_sha256": "77e2437fa80348a6afd1d225921b7916bd738850b2b9d6c57990a59b9d0cd5d8",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/weighted_accuracy.csv",
+      "published": "benchmarks/results/regimes_20261001/weighted_accuracy.csv",
+      "source_sha256": "6b9566c94db27f78a81c8d20c9af54414a3bb2ee79b8dbf20f78ddc681447987",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/weighted_audit.json",
+      "published": "benchmarks/results/regimes_20261001/weighted_audit.json",
+      "source_sha256": "26d62f16423410584e37530b8a7e8dba382fca4e85c285b6a935e7edb59d350d",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/weighted_build_batches.csv",
+      "published": "benchmarks/results/regimes_20261001/weighted_build_batches.csv",
+      "source_sha256": "7a702bc764a90d7679e4528d9e59b2e2921b1d3cb560476d2b6c120969c959d6",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/weighted_pair_accuracy.csv",
+      "published": "benchmarks/results/regimes_20261001/weighted_pair_accuracy.csv",
+      "source_sha256": "7747bff7d87ac493a4a1d25ba154ffcc4e81edaf348c134a15cc16cdd3fd3373",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/weighted_validation.pdf",
+      "published": "benchmarks/results/regimes_20261001/weighted_validation.pdf",
+      "source_sha256": "34d4ebe4c10c278dea12cc96ac601c9e033edf27ced1a442cbb005e919f07c38",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/weighted_validation.png",
+      "published": "benchmarks/results/regimes_20261001/weighted_validation.png",
+      "source_sha256": "d5bca9d997c4b3f077c8107d25efc214f6f0f5a23abfb204c888de7106de4ce7",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/weighted_wrong_metric.csv",
+      "published": "benchmarks/results/regimes_20261001/weighted_wrong_metric.csv",
+      "source_sha256": "81d190773c2746083034413a29621786deff6c9ff7679da890bcfc2e3d6d5eee",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/workload_audit.json",
+      "published": "benchmarks/results/regimes_20261001/workload_audit.json",
+      "source_sha256": "38f45b91ccd2845d582adba1e78cfd077ef0dcd560b1732b676605a8d349cf67",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/workload_build_batches.csv",
+      "published": "benchmarks/results/regimes_20261001/workload_build_batches.csv",
+      "source_sha256": "58f119f3f17f000db2fad6a92944ca0f17abb79eefb5ca46d91d9c9d50966edf",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/workload_crossovers.csv",
+      "published": "benchmarks/results/regimes_20261001/workload_crossovers.csv",
+      "source_sha256": "e35069ad7149a5f1f776ecd4a81ae74cf757d25d16d9cf7c8205b8928f69d16d",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/workload_measured.csv",
+      "published": "benchmarks/results/regimes_20261001/workload_measured.csv",
+      "source_sha256": "2e678b014fddcf90fc7b8b49000f079283ecab0746034408aa40a7b4dadd60cc",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/workload_scaling.pdf",
+      "published": "benchmarks/results/regimes_20261001/workload_scaling.pdf",
+      "source_sha256": "fb70cb2e3bf853251a71d0cf006dc1957092b4006dfdff3b26b5b1fa63ee372d",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/workload_scaling.png",
+      "published": "benchmarks/results/regimes_20261001/workload_scaling.png",
+      "source_sha256": "bc953cae9e57a23190f8a5d93e8eb59fa169b8801505ebd12a68f217931dc247",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/PROTOCOL.md",
+      "published": "benchmarks/results/robustness_20261001/PROTOCOL.md",
+      "source_sha256": "d952d77ac885f4a55a0a5e59994779a12e7d3081e891e330501b34f828ac056f",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/alignment_mixed_summary.csv",
+      "published": "benchmarks/results/robustness_20261001/alignment_mixed_summary.csv",
+      "source_sha256": "0d9d1dc568c8f83bce3ffd5ed1743d0af21380c781eabbc0070e95bca64ca0d1",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/alignment_reference_comparison.csv",
+      "published": "benchmarks/results/robustness_20261001/alignment_reference_comparison.csv",
+      "source_sha256": "d4f2b658433df2f06e83288d9b556722f0ca44c436079ba80e905a2afd03c4e2",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/alignment_results.csv",
+      "published": "benchmarks/results/robustness_20261001/alignment_results.csv",
+      "source_sha256": "1c8c81670446df898d41863a69fc348351811e11e2e3f7200186a50be69baf01",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/alignment_sketch_accuracy.csv",
+      "published": "benchmarks/results/robustness_20261001/alignment_sketch_accuracy.csv",
+      "source_sha256": "bd21b2878d60e1dc7a82b2717d2e99853fee802618e42d17aa1bd81b96017d4c",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/analysis_status.json",
+      "published": "benchmarks/results/robustness_20261001/analysis_status.json",
+      "source_sha256": "06e0b37e7afbebc102248bd69d1e7698653a640886f9d041d25ae43ee89d2be6",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/budget_accuracy.csv",
+      "published": "benchmarks/results/robustness_20261001/budget_accuracy.csv",
+      "source_sha256": "fb224e01108c9c61fec020b317b0b517b7fdce8bfdfcbceae694bbe0020bee42",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/budget_coverage.csv",
+      "published": "benchmarks/results/robustness_20261001/budget_coverage.csv",
+      "source_sha256": "0fbbb3ae00422765479663a4d155774b1daad9485e600869a0d4bd453f3680e3",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/build_batches.csv",
+      "published": "benchmarks/results/robustness_20261001/build_batches.csv",
+      "source_sha256": "56f195f4ac7a2a0440fab44d776285919ad867e103d13ed69864f587b692377b",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/build_summary.csv",
+      "published": "benchmarks/results/robustness_20261001/build_summary.csv",
+      "source_sha256": "d8dedd2048d98d6a818239de79f29dc45febd8eba72baf2aa396cf000a2de963",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/completion.json",
+      "published": "benchmarks/results/robustness_20261001/completion.json",
+      "source_sha256": "869facfe8bcec5d6dde25eb0565c3a1e456ce8162bf39db5acfaa6195de1b700",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/configuration_accuracy.csv",
+      "published": "benchmarks/results/robustness_20261001/configuration_accuracy.csv",
+      "source_sha256": "deeec805b7e349f7a3232f2ee994c02474863fe71a71e06418481c233d7b52a1",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/data_provenance.json",
+      "published": "benchmarks/results/robustness_20261001/data_provenance.json",
+      "source_sha256": "8016f95897668ae3c2332be8c4ccd0d54887c809382d38880399197f83509a4d",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/exact_truth_and_models.csv",
+      "published": "benchmarks/results/robustness_20261001/exact_truth_and_models.csv",
+      "source_sha256": "d5b36ca4d0e4be565298e3dd23ffb345e70b8dea213cec60446c34ecfff52f0f",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/frozen_advisor_external.csv",
+      "published": "benchmarks/results/robustness_20261001/frozen_advisor_external.csv",
+      "source_sha256": "d3b35e9173fafb48b8b80ba8dd715b5622ec9d3e6453772c0e5cc0c9f3637abb",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/frozen_advisor_provenance.json",
+      "published": "benchmarks/results/robustness_20261001/frozen_advisor_provenance.json",
+      "source_sha256": "944f3a2c111906aa0158c51f7167d5b518719fc8df43a0bc5de7c04fac63143b",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/independent_genome_accuracy.pdf",
+      "published": "benchmarks/results/robustness_20261001/independent_genome_accuracy.pdf",
+      "source_sha256": "5015e7d4d7e3e73f31930f062892aaa736c01bcb717d62a54b971ce77c4acfa3",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/independent_genome_accuracy.png",
+      "published": "benchmarks/results/robustness_20261001/independent_genome_accuracy.png",
+      "source_sha256": "882bd57dc34d381c0c35ce0a2e1be217bbe2d5ed18f52498028f8076ecb4d818",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/job_counts.csv",
+      "published": "benchmarks/results/robustness_20261001/job_counts.csv",
+      "source_sha256": "b872391b238b6d8d57c16c3dc6e4e7983eeb181b344949942bd93d6adf3ecfc8",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/mixed_model_summary.csv",
+      "published": "benchmarks/results/robustness_20261001/mixed_model_summary.csv",
+      "source_sha256": "a41c775f1f6058212bb12fe6f7000cfb5aef3d347dc7658addf4b3d20c2909fc",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/mixed_mutation_model_residual.pdf",
+      "published": "benchmarks/results/robustness_20261001/mixed_mutation_model_residual.pdf",
+      "source_sha256": "6ed4ab8bb0871f7b430577a9b01feb52cc56b34052dd89532dfe93cb2bdaacc6",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/mixed_mutation_model_residual.png",
+      "published": "benchmarks/results/robustness_20261001/mixed_mutation_model_residual.png",
+      "source_sha256": "29f66d3c2085396ebd57ce452e8250c630d670b0b3e4534de2e3bdcbdf99ba91",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/mixed_mutation_sampling.pdf",
+      "published": "benchmarks/results/robustness_20261001/mixed_mutation_sampling.pdf",
+      "source_sha256": "f6bca7572637f113ab0810b10ffcc164f2cbff6d2780af6e1cd7857b95e57c2d",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/mixed_mutation_sampling.png",
+      "published": "benchmarks/results/robustness_20261001/mixed_mutation_sampling.png",
+      "source_sha256": "f2ab2689f8e04caa09f41ef36f58815b3f9362e65cc9eb26f04f63e5cbdb44c8",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/mixed_observed_j_accuracy.csv",
+      "published": "benchmarks/results/robustness_20261001/mixed_observed_j_accuracy.csv",
+      "source_sha256": "4d7bd09b1649fff3fe1f288ec2b5c34bd0b92914736f556d71461aaf60197989",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/native_object_costs.csv.gz",
+      "published": "benchmarks/results/robustness_20261001/native_object_costs.csv.gz",
+      "source_sha256": "7d9562d1987f1044cf6a0dd72e7aa6825da887182991f140236080fb8c9e0765",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/natural_composition.csv",
+      "published": "benchmarks/results/robustness_20261001/natural_composition.csv",
+      "source_sha256": "74606e716ad98800e8ceef33f98bbd0a8be7bdd274515e28fe6bf791352f7eab",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/natural_reference_coverage.csv",
+      "published": "benchmarks/results/robustness_20261001/natural_reference_coverage.csv",
+      "source_sha256": "10ddf575ac5849c672afdd2590c93c861ca65aab9f3f4facde0f4f2d93dd2549",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/natural_taxonomy.csv",
+      "published": "benchmarks/results/robustness_20261001/natural_taxonomy.csv",
+      "source_sha256": "c6573da39e6d0331835c8503170088c092a76459ea0f26bb357507875866c514",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/pair_query_cost.csv",
+      "published": "benchmarks/results/robustness_20261001/pair_query_cost.csv",
+      "source_sha256": "d7d9255efed935513f40dc8a0899e9dd21aa7757e4d045539845772c7fbe5d8f",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/paired_cluster_intervals.csv",
+      "published": "benchmarks/results/robustness_20261001/paired_cluster_intervals.csv",
+      "source_sha256": "2df1fabd707c8561bea78aa5a3ed93e2bf2d5b2a020d003684cbf1f5db648675",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/preparation_tests.log",
+      "published": "benchmarks/results/robustness_20261001/preparation_tests.log",
+      "source_sha256": "2619c46e511b10a3fd9f0372aa5b0f56dedce98790c9edda7971ae8f6d0504f9",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/raw_audit.json",
+      "published": "benchmarks/results/robustness_20261001/raw_audit.json",
+      "source_sha256": "328a93eacf5dbf44c9e262bbceb30461a482376786d913046a79b4e523e7178e",
+      "encoding": "identical bytes before Markdown link normalization"
+    },
+    {
+      "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/report.md",
+      "published": "benchmarks/results/robustness_20261001/report.md",
+      "source_sha256": "2d514649ca65ebc5f9206fcc8cc3b8900685f69a452d9656d9642501126bc74f",
+      "encoding": "identical bytes before Markdown link normalization"
+    }
+  ],
+  "omitted": [
+    {
+      "path": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/ani_selected_rows.csv.gz",
+      "bytes": 48544485,
+      "reason": "large per-measurement table retained in the experiment archive"
+    },
+    {
+      "path": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/all_native_rows.csv.gz",
+      "bytes": 17447946,
+      "reason": "large per-measurement table retained in the experiment archive"
+    },
+    {
+      "path": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/robustness_20261001/budget_selected_rows.csv.gz",
+      "bytes": 22698888,
+      "reason": "large per-measurement table retained in the experiment archive"
+    }
+  ],
+  "notes": [
+    "Markdown links normalized for GitHub; source experiment summaries unchanged",
+    "SetSketch correction remains an explicit patch; no production source replacement",
+    "Old current-workspace deletions and unrelated scratch experiments are not part of this publication"
+  ],
+  "published_hashes": {
+    "benchmarks/results/README.md": "e598d27badd1364f7e6baca4b77c51636a1f0faf6567f6e9cc25ab264364063a",
+    "benchmarks/results/regimes_20261001/METRIC_AUDIT.md": "487690ee4befb9989fd029fe2baed6d32c342d9467c235cfdf6a23c3da91851b",
+    "benchmarks/results/regimes_20261001/PROTOCOL.md": "c7c7d2cc065308552bfb1aa5976bf55777edab71c636703dfa5407172a38a876",
+    "benchmarks/results/regimes_20261001/README.md": "afa1b737366d95848fcba877835602f01e02913170e391c94e48f4eeaeb028c0",
+    "benchmarks/results/regimes_20261001/advisor_examples.json": "325e501e70331ce9c5b4f7b865e87e0bca7b365b763c527635a2edeca50fee5b",
+    "benchmarks/results/regimes_20261001/alignment_audit_summary.json": "ccfdcec3d59891c197704443e510ac8af427c5c001404d162c3eaac9633c5e9d",
+    "benchmarks/results/regimes_20261001/alignment_exact_model_errors.csv": "c5098a464870e9395f72ab2e1f6e6bd56ec56a8f0808f4f95154bb53b7306cc3",
+    "benchmarks/results/regimes_20261001/alignment_references.csv": "ac6ace2e453c800d59f63abae86bdd7e1685bb126fc8a7dfb95e279f5aba2d2e",
+    "benchmarks/results/regimes_20261001/alignment_sketch_accuracy.csv": "81322d68cf39d87009fcddc04ea248a8fd714b2ddf1917e7598678574de23c51",
+    "benchmarks/results/regimes_20261001/ani_audit.json": "bbce289050d6cadc9694765059a0c1bf8c117bb6f66665d0c11e719cbaf64594",
+    "benchmarks/results/regimes_20261001/ani_budget_accuracy.csv": "7b6d35b66bf80340e2420da3007e39e5838b79ce59e17798bd70bdea14aa6749",
+    "benchmarks/results/regimes_20261001/ani_build_batches.csv": "9b4d6a492aacc0689265477f7164e74bbcdc466b27979677c15f16d2861645c9",
+    "benchmarks/results/regimes_20261001/ani_config_accuracy.csv": "c9a983aac9183a6ccc90a9874cae6a9631cac73414830b9d17cc4c38831e5c06",
+    "benchmarks/results/regimes_20261001/ani_error_decomposition.pdf": "f3129f91a3658061ab5b994a0d18d099c080efdf673c825d6f5c4dc62082cc94",
+    "benchmarks/results/regimes_20261001/ani_error_decomposition.png": "9746ede9bc6238017499e2096d1fa435759164c9a24485e52fa81abeb7087efa",
+    "benchmarks/results/regimes_20261001/ani_exact_model_errors.csv": "60360de9ee93556f1bc3bd307a7ce4c85cc9c3d4ef4eeef4c02d67e6a437f87d",
+    "benchmarks/results/regimes_20261001/ani_model_error_summary.csv": "4d769dbc990e73300149a97ca942c37829bab1a4226ec466262b35eae565e42d",
+    "benchmarks/results/regimes_20261001/ani_pair_config.csv.gz": "6c3495cc25224db6d7b4331a51d6425abfc4786a4793e9a8ee3105d0e47170b0",
+    "benchmarks/results/regimes_20261001/ani_references.csv": "2142d393106ce3ebe84e8fe9366f5d359cb4f7825c61a7d3c4cc00cfb0fa849c",
+    "benchmarks/results/regimes_20261001/ani_threshold_errors.csv": "57c2139d449d6adaa0563a839fc33d9b81d5901756f96bac1453b3e14790c92b",
+    "benchmarks/results/regimes_20261001/ani_zero_rate.csv": "8b890fd04d71aacbb248296b8cb6fd8f4dd715068cb831b46563fde0d551bb1c",
+    "benchmarks/results/regimes_20261001/cardinality_accuracy.csv": "d31621ff117368773474ae3ed39f57d99d2468872c9718bdefd07fd87977cdd8",
+    "benchmarks/results/regimes_20261001/cardinality_audit.json": "99d8634f3019c13e0e5f64d0460c51b9ad35d868bbba60a8a3edfa95cd2b13bb",
+    "benchmarks/results/regimes_20261001/cardinality_build.csv": "819573bd60f36b1809455ea97620f21eb103df3da63f80f2e4345dac71c7d34c",
+    "benchmarks/results/regimes_20261001/cardinality_build_batches.csv": "2eae09875047637c87f9fa79264bbdbb9de6b9fa01c801b331cb59a49f45be07",
+    "benchmarks/results/regimes_20261001/cardinality_objects.csv": "55b07b9e591e88210aba7b2b5a015e608f8d61b43597321bc30dbb6cc72795be",
+    "benchmarks/results/regimes_20261001/cardinality_tradeoff.pdf": "738c5e17659d153c83736d655511f287774bc57f91e4667712f001b3cd082ba9",
+    "benchmarks/results/regimes_20261001/cardinality_tradeoff.png": "df920e05ec205810c36e51cb045b924a8a5bff099f8d0836ed095929a9b09e26",
+    "benchmarks/results/regimes_20261001/completion.json": "5ebadab278329ea2f2f22fd90a546be4eca4825140073f6a7a58f82aab0d16c5",
+    "benchmarks/results/regimes_20261001/containment_audit.json": "4279f829f8f482ae586bf1cada2d194baf703ba2adedb04b26e577e064342c2d",
+    "benchmarks/results/regimes_20261001/containment_boundaries.pdf": "7a42f28d8f5420609be0abbf363118d79f9ded5af457a261492718cedc7a09da",
+    "benchmarks/results/regimes_20261001/containment_boundaries.png": "c637719eaf0575c0280f9ed0bec3f02c8f1f33e44d1ac81e3790f3f19f1d4b13",
+    "benchmarks/results/regimes_20261001/containment_budget_accuracy.csv": "64445ca4d734b2f86740684db9fa79fa591969e87d62b2ba652da203e6901843",
+    "benchmarks/results/regimes_20261001/containment_build_batches.csv": "b5a765f008e02d056fd281a7a3fb40fa8889e1b787e9488425cbf35e5f1a5ac6",
+    "benchmarks/results/regimes_20261001/containment_config_accuracy.csv": "f2135c05306b7bd274e05e08ca3e9d5fb6df0b72c2d1d87de1c2c176a2b45bdb",
+    "benchmarks/results/regimes_20261001/containment_exact_truth.csv": "4cba306f98bce23e43bebb1506219e764ecd186aba39d149e5451911b521c4c3",
+    "benchmarks/results/regimes_20261001/containment_native_accuracy.csv": "d5a261d60c68bddef63e0365f86557d12ea1ffe41527a1708dc93036dd2a8cd3",
+    "benchmarks/results/regimes_20261001/containment_query_cost.csv": "26b4651983015113c96404646ec39bcb0fc8726a8e6c7ea27d86096cbdc62362",
+    "benchmarks/results/regimes_20261001/containment_reverse_accuracy.csv": "3c8e3e7b54e3645e94eaa6b0c9f1aaa20571de3c9eca46a32e1677f1bda9fde5",
+    "benchmarks/results/regimes_20261001/containment_selected_rows.csv.gz": "cf90ee22d1d8ffad4c9bd2739ce6a0644905ec7476f4d278e1b5b5344de1f742",
+    "benchmarks/results/regimes_20261001/heldout_selection.csv": "9a96c2b0380b7e9ca6fcd938fe5f8dfdd63449b91c044ea63b870dcc5609e50d",
+    "benchmarks/results/regimes_20261001/paired_ani_intervals.csv": "ad5284c5a09b173208b9819af0cb6b61379163b0fa339522ed451b315274eb6f",
+    "benchmarks/results/regimes_20261001/report.md": "be33ab5c5eaf6bb48ee5f4f336857b8e2826a361c586205ce8e8293252a2329a",
+    "benchmarks/results/regimes_20261001/selection_mash142.pdf": "6623185f093a12b1873d01ba6facf357a19d955b07c807a8db584a9905520a4a",
+    "benchmarks/results/regimes_20261001/selection_mash142.png": "8321a20e74a5ac86475c805153e2ddc190931c909be3d5949275eca4de089467",
+    "benchmarks/results/regimes_20261001/selection_substitution.pdf": "ce51852066f17c83f00a98b89536ad32c5cf34af52c2f0b9879b548d395bd7b6",
+    "benchmarks/results/regimes_20261001/selection_substitution.png": "77e2437fa80348a6afd1d225921b7916bd738850b2b9d6c57990a59b9d0cd5d8",
+    "benchmarks/results/regimes_20261001/weighted_accuracy.csv": "6b9566c94db27f78a81c8d20c9af54414a3bb2ee79b8dbf20f78ddc681447987",
+    "benchmarks/results/regimes_20261001/weighted_audit.json": "26d62f16423410584e37530b8a7e8dba382fca4e85c285b6a935e7edb59d350d",
+    "benchmarks/results/regimes_20261001/weighted_build_batches.csv": "7a702bc764a90d7679e4528d9e59b2e2921b1d3cb560476d2b6c120969c959d6",
+    "benchmarks/results/regimes_20261001/weighted_pair_accuracy.csv": "7747bff7d87ac493a4a1d25ba154ffcc4e81edaf348c134a15cc16cdd3fd3373",
+    "benchmarks/results/regimes_20261001/weighted_validation.pdf": "34d4ebe4c10c278dea12cc96ac601c9e033edf27ced1a442cbb005e919f07c38",
+    "benchmarks/results/regimes_20261001/weighted_validation.png": "d5bca9d997c4b3f077c8107d25efc214f6f0f5a23abfb204c888de7106de4ce7",
+    "benchmarks/results/regimes_20261001/weighted_wrong_metric.csv": "81d190773c2746083034413a29621786deff6c9ff7679da890bcfc2e3d6d5eee",
+    "benchmarks/results/regimes_20261001/workload_audit.json": "38f45b91ccd2845d582adba1e78cfd077ef0dcd560b1732b676605a8d349cf67",
+    "benchmarks/results/regimes_20261001/workload_build_batches.csv": "58f119f3f17f000db2fad6a92944ca0f17abb79eefb5ca46d91d9c9d50966edf",
+    "benchmarks/results/regimes_20261001/workload_crossovers.csv": "e35069ad7149a5f1f776ecd4a81ae74cf757d25d16d9cf7c8205b8928f69d16d",
+    "benchmarks/results/regimes_20261001/workload_measured.csv": "2e678b014fddcf90fc7b8b49000f079283ecab0746034408aa40a7b4dadd60cc",
+    "benchmarks/results/regimes_20261001/workload_scaling.pdf": "fb70cb2e3bf853251a71d0cf006dc1957092b4006dfdff3b26b5b1fa63ee372d",
+    "benchmarks/results/regimes_20261001/workload_scaling.png": "bc953cae9e57a23190f8a5d93e8eb59fa169b8801505ebd12a68f217931dc247",
+    "benchmarks/results/robustness_20261001/PROTOCOL.md": "d952d77ac885f4a55a0a5e59994779a12e7d3081e891e330501b34f828ac056f",
+    "benchmarks/results/robustness_20261001/alignment_mixed_summary.csv": "0d9d1dc568c8f83bce3ffd5ed1743d0af21380c781eabbc0070e95bca64ca0d1",
+    "benchmarks/results/robustness_20261001/alignment_reference_comparison.csv": "d4f2b658433df2f06e83288d9b556722f0ca44c436079ba80e905a2afd03c4e2",
+    "benchmarks/results/robustness_20261001/alignment_results.csv": "1c8c81670446df898d41863a69fc348351811e11e2e3f7200186a50be69baf01",
+    "benchmarks/results/robustness_20261001/alignment_sketch_accuracy.csv": "bd21b2878d60e1dc7a82b2717d2e99853fee802618e42d17aa1bd81b96017d4c",
+    "benchmarks/results/robustness_20261001/analysis_status.json": "06e0b37e7afbebc102248bd69d1e7698653a640886f9d041d25ae43ee89d2be6",
+    "benchmarks/results/robustness_20261001/budget_accuracy.csv": "fb224e01108c9c61fec020b317b0b517b7fdce8bfdfcbceae694bbe0020bee42",
+    "benchmarks/results/robustness_20261001/budget_coverage.csv": "0fbbb3ae00422765479663a4d155774b1daad9485e600869a0d4bd453f3680e3",
+    "benchmarks/results/robustness_20261001/build_batches.csv": "56f195f4ac7a2a0440fab44d776285919ad867e103d13ed69864f587b692377b",
+    "benchmarks/results/robustness_20261001/build_summary.csv": "d8dedd2048d98d6a818239de79f29dc45febd8eba72baf2aa396cf000a2de963",
+    "benchmarks/results/robustness_20261001/completion.json": "869facfe8bcec5d6dde25eb0565c3a1e456ce8162bf39db5acfaa6195de1b700",
+    "benchmarks/results/robustness_20261001/configuration_accuracy.csv": "deeec805b7e349f7a3232f2ee994c02474863fe71a71e06418481c233d7b52a1",
+    "benchmarks/results/robustness_20261001/data_provenance.json": "8016f95897668ae3c2332be8c4ccd0d54887c809382d38880399197f83509a4d",
+    "benchmarks/results/robustness_20261001/exact_truth_and_models.csv": "d5b36ca4d0e4be565298e3dd23ffb345e70b8dea213cec60446c34ecfff52f0f",
+    "benchmarks/results/robustness_20261001/frozen_advisor_external.csv": "d3b35e9173fafb48b8b80ba8dd715b5622ec9d3e6453772c0e5cc0c9f3637abb",
+    "benchmarks/results/robustness_20261001/frozen_advisor_provenance.json": "944f3a2c111906aa0158c51f7167d5b518719fc8df43a0bc5de7c04fac63143b",
+    "benchmarks/results/robustness_20261001/independent_genome_accuracy.pdf": "5015e7d4d7e3e73f31930f062892aaa736c01bcb717d62a54b971ce77c4acfa3",
+    "benchmarks/results/robustness_20261001/independent_genome_accuracy.png": "882bd57dc34d381c0c35ce0a2e1be217bbe2d5ed18f52498028f8076ecb4d818",
+    "benchmarks/results/robustness_20261001/job_counts.csv": "b872391b238b6d8d57c16c3dc6e4e7983eeb181b344949942bd93d6adf3ecfc8",
+    "benchmarks/results/robustness_20261001/mixed_model_summary.csv": "a41c775f1f6058212bb12fe6f7000cfb5aef3d347dc7658addf4b3d20c2909fc",
+    "benchmarks/results/robustness_20261001/mixed_mutation_model_residual.pdf": "6ed4ab8bb0871f7b430577a9b01feb52cc56b34052dd89532dfe93cb2bdaacc6",
+    "benchmarks/results/robustness_20261001/mixed_mutation_model_residual.png": "29f66d3c2085396ebd57ce452e8250c630d670b0b3e4534de2e3bdcbdf99ba91",
+    "benchmarks/results/robustness_20261001/mixed_mutation_sampling.pdf": "f6bca7572637f113ab0810b10ffcc164f2cbff6d2780af6e1cd7857b95e57c2d",
+    "benchmarks/results/robustness_20261001/mixed_mutation_sampling.png": "f2ab2689f8e04caa09f41ef36f58815b3f9362e65cc9eb26f04f63e5cbdb44c8",
+    "benchmarks/results/robustness_20261001/mixed_observed_j_accuracy.csv": "4d7bd09b1649fff3fe1f288ec2b5c34bd0b92914736f556d71461aaf60197989",
+    "benchmarks/results/robustness_20261001/native_object_costs.csv.gz": "7d9562d1987f1044cf6a0dd72e7aa6825da887182991f140236080fb8c9e0765",
+    "benchmarks/results/robustness_20261001/natural_composition.csv": "74606e716ad98800e8ceef33f98bbd0a8be7bdd274515e28fe6bf791352f7eab",
+    "benchmarks/results/robustness_20261001/natural_reference_coverage.csv": "10ddf575ac5849c672afdd2590c93c861ca65aab9f3f4facde0f4f2d93dd2549",
+    "benchmarks/results/robustness_20261001/natural_taxonomy.csv": "c6573da39e6d0331835c8503170088c092a76459ea0f26bb357507875866c514",
+    "benchmarks/results/robustness_20261001/pair_query_cost.csv": "d7d9255efed935513f40dc8a0899e9dd21aa7757e4d045539845772c7fbe5d8f",
+    "benchmarks/results/robustness_20261001/paired_cluster_intervals.csv": "2df1fabd707c8561bea78aa5a3ed93e2bf2d5b2a020d003684cbf1f5db648675",
+    "benchmarks/results/robustness_20261001/preparation_tests.log": "2619c46e511b10a3fd9f0372aa5b0f56dedce98790c9edda7971ae8f6d0504f9",
+    "benchmarks/results/robustness_20261001/raw_audit.json": "328a93eacf5dbf44c9e262bbceb30461a482376786d913046a79b4e523e7178e",
+    "benchmarks/results/robustness_20261001/report.md": "869659fe25cd0f3410f1e7d24cda98d6227eea8011dd042e4c27f237d0cd8535",
+    "benchmarks/results/systematic_20261001/VALIDATION.md": "996551e1ed3baed534815d4fa80bbd4b4ac1e944c5874ead0d31349906138caf",
+    "benchmarks/results/systematic_20261001/analysis.log": "b4f42d9648ddc9779727f0eb142489658b36a7c16c518f17f9c1870393e3b48c",
+    "benchmarks/results/systematic_20261001/analysis_version.json": "b20586d1c55778eba6acd3ee71aec47242acb99f543c50ea8863ccc610debbf9",
+    "benchmarks/results/systematic_20261001/completion.json": "62fa1ced959f73cd2636ff9687bdc4f7b471c9da642acc33cfbbe8ebd0946c11",
+    "benchmarks/results/systematic_20261001/original_six_configurations.csv": "ac6503b8c7e89765aac627552a16e7baa0b178b1b7a5d7fbe6c370a539739b9d",
+    "benchmarks/results/systematic_20261001/original_six_decisions.csv": "1bbf5e4b5c56773512fa6e3e5a4fd3ed71ac5acb4237a5b2b6c6ff143cb70d4e",
+    "benchmarks/results/systematic_20261001/original_six_manifest.json": "a8d96fcf424f68efc5e25c3296d780fffd3ca1f09476d1c5c477054156ceb6f7",
+    "benchmarks/results/systematic_20261001/real_accuracy.pdf": "16e54414ddff0cf6116abb5a4b081ecc78d2705141c34bf0fe1382eb222f489b",
+    "benchmarks/results/systematic_20261001/real_accuracy.png": "8a19d8c3195bf2f6f6a11d951b65b29b25269a4b2ebfd4b7c3c38320f0d38a8e",
+    "benchmarks/results/systematic_20261001/real_analysis.log": "088b65f17558c52e79aa2a842d3080deabf3ceb058992468b71ffe24d847b83d",
+    "benchmarks/results/systematic_20261001/real_budget_selected.csv": "9b6e214ac6176a69d0f034524c2fc4eb83abbbb0ef2732fd956b51cdf043777e",
+    "benchmarks/results/systematic_20261001/real_configurations.csv": "3346798caf0967a3e88814dc6b2c7108d8e0dbb8f595c8a4744461428e0f5b09",
+    "benchmarks/results/systematic_20261001/real_crossovers.csv": "26e178de7af3cae39b8e0169bbe18c3687c411a8ec7674849bfbce659b0972b5",
+    "benchmarks/results/systematic_20261001/real_jaccard_ranges.csv": "8d8b9c723833e83aba5edb492b88b3c6af0f8e3c40f47f55f9c1401aa73139e1",
+    "benchmarks/results/systematic_20261001/real_manifest.json": "0316db63177ddc0c3aac2ec8c8d839f5cb163d0636688ea20e712e8349626b73",
+    "benchmarks/results/systematic_20261001/real_pairwise_comparisons.csv": "8b142f317ee7d0d50adb39002a76fd0d54a60c078528b7c53a29dc66b937e3b8",
+    "benchmarks/results/systematic_20261001/real_reuse_observed.csv": "9d04cde14d310dee9c1efa085dcbeae08b51bff8fede917cc6839ec8aff3ee05",
+    "benchmarks/results/systematic_20261001/real_summary.csv": "92e7ca2b1e8af7de9e282a3f1c7dcc9a8e7c08c418f46dc409c0b848c478ccda",
+    "benchmarks/results/systematic_20261001/real_tiers.csv": "0a8e72d973f4d27f8b2206492e1c60478c7d8d7c52a4fd16b5b3dbee3778a560",
+    "benchmarks/results/systematic_20261001/real_tradeoffs.pdf": "e569f4cd628ca3c2ce2bf081330c143b6b110b113f70e5a016ab1c149102e497",
+    "benchmarks/results/systematic_20261001/real_tradeoffs.png": "1e04133e2be40809d787e6d390224527be070982b229d7c9f80e100c8cf22776",
+    "benchmarks/results/systematic_20261001/report.md": "d3dd2488dbe6284e30cfce638646aed05e672229e0fb795e13c1c8b3e3079a9d",
+    "benchmarks/results/systematic_20261001/selection_map.pdf": "513c6f63f341cdf62a4b89690bac189b08db9c30c22e1cff435cedb6b671768d",
+    "benchmarks/results/systematic_20261001/selection_map.png": "ebebb708397fb529ab81635c5c4aa7b475f0ce6d4d56d8f221a86a0eade424f7",
+    "benchmarks/results/systematic_20261001/setsketch_before_after.csv": "b97b6f5f7918defa7682026147c1d69ea5a4d394e9440e9910780d8eb6d1717b",
+    "benchmarks/results/systematic_20261001/setsketch_corrected_configurations.csv": "94c9e4ee9bad593ce5813371b3d4ee305baae098335b724b320bc240a168416f",
+    "benchmarks/results/systematic_20261001/setsketch_ctest.log": "09572a495bbcf3adb9fec8a3617babdf25f009705d1c7c4bb43a2b3ccdd056fb",
+    "benchmarks/results/systematic_20261001/setsketch_partitioned_joint.patch": "c9432c48134e4d76a2e3fef06ffa093dcd34e461c05ef7f3975052b7d235badc",
+    "benchmarks/results/systematic_20261001/synthetic_budget_selected.csv": "654217869e03fe6bef0422354dcff77f69eab46312365f2402d0d37a5cb2b077",
+    "benchmarks/results/systematic_20261001/synthetic_configurations.csv": "a0f49d4303c485aa61adb1fbca5d3ef00a5699403bcc90cddd272f8ca7394c11",
+    "benchmarks/results/systematic_20261001/synthetic_coverage.csv": "f783c93905faa26c3af20dbea200782ac0923dfeba60905813f12e4cc93bbf2b",
+    "benchmarks/results/systematic_20261001/synthetic_coverage.pdf": "48d0abed1c5fc0bd333e43c9144ee56b277d0ee32852ddf39f28e4970c6bf321",
+    "benchmarks/results/systematic_20261001/synthetic_coverage.png": "61622b44233ce1947c613a803f89e3fe4e6d833a1f7cf4a4d34b300822e05aa9",
+    "benchmarks/results/systematic_20261001/synthetic_dimensions.csv": "11c654b7c7c08b74347b485d91afcb0f3bcadbd28f5088399befa1ec1d02e6be",
+    "benchmarks/results/systematic_20261001/synthetic_frontiers.csv": "32fd35e5e7ed0bc83b9727d1b51d4a15c7a84b22d1a30269c5bcfb2356f49949",
+    "benchmarks/results/systematic_20261001/synthetic_hll_setsketch.csv": "fadf29444f7fb1f2c14396a7241d7c09dab51c58cd0cc94678be04a3e3c9e1c0",
+    "benchmarks/results/systematic_20261001/synthetic_imbalance_matched.csv": "ee3d15ec679489a54e82fc28afbb2918a3e2966d74bbc4f36ebc3018090a50b9",
+    "benchmarks/results/systematic_20261001/synthetic_manifest.json": "b454e186653e710816048322be8e71941253b8eee207c32a0dce5093a4c2a4e6",
+    "benchmarks/results/systematic_20261001/synthetic_paired_comparisons.csv": "95e814d23ba5e83382692131a15267c63286bca247d2218666fd36e67f3020ee",
+    "benchmarks/results/systematic_20261001/synthetic_winners.csv": "3979e43bab5572314e7b39219444a420742cebbbd4a4809eec7f44e878482393"
+  }
+}

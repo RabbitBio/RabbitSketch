@@ -1,0 +1,8 @@
+{
+  "audited_pairs": 74,
+  "eligible_pairs": 71,
+  "mean_absolute_reference_difference": 0.005476864864864874,
+  "p95_absolute_reference_difference": 0.019545775000000012,
+  "max_absolute_reference_difference": 0.04102249999999985,
+  "rounding_percentage_points": 0.0001
+}

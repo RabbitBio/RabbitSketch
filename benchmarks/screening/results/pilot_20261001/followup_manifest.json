@@ -1,0 +1,57 @@
+{
+  "additional_absolute_limit_for_reuse": 0.005,
+  "budgets_bytes": [
+    1024,
+    2048,
+    4096,
+    8192,
+    16384,
+    32768,
+    65536,
+    131072,
+    262144
+  ],
+  "created_utc": "2026-10-01T03:18:27.841092+00:00",
+  "diagnostic_manifest_sha256": "64bfc44b35ec3e3bc02dd6db02eafc1284a9f3d2e0d209eff4ebc6e3f1229d04",
+  "fixed_size_common_budgets_bytes": [
+    2048,
+    8192,
+    32768
+  ],
+  "output_files_sha256": {
+    "accuracy_budget_map.pdf": "adf8625e5095e5981db6591b257a3bf83b0e0bc5f1adfcf985780e1ff705af94",
+    "accuracy_budget_map.png": "5d1ff49c540857dc0b1120ed546434d33a740b74638b72312da17bc3c3b60297",
+    "algorithm_summary.csv": "0eeee355fba258a4b08f618f1f0496a9c2a44747427cf0cc4492e156bcf342c4",
+    "budget_coverage.csv": "8742c3a5238ee44f35e3a3eaf5721484825ba03b62ea046ecefc7cbfcfb37592",
+    "budget_selected_configurations.csv": "6ec6914ce126b5a83f7ae68f75be6270d84384b48e1a6267d6a75b6ebc1b1544",
+    "empty_sampling.csv": "1950080035d78174a3b4a21b3a0167a500d1e261fad3350f747c4cda18293616",
+    "hll_setsketch.pdf": "164950e13f0d79fcf8b2e8fb7070ee8993afe5004edb9c66f28ec7697e1d419e",
+    "hll_setsketch.png": "2afaf1f7353eae504de9848eff4a751aee08c2cbd5e30838d83da5dfc2793726",
+    "hll_setsketch_comparisons.csv": "4caff5115daaa3100a375c808602a68c3f42ac1fbff4c03e03c1cd4a8f1f1534",
+    "observed_accuracy_winners.csv": "0d4b946c511c3e0ea7bbbd5d104a9667d8d0938dacb772d49d92f73adb3cc9de",
+    "overview.pdf": "782c441191c2d40bbe98a08b0a5dad7437eb330dd376d40a8b8597f56a764786",
+    "overview.png": "edaebc7f0c034e2b460e7e66fcac5452e142d3a612385dd5e7bd7329fa37fc51",
+    "paired_budget_comparisons.csv": "db2b7c17420423bc01c8a7bae99ab49d28342a388be28dcc348283070b77a16a",
+    "relative_guarded_reuse.csv": "6a079e02746d2b0ef1e44bd76c7c1e899e2bde82842f5b3e99450f9dd3ef77c9",
+    "report.md": "d5be03d4498877bbb526e93c3f8ca325e638768aa4c1d09ee81c25438a0c5cb3",
+    "representative_frontiers.pdf": "15f97b67885c89f18850e0a70ad1ff37561ecd2203fcf32a636d9a93ebea5e4a",
+    "representative_frontiers.png": "606bfb39ad514a95dc4b82cc665bf05a0fc995fa47c0bfd5214527f1460289e8",
+    "setsketch_anomaly.md": "30707bfc335b111c12f8cafe1efb897b3ca7046cfb0b069bfed2a720e3061dcf"
+  },
+  "parameter_selection": "largest mean payload with maximum observed pair payload <= budget; no error tuning",
+  "purpose": "post_hoc_diagnostics_only; registered pruning thresholds unchanged",
+  "raw_rows_digest_verified": "8ea6531025309b0c312ebdfd767ca47e39fdd7751f1ea6bf8bf6432f75c49afb",
+  "relative_accuracy_limit": 0.25,
+  "script_sha256": "3aa7b62a8c34199f80d6c69bae6f943a5edc5a1f285757fa61fddf91fea65497",
+  "source_files_sha256": {
+    "analysis/algorithm_decisions.csv": "3d4f4e2a87a38457b2016bcb4b3928d97d40d2ff31b7bcbef5a13d7cee9b804f",
+    "analysis/analysis_manifest.json": "708a608c7ebfe0ea60871caf5dbaedfd2cf9f75b070ed2e4ff3d97b22c4307c8",
+    "analysis/batches.csv": "a6e7b50d08394c56d25ee1033c0de8869f03c0cea0ff8b72621f9b9b70bca133",
+    "analysis/configurations.csv": "b722b3d94f187d434ff50352cd30a80d20842ce495cca8b6c645402b277a6d8e",
+    "plan.json": "179da9d0048deb40ccdbaf7af951c548fe62a002881d7e0b03da4cbe69730efe",
+    "progress.json": "2950daea13f5af00741113d56460403031d0ea2ed38d6bcc5770e30f9fa59a07",
+    "raw.jsonl": "a61965aefbeb9c933908e524933e09f14edfa6bdaf162766141932262e207bd7",
+    "status.json": "da16a0686c5e8f5049945d671f81d84c46dec21308e0b2d56c55ea1062b4b69a"
+  },
+  "source_run": "/home/bigssd/zt/rabbitsketch2_benchmark/runs/pilot"
+}

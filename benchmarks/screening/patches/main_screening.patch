@@ -1,0 +1,59 @@
+diff --git a/examples/main.cpp b/examples/main.cpp
+index fbaf0cf..10a3b4b 100644
+--- a/examples/main.cpp
++++ b/examples/main.cpp
+@@ -72,6 +72,7 @@ static void print_usage(const char* prog) {
+ "  --index                use inverted-index pipeline (list mode only;\n"
+ "                         supported for minhash/fastkmv/probminhash/kssd/setsketch/hll)\n\n"
+ "Common options:\n"
++"  --screening-manifest <tsv>  native synthetic-pair batch; uses -t threads\n"
+ "  -o <path>              output file (default: rabbitsketch.dist)\n"
+ "  -k <int>               k-mer size (default 21; hll & setsketch use 32)\n"
+ "  -t <int>               threads (default: omp_get_max_threads())\n"
+@@ -129,6 +130,7 @@ static int parse_args(int argc, char* argv[], Args& a) {
+                 std::exit(1);
+             }
+         }
++        else if (s == "--screening-manifest") { need(i, "--screening-manifest"); a.screeningManifest = argv[++i]; }
+         else if (s == "-o")             { need(i, "-o"); a.output    = argv[++i]; }
+         else if (s == "-k")             { need(i, "-k"); a.kmerSize  = std::stoi(argv[++i]); }
+         else if (s == "-t")             { need(i, "-t"); a.threads   = std::max(1, std::stoi(argv[++i])); }
+@@ -152,6 +154,7 @@ static int parse_args(int argc, char* argv[], Args& a) {
+         }
+     }
+ 
++    if (!a.screeningManifest.empty()) return 0;
+     if (a.algo == Algo::NONE) {
+         std::cerr << "ERROR: no --<algo> selected\n";
+         print_usage(argv[0]);
+diff --git a/examples/sub_command.cpp b/examples/sub_command.cpp
+index d8a0684..d4b45dd 100644
+--- a/examples/sub_command.cpp
++++ b/examples/sub_command.cpp
+@@ -2441,6 +2441,7 @@ static void run_index_hll(const Args& a, const std::vector<std::string>& files_i
+ //  §10  CLI dispatch
+ // ═══════════════════════════════════════════════════════════════════════════
+ int run_cli(const Args& a) {
++    if (!a.screeningManifest.empty()) return run_screening_manifest(a);
+     if (!a.listMode) return run_pair(a);
+ 
+     auto files = load_file_list(a.inputs[0]);
+diff --git a/examples/sub_command.h b/examples/sub_command.h
+index 8323453..a32c596 100644
+--- a/examples/sub_command.h
++++ b/examples/sub_command.h
+@@ -39,6 +39,7 @@ struct Args {
+     bool        listMode    = false;
+     std::vector<std::string> inputs;
+     std::string output      = "rabbitsketch.dist";
++    std::string screeningManifest;
+ 
+     int         kmerSize    = 21;
+     int         threads     = 1;     // overwritten by main() with omp_get_max_threads()
+@@ -69,5 +70,6 @@ struct Args {
+ //  returns a process exit code (0 = success, non-zero = error).
+ // ─────────────────────────────────────────────────────────────────────────────
+ int run_cli(const Args& a);
++int run_screening_manifest(const Args& a);
+ 
+ #endif  // RABBITSKETCH_SUB_COMMAND_H

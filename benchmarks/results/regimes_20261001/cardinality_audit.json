@@ -1,0 +1,12 @@
+{
+  "planned_jobs": 62,
+  "completed_jobs": 62,
+  "pending": 0,
+  "row_counts": {
+    "input": 62,
+    "object": 5270,
+    "exact_summary": 2,
+    "build": 60,
+    "pairs_summary": 60
+  }
+}

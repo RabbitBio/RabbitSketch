@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "purpose": "setsketch_partitioned_model_correction",
+  "k": [
+    20,
+    24
+  ],
+  "larger_cardinalities": [
+    100000,
+    1000000,
+    10000000
+  ],
+  "size_ratios": [
+    1,
+    10,
+    100
+  ],
+  "jaccards": [
+    0.001,
+    0.01,
+    0.05,
+    0.1,
+    0.25,
+    0.5,
+    0.75,
+    0.9
+  ],
+  "replicates": 20,
+  "data_seed": 20260930,
+  "hash_seed": 42,
+  "query_min_ms": 20,
+  "timeout_seconds": 1800,
+  "algorithms": {
+    "setsketch": {
+      "parameters": [
+        4,
+        6,
+        8,
+        10,
+        12,
+        14,
+        16
+      ]
+    }
+  },
+  "analysis": {
+    "minimum_replicates": 20,
+    "dominated_regime_fraction": 0.9,
+    "resource_advantage_fraction": 0.1,
+    "error_equivalence_margin": 0.0001,
+    "error_constraints": [
+      0.001,
+      0.005,
+      0.01,
+      0.05
+    ],
+    "query_reuse": [
+      1,
+      100,
+      10000
+    ],
+    "bootstrap_samples": 2000,
+    "bootstrap_seed": 1701
+  }
+}

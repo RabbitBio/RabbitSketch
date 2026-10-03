@@ -1,0 +1,7 @@
+algorithm,error_space_frontier,descriptive_cross_run_4d_frontier
+bindash,72,84
+fracminhash,53,82
+hll,54,84
+minhash,6,31
+probminhash,5,16
+setsketch,84,84

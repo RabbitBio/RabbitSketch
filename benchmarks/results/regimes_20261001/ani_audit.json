@@ -1,0 +1,14 @@
+{
+  "planned_jobs": 110,
+  "completed_jobs": 110,
+  "pending": 0,
+  "row_counts": {
+    "input": 110,
+    "object": 92180,
+    "pair": 1154010,
+    "exact_summary": 2,
+    "build": 108,
+    "pairs_summary": 108,
+    "shared_setup": 6
+  }
+}

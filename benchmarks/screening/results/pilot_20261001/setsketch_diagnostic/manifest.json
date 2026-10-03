@@ -1,0 +1,69 @@
+{
+  "binary_sha256": "1bf5f1d893cc84dcf24e0dfd05fb7ab68e8d444a618f35174fa49a816f18e9de",
+  "compile_command": [
+    "/usr/bin/c++",
+    "-O3",
+    "-DNDEBUG",
+    "-fopenmp",
+    "-std=gnu++17",
+    "-DRABBITSKETCH_SCREENING_EMBEDDED",
+    "-I/home/bigssd/zt/rabbitsketch2_benchmark/source/RabbitSketch-main/examples",
+    "-I/home/bigssd/zt/rabbitsketch2_benchmark/source/RabbitSketch-main/src",
+    "-c",
+    "/home/user_home/tongz/Finish/RabbitSketch/benchmarks/screening/results/pilot_20261001/setsketch_diagnostic/instrumented_worker.cpp",
+    "-o",
+    "/home/user_home/tongz/Finish/RabbitSketch/benchmarks/screening/results/pilot_20261001/setsketch_diagnostic/instrumented_worker.o"
+  ],
+  "created_utc": "2026-10-01T03:16:05.372877+00:00",
+  "diagnostic_script_sha256": "d3c84778c4e5e39abb910b9bd9454953251cd6d4e5514dd6b10ce22985743703",
+  "instrumented_cpp_sha256": "e31b72e4b65a1d28eb859aaa3d62832e2839a106c21d367d0c5c0694b20599cf",
+  "library_sha256": "6b4772f484fe0e4c1aa2a2c5c2728ad3e1c5993226b69e6149bf5b922f3516c6",
+  "link_command": [
+    "/usr/bin/c++",
+    "-O3",
+    "-fopenmp",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/build_main/CMakeFiles/rabbitsketch_pilot.dir/home/bigssd/zt/rabbitsketch2_benchmark/source/RabbitSketch-main/examples/main.cpp.o",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/build_main/CMakeFiles/rabbitsketch_pilot.dir/home/bigssd/zt/rabbitsketch2_benchmark/source/RabbitSketch-main/examples/sub_command.cpp.o",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/build_main/CMakeFiles/rabbitsketch_pilot.dir/main_batch.cpp.o",
+    "/home/user_home/tongz/Finish/RabbitSketch/benchmarks/screening/results/pilot_20261001/setsketch_diagnostic/instrumented_worker.o",
+    "-o",
+    "/home/user_home/tongz/Finish/RabbitSketch/benchmarks/screening/results/pilot_20261001/setsketch_diagnostic/rabbitsketch_setsketch_diagnostic",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/build_main/rabbitsketch/librabbitsketch_static.a",
+    "-Wl,-rpath,/usr/local/lib",
+    "-ldeflate",
+    "-lz",
+    "-lpthread"
+  ],
+  "native_cpp_sha256": "b91233f542bd2d735ddcca68e0857518156b2b3cd7b272fdb4c7196a03a82fa1",
+  "original_objects_sha256": {
+    "/home/bigssd/zt/rabbitsketch2_benchmark/build_main/CMakeFiles/rabbitsketch_pilot.dir/home/bigssd/zt/rabbitsketch2_benchmark/source/RabbitSketch-main/examples/main.cpp.o": "64c192ca718b6409c5e4dbd6c3eed6a64f395c31e5b4ecba7a8ad96fb34f198a",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/build_main/CMakeFiles/rabbitsketch_pilot.dir/home/bigssd/zt/rabbitsketch2_benchmark/source/RabbitSketch-main/examples/sub_command.cpp.o": "a4bfd9e6a8634aff594a69d1613217f769dc09f3606e8bc924440c98c22f895c",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/build_main/CMakeFiles/rabbitsketch_pilot.dir/main_batch.cpp.o": "7cd4da4c502fe862247f6df9edbe7954904f18a37bbca923dda36a1d36075757"
+  },
+  "run_commands": [
+    [
+      "/home/user_home/tongz/Finish/RabbitSketch/benchmarks/screening/results/pilot_20261001/setsketch_diagnostic/rabbitsketch_setsketch_diagnostic",
+      "--screening-manifest",
+      "/home/user_home/tongz/Finish/RabbitSketch/benchmarks/screening/results/pilot_20261001/setsketch_diagnostic/p12.tsv",
+      "-t",
+      "64"
+    ],
+    [
+      "/home/user_home/tongz/Finish/RabbitSketch/benchmarks/screening/results/pilot_20261001/setsketch_diagnostic/rabbitsketch_setsketch_diagnostic",
+      "--screening-manifest",
+      "/home/user_home/tongz/Finish/RabbitSketch/benchmarks/screening/results/pilot_20261001/setsketch_diagnostic/p14.tsv",
+      "-t",
+      "64"
+    ],
+    [
+      "/home/user_home/tongz/Finish/RabbitSketch/benchmarks/screening/results/pilot_20261001/setsketch_diagnostic/rabbitsketch_setsketch_diagnostic",
+      "--screening-manifest",
+      "/home/user_home/tongz/Finish/RabbitSketch/benchmarks/screening/results/pilot_20261001/setsketch_diagnostic/p16.tsv",
+      "-t",
+      "64"
+    ]
+  ],
+  "source_run": "/home/bigssd/zt/rabbitsketch2_benchmark/runs/pilot",
+  "timing_scope": "not for performance; diagnostic queries run before normal timing",
+  "verified_default_estimates_and_inputs_match_original_pairs": 60
+}

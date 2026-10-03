@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "purpose": "smoke_only",
+  "k": [20, 24],
+  "larger_cardinalities": [10000],
+  "size_ratios": [1, 10],
+  "jaccards": [0.01, 0.5],
+  "replicates": 3,
+  "data_seed": 20260930,
+  "hash_seed": 42,
+  "query_min_ms": 5,
+  "timeout_seconds": 120,
+  "algorithms": {
+    "minhash": {"parameters": [64, 512]},
+    "fracminhash": {"parameters": [50, 500]},
+    "hll": {"parameters": [6, 10]},
+    "setsketch": {"parameters": [6, 10]},
+    "kssd": {"parameters": [0, 1], "half_subk": 4},
+    "probminhash": {"parameters": [64, 512]},
+    "bindash": {"parameters": [64, 512], "bbits": 16}
+  },
+  "analysis": {
+    "minimum_replicates": 20,
+    "dominated_regime_fraction": 0.9,
+    "resource_advantage_fraction": 0.1,
+    "error_equivalence_margin": 0.0001,
+    "error_constraints": [0.001, 0.005, 0.01, 0.05],
+    "query_reuse": [1, 100, 10000],
+    "bootstrap_samples": 2000,
+    "bootstrap_seed": 1701
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "source": "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/regimes_20261001/heldout_selection.csv",
+  "sha256": "9a96c2b0380b7e9ca6fcd938fe5f8dfdd63449b91c044ea63b870dcc5609e50d",
+  "refit": false,
+  "failed_choice_replaced": false,
+  "cost_model": "unchanged Stage II 10000-genome 64-thread CPU calibration",
+  "mixed_truth": "achieved alignment-column identity; bin membership uses nominal targets to avoid one-base rounding at boundaries; different estimand from FastANI, explicitly scoped"
+}

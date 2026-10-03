@@ -1,0 +1,24 @@
+{
+  "budgets_bytes": [
+    2048,
+    8192,
+    32768
+  ],
+  "ci": "paired pointwise percentile bootstrap; 2000 resamples; not familywise adjusted",
+  "corrected_raw_sha256": "82d9bd3c4bdde2f46d7429261c93700daa8594b0ed9aa8a97f15f161044ca072",
+  "correction": "/home/bigssd/zt/rabbitsketch2_benchmark/runs/setsketch_validated_20261001",
+  "excluded_by_user": [
+    "kssd",
+    "orderminhash"
+  ],
+  "frac_extension": "/home/bigssd/zt/rabbitsketch2_benchmark/runs/frac_budget_extension_20261001",
+  "frac_extension_raw_sha256": "6e1403509e4c7a86e8330eafe64296f5ccdb1a46768251ef92485b38d0d17db4",
+  "minhash": "FastKMV; no separate Legacy entry",
+  "original": "/home/bigssd/zt/rabbitsketch2_benchmark/runs/pilot",
+  "original_raw_sha256": "a61965aefbeb9c933908e524933e09f14edfa6bdaf162766141932262e207bd7",
+  "regimes": 84,
+  "replicates": 20,
+  "rows": 86240,
+  "selected_config": "largest mean payload, maximum observed payload <= budget; no tuning on error",
+  "timing": "original run + SetSketch correction + FracMinHash grid extension: 4D frontier descriptive only; no revised pruning claim"
+}

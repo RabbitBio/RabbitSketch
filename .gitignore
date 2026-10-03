@@ -41,7 +41,6 @@ examples/test_TMH.cpp
 examples/result.*
 res.*
 *.log
-benchmarks/
 scripts/
 __pycache__/
 *.py[cod]
@@ -49,3 +48,10 @@ __pycache__/
 
 # Locally generated manuscript and paper artifacts
 paper/
+
+# Local publication staging and generated experiment data
+publication/
+.pytest_cache/
+benchmarks/**/build/
+benchmarks/**/raw/
+benchmarks/**/data/

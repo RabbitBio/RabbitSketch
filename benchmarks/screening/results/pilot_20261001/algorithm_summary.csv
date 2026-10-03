@@ -1,0 +1,8 @@
+algorithm,native_configurations,regimes,four_objective_frontier_regimes,error_space_frontier_regimes,robustly_dominated_regimes,empty_sample_pairs,ineligible_configuration_regimes,minimum_mean_pair_payload_bytes,maximum_mean_pair_payload_bytes,maximum_shared_process_rss_bytes,registered_decision
+minhash,9,84,30,11,7,0,0,1024.0,262144.0,58736779264,retain_pending_evidence
+fracminhash,8,84,82,53,0,346,46,68.0,3201771.6,58190594048,retain_pending_evidence
+hll,9,84,84,52,0,0,0,32.0,2097152.0,59401269248,retain_pending_evidence
+setsketch,7,84,84,84,0,0,0,32.0,131072.0,58268602368,retain_pending_evidence
+kssd,4,84,84,84,0,74,16,90.8,160000000.0,150599888896,retain_pending_evidence
+probminhash,8,84,15,5,19,0,0,1024.0,131072.0,59813752832,retain_pending_evidence
+bindash,9,84,84,72,0,0,0,256.0,65536.0,59080695808,retain_pending_evidence

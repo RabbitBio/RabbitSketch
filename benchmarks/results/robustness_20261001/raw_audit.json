@@ -1,0 +1,15 @@
+{
+  "jobs": 94,
+  "rows": {
+    "input": 94,
+    "object": 58280,
+    "pair": 107489,
+    "exact_summary": 4,
+    "build": 90,
+    "pairs_summary": 90,
+    "shared_setup": 6
+  },
+  "suite_sha256": "597635839cbcbb1b55cc241e8a9c20744e350b3aa4924cfb8eceb3cf9b54b1b7",
+  "all_raw_hashes_verified": true,
+  "normalized_input_digests_match": true
+}
