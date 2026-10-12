@@ -55,3 +55,21 @@ publication/
 benchmarks/**/build/
 benchmarks/**/raw/
 benchmarks/**/data/
+
+# Example experiment outputs and compiled executables
+examples/results/
+examples/*.dist
+examples/lasym.csv
+examples/lvar.csv
+examples/real_genome_eval/fastani_truth.tsv
+examples/real_genome_eval/real_genome_master.csv
+examples/real_genome_eval/sketch_results.csv
+examples/compute_exact_j32
+examples/eval_reads
+examples/gen_bench
+examples/gen_bench_asym
+examples/rabbitsketch
+examples/*.OLD_*
+
+# Helpers used by the example experiment runners
+!examples/scripts/
