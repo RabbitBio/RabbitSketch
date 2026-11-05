@@ -1,3 +1,4 @@
+#include "estimators/PartitionedSetSketch.h"
 /**
  * SetSketch extreme-optimized implementation.
  *
@@ -374,7 +375,7 @@ double SetSketch::jaccard_index_inclexcl(const SetSketch& other) const {
   double c1 = cardinality();
   double c2 = other.cardinality();
   double inter = c1 + c2 - us;
-  return (inter > 0.0) ? inter / us : 0.0;
+  return std::max(0.0, std::min(1.0, std::min(inter, std::min(c1,c2)) / us));
 }
 
 // Default = joint-MLE estimator. Definition is below; we just forward to it.
@@ -382,23 +383,9 @@ double SetSketch::jaccard_index(const SetSketch& other) const {
   return jaccard_index_mle(other);
 }
 
-// ── Joint MLE Jaccard estimator (Ertl 2021, "estimateJointNew") ──────────────
-//
-// Given two SetSketch states with cardinality estimates c1, c2 and counts of
-// equal / A>B / A<B registers, the log-likelihood of true Jaccard J is:
-//
-//   logL(J) = N_eq * log1p( log_b(1+(c2*J-c1)*z) + log_b(1+(c1*J-c2)*z) )
-//           + N_gt * log( -log_b(1+(c2*J-c1)*z) )
-//           + N_lt * log( -log_b(1+(c1*J-c2)*z) )
-//   z = (1 - 1/b) / (c1 + c2)
-//
-// We maximize logL on J ∈ [0, min(c1/c2, c2/c1)] using Brent's algorithm.
-// If both cardinalities are 0 or any register-extreme corner case appears,
-// fall back to inclusion-exclusion (which is what the reference also does).
-//
-// References:
-//   Ertl O. (2021). SetSketch: Filling the Gap between MinHash and HLL.
-//   set-sketch-paper/c++/sketch.hpp :: estimateJointNew
+// Joint likelihood for the native one-register-per-item construction.
+// Independent model and boundary checks are in tests/setsketch_test.cpp.
+// Ertl's dense rank-order-only formula does not describe this partitioned state.
 namespace {
 
 // Brent's 1-D minimizer (no-derivative, golden + parabolic interpolation).
@@ -473,103 +460,49 @@ static double brent_minimize(F f, double ax, double cx,
 
 } // namespace
 
-// ── Shared MLE kernel (used by both the OO and from-cores entry points) ─────
-//
-// Inputs:
-//   c1, c2       : two SetSketch register arrays of length m
-//   m            : # registers
-//   baseInvPow   : pre-computed table base^(-k), used by incl-excl fallback
-//   factor       : SetSketch's `numRegisters / (base * logBaseDivBaseMinus1 * a)`
-//   card1, card2 : SetSketch cardinality estimates of the two sketches
-//   base         : SetSketch base parameter
-//   q            : SetSketch q parameter (max non-saturated register value)
-//
-// Returns Ĵ in [0, 1]. When the joint MLE objective is degenerate (sketch
-// extremely under-filled), falls back to inclusion-exclusion via the static
-// `jaccardFromCores` helper to remain numerically safe.
+// Conditional joint likelihood for the actual partitioned native state.
+// Marginal cardinalities use the same partitioned model. No sparse-state
+// threshold or harmonic union approximation is needed for this estimator.
 static double setsketch_mle_kernel(const uint8_t* __restrict__ c1,
                                    const uint8_t* __restrict__ c2,
-                                   int m,
-                                   const double* __restrict__ baseInvPow,
-                                   double factor,
+                                   int m, const double* baseInvPow, double factor,
                                    double card1, double card2,
                                    double base, uint32_t q) {
-  if (m <= 0) return 0.0;
-  if (card1 <= 0.0 || card2 <= 0.0) return 0.0;
-
-  // 1) Joint register counts (SIMD).
-  int n_gt = 0, n_lt = 0;
-  setsketch_count_greater_less(c1, c2, m, n_gt, n_lt);
-  const int n_eq = m - n_gt - n_lt;
-
-  // 2) Boundary cases.
-  if (n_gt + n_lt == 0) return 1.0;  // all equal → J ≈ 1
-  if (n_eq == m) {
-    // unreachable here (handled above), but for completeness
-    return SetSketch::jaccardFromCores(c1, c2, m, baseInvPow, factor, card1, card2);
+  (void)baseInvPow;
+  if (m <= 0 || card1 <= 0.0 || card2 <= 0.0) return 0.0;
+  if (q > 62) throw std::invalid_argument("SetSketch invalid finite rank limit");
+  const double a = double(m)*m*(base-1.0)/(factor*base*std::log(base));
+  const detail::PartitionedSetSketchModel model(base,a,q);
+  std::array<size_t,64> diagonal{}, greater_a{}, greater_b{};
+  size_t unequal = 0;
+  for (int i=0; i<m; ++i) {
+    const uint8_t ra=c1[i], rb=c2[i];
+    if (ra>q+1 || rb>q+1) throw std::invalid_argument("SetSketch invalid register rank");
+    if (ra==rb) ++diagonal[ra];
+    else if (ra>rb) { ++greater_a[ra]; ++unequal; }
+    else { ++greater_b[rb]; ++unequal; }
   }
-
-  // 3) Range correction: fall back when too many registers carry no joint info
-  //    (both empty or both saturated). Threshold 30%.
-  const uint8_t Q = static_cast<uint8_t>(q + 1);
-  int n_both_zero = 0;
-  int n_both_max  = 0;
-  for (int i = 0; i < m; ++i) {
-    if (c1[i] == 0 && c2[i] == 0)       n_both_zero++;
-    else if (c1[i] == Q && c2[i] == Q)  n_both_max++;
-  }
-  if ((n_both_zero + n_both_max) * 10 > m * 3) {
-    return SetSketch::jaccardFromCores(c1, c2, m, baseInvPow, factor, card1, card2);
-  }
-
-  // 4) MLE objective: minimize −logL(J).
-  const double inv_log_base = 1.0 / std::log(base);
-  const double z = (1.0 - 1.0 / base) / (card1 + card2);
-  const double j_max = (card1 >= card2) ? (card2 / card1) : (card1 / card2);
-  if (j_max <= 1e-12) return 0.0;
-
-  auto neg_logL = [&](double j) -> double {
-    double log1px1 = 0.0, log1px2 = 0.0;
-    bool need1 = (n_eq > 0) || (n_gt > 0);
-    bool need2 = (n_eq > 0) || (n_lt > 0);
-    if (need1) {
-      double arg1 = (card2 * j - card1) * z;
-      if (arg1 <= -1.0) return std::numeric_limits<double>::infinity();
-      log1px1 = std::log1p(arg1) * inv_log_base;
+  if (!unequal) return 1.0;
+  const double la=card1/m, lb=card2/m, limit=std::min(la,lb);
+  auto objective = [&](double fraction) {
+    const double shared=limit*fraction;
+    double value=0.0;
+    for (uint32_t k=0; k<=q+1; ++k) {
+      if (diagonal[k]) value -= diagonal[k]*model.logDiagonal(k,la,lb,shared);
+      if (greater_a[k]) value -= greater_a[k]*model.logRank(k,la-shared);
+      if (greater_b[k]) value -= greater_b[k]*model.logRank(k,lb-shared);
     }
-    if (need2) {
-      double arg2 = (card1 * j - card2) * z;
-      if (arg2 <= -1.0) return std::numeric_limits<double>::infinity();
-      log1px2 = std::log1p(arg2) * inv_log_base;
-    }
-
-    double ret = 0.0;
-    if (n_eq > 0) {
-      double inner = log1px1 + log1px2;
-      if (inner <= -1.0) return std::numeric_limits<double>::infinity();
-      ret += n_eq * std::log1p(inner);
-    }
-    if (n_gt > 0) {
-      if (log1px1 >= 0.0) return std::numeric_limits<double>::infinity();
-      ret += n_gt * std::log(-log1px1);
-    }
-    if (n_lt > 0) {
-      if (log1px2 >= 0.0) return std::numeric_limits<double>::infinity();
-      ret += n_lt * std::log(-log1px2);
-    }
-    if (std::isnan(ret)) return std::numeric_limits<double>::infinity();
-    return -ret;
+    return value;
   };
-
-  const double EPS = 1e-9;
-  double lo = EPS;
-  double hi = std::max(EPS * 2.0, j_max - EPS);
-  if (hi <= lo) return 0.0;
-
-  double j_hat = brent_minimize(neg_logL, lo, hi, 1e-10, 200);
-  if (std::isnan(j_hat) || j_hat < 0.0) j_hat = 0.0;
-  if (j_hat > j_max)                    j_hat = j_max;
-  return j_hat;
+  double fraction=brent_minimize(objective,0.0,1.0,1e-9,200);
+  double best=objective(fraction);
+  // Include exact disjoint and containment boundaries in the optimization.
+  for (double endpoint : {0.0,1.0}) {
+    const double cost=objective(endpoint);
+    if (cost<=best) { best=cost; fraction=endpoint; }
+  }
+  const double shared=limit*fraction;
+  return std::max(0.0,std::min(1.0,shared/(la+lb-shared)));
 }
 
 double SetSketch::jaccard_index_mle(const SetSketch& other) const {
@@ -974,87 +907,41 @@ void SetSketch::getBlockKeys(std::vector<uint32_t>& keys, int blockSize) const {
 
 // ── inverted index: exact Jaccard from flat core arrays (SIMD) ──────────────
 double SetSketch::jaccardFromCores(
-    const uint8_t* __restrict__ c1,
-    const uint8_t* __restrict__ c2,
-    int m,
-    const double* __restrict__ baseInvPow,
-    double factor,
-    double card1, double card2)
-{
-    const double sum = setsketch_sum_max_registers(c1, c2, m, baseInvPow);
-    if (sum <= 1e-300) return 0.0;
-    double us    = factor / sum;
-    double inter = card1 + card2 - us;
-    return (inter > 0.0) ? inter / us : 0.0;
+    const uint8_t* __restrict__ c1, const uint8_t* __restrict__ c2,
+    int m, const double* __restrict__ baseInvPow, double factor,
+    double card1, double card2) {
+    if (m<=0 || card1<=0.0 || card2<=0.0) return 0.0;
+    const double base=1.0/baseInvPow[1];
+    const double a=double(m)*m*(base-1.0)/(factor*base*std::log(base));
+    std::array<size_t,64> histogram{};
+    double sum=0.0;
+    for (int i=0; i<m; ++i) {
+        const uint8_t rank=std::max(c1[i],c2[i]);
+        if (rank>63) throw std::invalid_argument("SetSketch invalid register rank");
+        ++histogram[rank]; sum += baseInvPow[rank];
+    }
+    const double us=setsketch_partitioned_cardinality_mle(histogram,m,base,a,62,factor/sum);
+    if (us<=0.0) return 0.0;
+    const double intersection=std::max(0.0,std::min(std::min(card1,card2),card1+card2-us));
+    return std::min(1.0,intersection/us);
 }
 
 double SetSketch::jaccardFromCoresEarlyAbort(
-    const uint8_t* __restrict__ c1,
-    const uint8_t* __restrict__ c2,
-    int m,
-    const double* __restrict__ baseInvPow,
-    double factor,
-    double card1, double card2,
-    double minJaccard)
-{
-    if (m <= 0) return 0.0;
-    if (minJaccard <= 0.0) {
-        return jaccardFromCores(c1, c2, m, baseInvPow, factor, card1, card2);
-    }
-    const double cardSum = card1 + card2;
-    const double maxTerm = baseInvPow[0];
-    double sum = 0.0;
-    for (int i = 0; i < m; ++i) {
-        uint8_t r = (c1[i] > c2[i]) ? c1[i] : c2[i];
-        sum += baseInvPow[r];
-
-        const int remain = m - i - 1;
-        const double maxPossibleSum = sum + maxTerm * static_cast<double>(remain);
-        const double maxPossibleJ = (cardSum * maxPossibleSum / factor) - 1.0;
-        if (maxPossibleJ < minJaccard) return -1.0;
-    }
-    if (sum <= 1e-300) return 0.0;
-    const double us = factor / sum;
-    const double inter = cardSum - us;
-    return (inter > 0.0) ? inter / us : 0.0;
+    const uint8_t* c1, const uint8_t* c2, int m,
+    const double* baseInvPow, double factor, double card1, double card2,
+    double minJaccard) {
+    const double j=jaccardFromCores(c1,c2,m,baseInvPow,factor,card1,card2);
+    // The old harmonic tail bound is not valid for the corrected union MLE.
+    // Evaluate the full estimate until a valid partial-histogram bound exists.
+    return minJaccard>0.0 && j<minJaccard ? -1.0 : j;
 }
 
 double SetSketch::jaccardFromCoresBatch(
-    const uint8_t* __restrict__ c1,
-    const uint8_t* __restrict__ c2,
-    int m,
-    const double* __restrict__ baseInvPow,
-    double factor,
-    double card1, double card2,
-    double minJaccard,
-    const double* __restrict__ tailSum1,
-    const double* __restrict__ tailSum2,
-    int tailStep)
-{
-    if (m <= 0) return 0.0;
-    if (minJaccard <= 0.0)
-        return jaccardFromCores(c1, c2, m, baseInvPow, factor, card1, card2);
-
-    const double cardSum = card1 + card2;
-    const double targetSum = (1.0 + minJaccard) * factor / cardSum;
-    double sum = 0.0;
-    int i = 0, cp = 0;
-
-    for (; i + tailStep <= m; i += tailStep, ++cp) {
-        sum += setsketch_sum_max_registers(c1 + i, c2 + i, tailStep, baseInvPow);
-        double tail = tailSum1[cp + 1];
-        double t2   = tailSum2[cp + 1];
-        if (t2 < tail) tail = t2;
-        if (sum + tail < targetSum) return -1.0;
-    }
-    for (; i < m; ++i) {
-        uint8_t r = (c1[i] > c2[i]) ? c1[i] : c2[i];
-        sum += baseInvPow[r];
-    }
-    if (sum <= 1e-300) return 0.0;
-    double us = factor / sum;
-    double inter = cardSum - us;
-    return (inter > 0.0) ? inter / us : 0.0;
+    const uint8_t* c1, const uint8_t* c2, int m,
+    const double* baseInvPow, double factor, double card1, double card2,
+    double minJaccard, const double* tailSum1, const double* tailSum2, int tailStep) {
+    (void)tailSum1; (void)tailSum2; (void)tailStep;
+    return jaccardFromCoresEarlyAbort(c1,c2,m,baseInvPow,factor,card1,card2,minJaccard);
 }
 
 #undef ENC

@@ -1,0 +1,10 @@
+{
+  "files": {
+    "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/scenario_selection_20261105/validation_decisions.csv.gz": "3938bee827e93396177d7446a0640a966824dcc8aa9346c4d22739e1cb8c863d",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/scenario_selection_20261105/validation_features.csv": "0349ae24d43f673785f447b182e1b37845a8129fabf6791b04f678fdb348db31"
+  },
+  "frozen_at": "2026-11-05T12:28:58.708379+00:00",
+  "model_freeze_sha256": "6094e8987cdd7c0fadeac9255cf1be4c952dcaf5f4dc5e3bec5cef31c5438b31",
+  "rows": 302400,
+  "validation_outcomes_started": false
+}

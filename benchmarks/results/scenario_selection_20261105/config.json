@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "registration_date": "2026-11-05",
+  "data_seed": 20261105,
+  "validation_genera": 30,
+  "species_per_genus": 3,
+  "genomes_per_species": 5,
+  "references_per_species": 2,
+  "k": [20, 24, 32],
+  "pair_budgets": [512, 2048, 8192, 32768],
+  "development_seeds": [42, 101, 202],
+  "validation_seeds": [303, 404, 505],
+  "pilot_seed": 919,
+  "pilot_kmv_size": 32,
+  "frac_scaled": [1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000],
+  "kssd_resolutions": [[0, 6], [1, 6], [2, 6], [3, 6], [4, 7]],
+  "neighbor_genera": 8,
+  "pilot_cardinality_safety_factor": 1.5,
+  "bootstrap_replicates": 4000,
+  "bootstrap_seed": 20261105,
+  "conditions": [
+    {"name": "full", "kind": "assembly", "method": "full"},
+    {"name": "fragment_100k", "kind": "contig", "method": "fragment", "length": 100000},
+    {"name": "fragment_10k", "kind": "contig", "method": "fragment", "length": 10000},
+    {"name": "fragment_1k", "kind": "contig", "method": "fragment", "length": 1000},
+    {"name": "incomplete_10pct", "kind": "assembly", "method": "tiles", "fraction": 0.1, "tile_length": 10000, "contamination": 0.0},
+    {"name": "incomplete_10pct_contaminated", "kind": "assembly", "method": "tiles", "fraction": 0.1, "tile_length": 10000, "contamination": 0.2},
+    {"name": "reads_cov01_clean", "kind": "reads", "method": "reads", "coverage": 0.1, "length": 150, "substitution": 0.0},
+    {"name": "reads_cov01_error01", "kind": "reads", "method": "reads", "coverage": 0.1, "length": 150, "substitution": 0.01},
+    {"name": "reads_cov1_error01", "kind": "reads", "method": "reads", "coverage": 1.0, "length": 150, "substitution": 0.01},
+    {"name": "reads_cov1_error03", "kind": "reads", "method": "reads", "coverage": 1.0, "length": 150, "substitution": 0.03}
+  ],
+  "accuracy_profiles": {
+    "jaccard": [[0.02, 0.05], [0.005, 0.01]],
+    "containment": [[0.05, 0.1], [0.02, 0.05]],
+    "cardinality": [[0.1, 0.25], [0.05, 0.1]],
+    "neighbor": [[0.1, 1.0]],
+    "species": [[0.05, 1.0]],
+    "clustering": [[0.1, 1.0]]
+  }
+}

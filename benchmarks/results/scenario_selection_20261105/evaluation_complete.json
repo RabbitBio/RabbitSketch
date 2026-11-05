@@ -1,0 +1,13 @@
+{
+  "decisions_frozen_sha256": "f46b5abde4d376d730a602bf6af8f5bc7ae347f3b3a0d7d3e236dff1318e7272",
+  "decisions_timestamp": 1793881738.715332,
+  "evaluate_sha256": "aa955598e4b5a7383e3d908944a889771f700c91a0dc12f166133e43723aaada",
+  "first_outcome_manifest_timestamp": 1793881739.185332,
+  "frozen_decision_rows": 302400,
+  "model_frozen_sha256": "6094e8987cdd7c0fadeac9255cf1be4c952dcaf5f4dc5e3bec5cef31c5438b31",
+  "primary_material_improvements": 3,
+  "validation_genera": 30,
+  "validation_native_score_rows": 1028160,
+  "validation_outcomes_after_decisions": true,
+  "validation_workloads": 420
+}

@@ -1,0 +1,21 @@
+{
+  "config_sha256": "c770d65d5177523bf7746c1f215dcf189c39c16038787d197a69af44a46e319a",
+  "derived_query_files": 3510,
+  "extension_registration_sha256": "a92858f27e1c7fff326cd5a69f1101c41435d398362bceacd928b774399e8154",
+  "files": {
+    "/home/bigssd/zt/rabbitsketch2_benchmark/data/scenario_selection_20261105/validation_objects.tsv": "8854613a4e3725f576da45af7b7586e0063e8f71b38395b197dcc84c882b57d9",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/data/scenario_selection_20261105/validation_pairs.tsv": "b676a229b7f2d22a8c8f403aa8266f66feb0218567bbeb3e736e1e73f1283e63",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/data/scenario_selection_20261105/validation_workloads.json": "d60e98d1eff3fdebdd1c1643944f4131406f19b3b6c9db45eca5a0f04ae1976b"
+  },
+  "genera": 30,
+  "genomes": 450,
+  "numpy_version": "2.2.6",
+  "objects": 3960,
+  "original_conditions": 10,
+  "pairs": 39035,
+  "query_sources": 270,
+  "reference_genomes": 180,
+  "simulated_reads": true,
+  "unseen_conditions": 4,
+  "workloads": 420
+}

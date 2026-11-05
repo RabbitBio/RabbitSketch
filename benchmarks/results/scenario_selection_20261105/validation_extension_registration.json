@@ -1,0 +1,8 @@
+{
+  "addendum_sha256": "70ae4016f0933805f9f5b5a1df9db328c6684028037f206cd6674d82d0fc668b",
+  "code_sha256": "007ef6b8780275dc8e7844245b16075377f59eab5781c28dc8c034b72455ba74",
+  "extra_conditions_sha256": "8a108a41040b606b19f94f98edbff2bf7ad275fcb9fb9c5d91e6e74a1d0e990e",
+  "no_validation_pilot_or_outcomes": true,
+  "original_preparation_sha256": "897db6c30b0a6a603fed22ee544b45bf8a1e996cb8a312a1cbd131cf8499ce6a",
+  "registered_at": "2026-11-05T12:19:11.278931+00:00"
+}

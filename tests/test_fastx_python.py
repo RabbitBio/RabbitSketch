@@ -3,10 +3,47 @@
 
 import gzip
 import pathlib
+import random
 import sys
 import tempfile
 import threading
 import time
+
+
+def check_setsketch(rs, directory):
+    """The FASTX builder and native binding must share the corrected estimator."""
+    rng = random.Random(20261105)
+    small = "".join(rng.choices("ACGT", k=10_000))
+    large = small[:130] + "".join(rng.choices("ACGT", k=99_870))
+    path = directory / "setsketch.fa"
+    path.write_text(f">small\n{small}\n>large\n{large}\n", encoding="ascii")
+    config = rs.SketchConfig()
+    config.algorithm = rs.Algorithm.SetSketch
+    config.sampling = rs.SamplingMode.RegisterPrecision
+    config.aggregation = rs.AggregationMode.OneSketchPerRecord
+    config.kmer_size = 20
+    config.resolution = 16
+    built = rs.build_fastx(str(path), [config])
+    left, right = (rs.SetSketch(16, 2.0, 5.0, 20, 42) for _ in range(2))
+    left.update(small)
+    right.update(large)
+    native = left.jaccard(right)
+    result = built[0].sketch.query(built[1].sketch)
+    assert result.estimate_available
+    assert result.plan.method == rs.QueryMethod.SetSketchNative
+    assert abs(result.jaccard - native) < 1e-12
+    assert abs(rs.query(left, right).jaccard - native) < 1e-12
+    assert abs(left.distance(right) - (1.0 - native)) < 1e-12
+    assert left.jaccard(left) == 1.0
+
+    complement = str.maketrans("ACGT", "TGCA")
+    def kmers(sequence):
+        return {min(kmer, kmer.translate(complement)[::-1])
+                for i in range(len(sequence) - 19)
+                for kmer in [sequence[i:i + 20]]}
+    a, b = kmers(small), kmers(large)
+    truth = len(a & b) / len(a | b)
+    assert abs(native - truth) < 0.005, "SetSketch sparse-state bias regression"
 
 
 def main() -> int:
@@ -23,6 +60,7 @@ def main() -> int:
     assert runtime.selected_rank_path in {"scalar", "avx2", "avx512dq"}
 
     with tempfile.TemporaryDirectory(prefix="rabbitsketch-fastx-python-") as tmp:
+        check_setsketch(rs, pathlib.Path(tmp))
         path = pathlib.Path(tmp) / "reads.fa.gz"
         with gzip.open(path, "wt", encoding="ascii") as output:
             output.write(">alpha comment\nACGTACGTACGT\n>beta\nTTTTACGTACGT\n")

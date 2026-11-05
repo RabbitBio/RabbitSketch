@@ -1,0 +1,4 @@
+k,shared_genomes,shared_unordered_pairs,ordered_pair_checks,all_counts_match,prior_exact_sha256
+20,900,6300,7767,True,ea949758b206c02dbf902b324fdd1fe2b4c2ea994c4c73ac443edbe8d47a4a6b
+24,900,6300,7767,True,3665b5498df627bbc7c3197b44a0a7c2c23dd75b5bd938e95dcc7cfc3f589c09
+32,900,6300,7767,True,3897c884a34601a2bd8b162b1f40c9137ffb0a8a15fc5898779553a91ffc3879

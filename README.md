@@ -9,6 +9,12 @@ algorithms, read the input once, receive typed `BuiltSketch` objects, and query
 compatible sketches. Unsupported comparisons return a reason instead of being
 silently interpreted as zero similarity.
 
+The [scenario-selection study](RabbitSketch2_scenario_selection.md) documents
+accuracy and query-payload tradeoffs, independent genome validation, and cases
+where no tested configuration meets the requested accuracy. The experimental
+advisor remains separate from the production API. The library now uses the
+same corrected SetSketch estimator that was validated in that study.
+
 ## Algorithms
 
 | Algorithm | Sampling model | Primary queries | Exact common resolution |
@@ -137,9 +143,15 @@ and [external validation](RabbitSketch2_robustness_validation.md) for data,
 uncertainty and failed recommendations. Published summary tables and plots
 are included; large raw datasets remain in the experiment archive.
 
-The suite uses a versioned SetSketch correction in an isolated benchmark
-checkout. The correction ships as a reviewable patch; this update does not
-silently replace the production estimator.
+The library uses the partitioned SetSketch conditional joint estimator,
+matching the native one-register-per-item construction. The public C++ and
+Python queries use it by default. Flat-array inclusion-exclusion helpers also
+use the corrected union-cardinality model; their threshold variants evaluate
+the full estimate because the previous harmonic early-abort bounds do not
+apply. Inclusion-exclusion screening is not a bound on the joint estimate.
+The [original correction](benchmarks/screening/patches/setsketch_partitioned_joint.patch)
+and pinned experiment checkouts remain available for reproducing the published
+results. Model, API consistency, and sparse-state regression checks run in CTest.
 
 ## License
 

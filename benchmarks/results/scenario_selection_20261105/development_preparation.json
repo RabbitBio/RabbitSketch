@@ -1,0 +1,18 @@
+{
+  "config_sha256": "c770d65d5177523bf7746c1f215dcf189c39c16038787d197a69af44a46e319a",
+  "derived_query_files": 4860,
+  "files": {
+    "/home/bigssd/zt/rabbitsketch2_benchmark/data/scenario_selection_20261105/development_objects.tsv": "59c6ac30b01e467b3ea61b6c94ac061a71c24be84961dc19cd84bd4ade0bfe46",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/data/scenario_selection_20261105/development_pairs.tsv": "52627ef3ae5c67b01770786184df7d33072f6943010326329fd740bd543511f1",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/data/scenario_selection_20261105/development_workloads.json": "3f2cd4373e6e52136c10e59a3fae5d9ded2752ffe6cccdbe734fba816a9079d6"
+  },
+  "genera": 60,
+  "genomes": 900,
+  "numpy_version": "2.2.6",
+  "objects": 5760,
+  "pairs": 56367,
+  "query_sources": 540,
+  "reference_genomes": 360,
+  "simulated_reads": true,
+  "workloads": 600
+}

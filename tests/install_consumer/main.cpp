@@ -2,6 +2,7 @@
 #include "api/Version.h"
 #include "estimators/UnifiedQuery.h"
 #include "fastkmv.h"
+#include "SetSketch.h"
 
 #include <iostream>
 
@@ -12,9 +13,15 @@ int main() {
     left.update(sequence, sizeof(sequence) - 1);
     right.update(sequence, sizeof(sequence) - 1);
     const auto result = Sketch::Query::query(left, right);
+    Sketch::SetSketch set(8, 2.0, 5.0, 5, false, 42);
+    for (uint64_t hash : {UINT64_C(0xabc123456789def0),
+                          UINT64_C(0xfedcba9876543210)})
+        set.addFingerprint(hash);
+    const auto set_result = Sketch::Query::query(set, set);
     std::cout << Sketch::API::VERSION << ' '
               << Sketch::Runtime::runtimeInfo().selected_byte_path << ' '
               << left.size() << ' ' << result.value << '\n';
     return left.size() == 0 || !result.estimate_available ||
-        result.value != 1.0 ? 1 : 0;
+        result.value != 1.0 || !set_result.estimate_available ||
+        set_result.jaccard != 1.0 ? 1 : 0;
 }

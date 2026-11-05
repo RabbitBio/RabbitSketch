@@ -1,0 +1,2417 @@
+{
+  "20/bindash:128:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.03904783703364614,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.03904783703364614,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/bindash:2048:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04686045624475471,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.04197756923781185,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/bindash:512:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04490730144197757,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.041000991836423285,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/bindash:8192:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04661631189440757,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.00010681315327687495,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.042221713588159,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/exact:1:6": {
+    "assembly": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.04686541132830202,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.00015604216149389558,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 2160,
+      "acceptance_threshold": 0.042159889002799204,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/fracminhash:100000:6": {
+    "assembly": {
+      "acceptance_queries": 4665,
+      "acceptance_threshold": 0.034482758620689655,
+      "clustering_threshold": 0.07,
+      "clustering_workloads": 164,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 1176,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 2,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6186,
+      "acceptance_threshold": 0.027777777777777776,
+      "clustering_threshold": 0.05,
+      "clustering_workloads": 210,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/fracminhash:10000:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04291845493562232,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 2831,
+      "acceptance_threshold": 0.0015360983102918587,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 62,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.03937007874015748,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/fracminhash:1000:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04614812058057313,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4238,
+      "acceptance_threshold": 0.00023479690068091102,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 123,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.042007637752318604,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/fracminhash:200000:6": {
+    "assembly": {
+      "acceptance_queries": 4201,
+      "acceptance_threshold": 0.038461538461538464,
+      "clustering_threshold": 0.2,
+      "clustering_workloads": 116,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 701,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": null,
+      "clustering_workloads": 0,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 5628,
+      "acceptance_threshold": 0.030303030303030304,
+      "clustering_threshold": 0.05,
+      "clustering_workloads": 166,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/fracminhash:20000:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.039473684210526314,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 2364,
+      "acceptance_threshold": 0.002881844380403458,
+      "clustering_threshold": 0.06,
+      "clustering_workloads": 60,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6478,
+      "acceptance_threshold": 0.036585365853658534,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/fracminhash:2000:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04621072088724584,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 3876,
+      "acceptance_threshold": 0.0004464285714285714,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 120,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.04147812971342383,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/fracminhash:500000:6": {
+    "assembly": {
+      "acceptance_queries": 3179,
+      "acceptance_threshold": 0.06666666666666667,
+      "clustering_threshold": 0.21,
+      "clustering_workloads": 64,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 305,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": null,
+      "clustering_workloads": 0,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 4519,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.09,
+      "clustering_workloads": 123,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/fracminhash:50000:6": {
+    "assembly": {
+      "acceptance_queries": 4823,
+      "acceptance_threshold": 0.03529411764705882,
+      "clustering_threshold": 0.06,
+      "clustering_workloads": 177,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 1718,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.17,
+      "clustering_workloads": 33,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6424,
+      "acceptance_threshold": 0.03076923076923077,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 235,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/fracminhash:5000:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04446797247220752,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 3317,
+      "acceptance_threshold": 0.0009174311926605505,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 91,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.040117416829745595,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/hll:10:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04816409868539566,
+      "clustering_threshold": 0.05,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0002234034673821754,
+      "clustering_threshold": 0.07,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.04246768552682506,
+      "clustering_threshold": 0.05,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/hll:12:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04745307239047631,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.000235619279248087,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.04264480393145146,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/hll:14:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04738660218205139,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.00020023164520041012,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.04251717798533647,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/hll:8:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04811022485507276,
+      "clustering_threshold": 0.26,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.00018520071775999746,
+      "clustering_threshold": 0.09,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.04377841427245602,
+      "clustering_threshold": 0.11,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/kssd:0:6": {
+    "assembly": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.04686541132830202,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.00015604216149389558,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 2160,
+      "acceptance_threshold": 0.042159889002799204,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/kssd:1:6": {
+    "assembly": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.0465770059594421,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.00014951501068409347,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 2160,
+      "acceptance_threshold": 0.042510933989459584,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/kssd:2:6": {
+    "assembly": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.047094568932776304,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 1610,
+      "acceptance_threshold": 0.00011566042100393245,
+      "clustering_threshold": 0.05,
+      "clustering_workloads": 171,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 2160,
+      "acceptance_threshold": 0.04232059422547023,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/kssd:3:6": {
+    "assembly": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.04509283819628647,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 1162,
+      "acceptance_threshold": 0.0008064516129032258,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 90,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 2160,
+      "acceptance_threshold": 0.04114097641250686,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/kssd:4:7": {
+    "assembly": {
+      "acceptance_queries": 1598,
+      "acceptance_threshold": 0.03076923076923077,
+      "clustering_threshold": 0.05,
+      "clustering_workloads": 164,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 503,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.21,
+      "clustering_workloads": 9,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 2115,
+      "acceptance_threshold": 0.02857142857142857,
+      "clustering_threshold": 0.05,
+      "clustering_workloads": 214,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/minhash:128:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0390625,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.03125,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/minhash:2048:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04638671875,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.0419921875,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/minhash:32:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.03125,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.03125,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/minhash:512:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.044921875,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.041015625,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/probminhash_unweighted:128:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0390625,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.0390625,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/probminhash_unweighted:2048:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04638671875,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.04150390625,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/probminhash_unweighted:32:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.03125,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.03125,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/probminhash_unweighted:512:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.044921875,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.041015625,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/setsketch:10:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.046836381542025046,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 2.4378730182762588e-08,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.04200641709797482,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/setsketch:12:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04711339667532004,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.00020212095572607854,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.04266778081193534,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/setsketch:14:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.046907893190427236,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.00018571407557842407,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.042599041066882046,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "20/setsketch:8:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04589777271139851,
+      "clustering_threshold": 0.05,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 1.7501527337607118e-08,
+      "clustering_threshold": 0.07,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.041208587108664846,
+      "clustering_threshold": 0.05,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/bindash:128:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.03904783703364614,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.031235217822537575,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/bindash:2048:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04295414663920043,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.03660639353017472,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/bindash:512:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04295414663920043,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.03514152742809186,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/bindash:8192:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04332036316472114,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.00010681315327687495,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.03697261005569543,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/exact:1:6": {
+    "assembly": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.0430592751648073,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.00014868747530948044,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 2160,
+      "acceptance_threshold": 0.03697080988782178,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/fracminhash:100000:6": {
+    "assembly": {
+      "acceptance_queries": 4631,
+      "acceptance_threshold": 0.03125,
+      "clustering_threshold": 0.1,
+      "clustering_workloads": 155,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 1182,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.34,
+      "clustering_workloads": 2,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6186,
+      "acceptance_threshold": 0.024390243902439025,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 219,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/fracminhash:10000:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.040145985401459854,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 2825,
+      "acceptance_threshold": 0.001183431952662722,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 64,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.03375527426160337,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/fracminhash:1000:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.042425455273163895,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4243,
+      "acceptance_threshold": 0.00020665426741062204,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 121,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.036805783766020374,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/fracminhash:200000:6": {
+    "assembly": {
+      "acceptance_queries": 4121,
+      "acceptance_threshold": 0.03571428571428571,
+      "clustering_threshold": 0.12,
+      "clustering_workloads": 111,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 756,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": null,
+      "clustering_workloads": 0,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 5602,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 166,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/fracminhash:20000:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.036585365853658534,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 2313,
+      "acceptance_threshold": 0.002638522427440633,
+      "clustering_threshold": 0.06,
+      "clustering_workloads": 60,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6479,
+      "acceptance_threshold": 0.030927835051546393,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/fracminhash:2000:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.042265426880811495,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 3868,
+      "acceptance_threshold": 0.00040617384240454913,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 120,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.036451353524524256,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/fracminhash:500000:6": {
+    "assembly": {
+      "acceptance_queries": 3084,
+      "acceptance_threshold": 0.058823529411764705,
+      "clustering_threshold": 0.19,
+      "clustering_workloads": 66,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 311,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": null,
+      "clustering_workloads": 0,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 4384,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 113,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/fracminhash:50000:6": {
+    "assembly": {
+      "acceptance_queries": 4815,
+      "acceptance_threshold": 0.03225806451612903,
+      "clustering_threshold": 0.06,
+      "clustering_workloads": 176,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 1706,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 37,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6424,
+      "acceptance_threshold": 0.02564102564102564,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 238,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/fracminhash:5000:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04183673469387755,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 3311,
+      "acceptance_threshold": 0.0008424599831508003,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 97,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.03567035670356704,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/hll:10:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04344304609335667,
+      "clustering_threshold": 0.06,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.00021079314702178345,
+      "clustering_threshold": 0.06,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.037934085202062484,
+      "clustering_threshold": 0.05,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/hll:12:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04334524526552129,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.00023406994423668743,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.03763776356370633,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/hll:14:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04372532345248354,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0001966230382742839,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.03727647771957962,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/hll:8:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04594052932962791,
+      "clustering_threshold": 0.22,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.00019109300584175355,
+      "clustering_threshold": 0.07,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.03900770201591385,
+      "clustering_threshold": 0.1,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/kssd:0:6": {
+    "assembly": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.0430592751648073,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.00014868747530948044,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 2160,
+      "acceptance_threshold": 0.03697080988782178,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/kssd:1:6": {
+    "assembly": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.04351947347398668,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.00013720797025853902,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 2160,
+      "acceptance_threshold": 0.037179803301611476,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/kssd:2:6": {
+    "assembly": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.04361923406337942,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 1607,
+      "acceptance_threshold": 0.00010283833813245579,
+      "clustering_threshold": 0.05,
+      "clustering_workloads": 167,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 2160,
+      "acceptance_threshold": 0.03724809615085738,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/kssd:3:6": {
+    "assembly": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.04184100418410042,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 1134,
+      "acceptance_threshold": 0.0008149959250203749,
+      "clustering_threshold": 0.05,
+      "clustering_workloads": 82,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 2160,
+      "acceptance_threshold": 0.03695652173913044,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/kssd:4:7": {
+    "assembly": {
+      "acceptance_queries": 1589,
+      "acceptance_threshold": 0.03125,
+      "clustering_threshold": 0.05,
+      "clustering_workloads": 158,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 518,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 9,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 2110,
+      "acceptance_threshold": 0.023255813953488372,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 209,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/minhash:128:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0390625,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.03125,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/minhash:2048:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04248046875,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.03662109375,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/minhash:32:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.03125,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.03125,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/minhash:512:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.041015625,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.03515625,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/probminhash_unweighted:128:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0390625,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.03125,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/probminhash_unweighted:2048:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04345703125,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.037109375,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/probminhash_unweighted:32:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.03125,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.03125,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/probminhash_unweighted:512:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04296875,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.03515625,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/setsketch:10:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04322371726375839,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 2.4594313524878943e-08,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.037575868427210064,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/setsketch:12:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04385073758889838,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0001962640039573432,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.03754931444247209,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/setsketch:14:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.043469975600717005,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.00018063960321502214,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.037127987160307456,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "24/setsketch:8:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.043244210270484626,
+      "clustering_threshold": 0.05,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 1.7731448462273924e-08,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.037188288138638316,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/bindash:128:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.031235217822537575,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.023422598611429007,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/bindash:2048:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.037094682230869,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.028305485618371862,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/bindash:512:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.037094682230869,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.02732890821698329,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/bindash:8192:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.03733882658121614,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.00010681315327687495,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.028427557793545433,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/exact:1:6": {
+    "assembly": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.03754072472561334,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.00013290258112240167,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 2160,
+      "acceptance_threshold": 0.028831929266770348,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/fracminhash:100000:6": {
+    "assembly": {
+      "acceptance_queries": 4642,
+      "acceptance_threshold": 0.029411764705882353,
+      "clustering_threshold": 0.06,
+      "clustering_workloads": 159,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 1168,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 3,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6140,
+      "acceptance_threshold": 0.01818181818181818,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 211,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/fracminhash:10000:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.03486238532110092,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 2789,
+      "acceptance_threshold": 0.0012755102040816326,
+      "clustering_threshold": 0.05,
+      "clustering_workloads": 62,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.02594810379241517,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/fracminhash:1000:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.036734693877551024,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4230,
+      "acceptance_threshold": 0.0001988862370723946,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 122,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.028404099560761346,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/fracminhash:200000:6": {
+    "assembly": {
+      "acceptance_queries": 4221,
+      "acceptance_threshold": 0.034482758620689655,
+      "clustering_threshold": 0.14,
+      "clustering_workloads": 121,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 690,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": null,
+      "clustering_workloads": 0,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 5578,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 156,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/fracminhash:20000:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.03333333333333333,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 2358,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.11,
+      "clustering_workloads": 60,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.023529411764705882,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/fracminhash:2000:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.03724207347760443,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 3821,
+      "acceptance_threshold": 0.00036258158085569254,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 120,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.027869940278699403,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/fracminhash:500000:6": {
+    "assembly": {
+      "acceptance_queries": 3156,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.16,
+      "clustering_workloads": 69,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 305,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": null,
+      "clustering_workloads": 0,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 4413,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 117,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/fracminhash:50000:6": {
+    "assembly": {
+      "acceptance_queries": 4831,
+      "acceptance_threshold": 0.030303030303030304,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 177,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 1721,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 36,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6398,
+      "acceptance_threshold": 0.02,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 234,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/fracminhash:5000:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.035467980295566505,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 3277,
+      "acceptance_threshold": 0.0007173601147776184,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 93,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.0273972602739726,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/hll:10:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.03879092480561852,
+      "clustering_threshold": 0.05,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.00021908325646822818,
+      "clustering_threshold": 0.06,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.030679225568170147,
+      "clustering_threshold": 0.05,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/hll:12:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.03794249436326682,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0002338539592266537,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.029859995265709545,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/hll:14:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0375657620938568,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0001930414943263968,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.029089631934871105,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/hll:8:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.04395672539693981,
+      "clustering_threshold": 0.17,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.00018419287397724205,
+      "clustering_threshold": 0.12,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.0335086414931204,
+      "clustering_threshold": 0.09,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/kssd:0:6": {
+    "assembly": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.03754072472561334,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.00013290258112240167,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 2160,
+      "acceptance_threshold": 0.028831929266770348,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/kssd:1:6": {
+    "assembly": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.037477985710399335,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.0001250857595548463,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 2160,
+      "acceptance_threshold": 0.028659990196952142,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/kssd:2:6": {
+    "assembly": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.0375402635431918,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 1607,
+      "acceptance_threshold": 9.713453132588635e-05,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 170,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 2160,
+      "acceptance_threshold": 0.02858899477405472,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/kssd:3:6": {
+    "assembly": {
+      "acceptance_queries": 1620,
+      "acceptance_threshold": 0.03640256959314775,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 1155,
+      "acceptance_threshold": 0.0005889281507656066,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 85,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 2160,
+      "acceptance_threshold": 0.028605482717520857,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/kssd:4:7": {
+    "assembly": {
+      "acceptance_queries": 1581,
+      "acceptance_threshold": 0.02857142857142857,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 152,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 514,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.34,
+      "clustering_workloads": 5,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 2108,
+      "acceptance_threshold": 0.01818181818181818,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 213,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/minhash:128:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.03125,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.0234375,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/minhash:2048:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.03759765625,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.02783203125,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/minhash:32:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.03125,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/minhash:512:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.03515625,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.02734375,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/probminhash_unweighted:128:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.03125,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.0234375,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/probminhash_unweighted:2048:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.037109375,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.0283203125,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/probminhash_unweighted:32:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.03125,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/probminhash_unweighted:512:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.037109375,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.02734375,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/setsketch:10:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.03796139092853675,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 2.5029257742996252e-08,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.028761651936301102,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/setsketch:12:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.03734653427275323,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.00019438560485586333,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.02871619225714625,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/setsketch:14:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.037527033948137126,
+      "clustering_threshold": 0.02,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.00017433262395052628,
+      "clustering_threshold": 0.03,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.02891974241269759,
+      "clustering_threshold": 0.01,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  },
+  "32/setsketch:8:6": {
+    "assembly": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 0.0377835165983687,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "contig": {
+      "acceptance_queries": 4860,
+      "acceptance_threshold": 1.7217938878770116e-08,
+      "clustering_threshold": 0.07,
+      "clustering_workloads": 180,
+      "target_development_known_recall": 0.9
+    },
+    "reads": {
+      "acceptance_queries": 6480,
+      "acceptance_threshold": 0.0290928399086382,
+      "clustering_threshold": 0.04,
+      "clustering_workloads": 240,
+      "target_development_known_recall": 0.9
+    }
+  }
+}

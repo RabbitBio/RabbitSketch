@@ -1,0 +1,8 @@
+{
+  "input_manifest_sha256": "e2688b8eec8c8bb24cd5fcc5f14e1c8dd9c32240ca8f1581c28d045331119cb4",
+  "new_conditions": 4,
+  "new_objects": 1080,
+  "preparation_sha256": "0c03d38d97da65c07fe27d2bddfbcf6ec5f2e3b7474bdeb101f004ec81af99bf",
+  "registration_sha256": "a92858f27e1c7fff326cd5a69f1101c41435d398362bceacd928b774399e8154",
+  "workloads": 420
+}

@@ -1,0 +1,6 @@
+[
+  {"name": "unseen_fragment_5k", "kind": "contig", "method": "fragment", "length": 5000},
+  {"name": "unseen_incomplete_30pct_contam10", "kind": "assembly", "method": "tiles", "fraction": 0.3, "tile_length": 10000, "contamination": 0.1},
+  {"name": "unseen_reads_cov05_error02", "kind": "reads", "method": "reads", "coverage": 0.5, "length": 150, "substitution": 0.02},
+  {"name": "unseen_reads250_cov05_error01", "kind": "reads", "method": "reads", "coverage": 0.5, "length": 250, "substitution": 0.01}
+]

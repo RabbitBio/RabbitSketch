@@ -3,7 +3,8 @@
  * SIMD-accelerated update(), and SIMD-gather cardinality/distance.
  *
  * Hot path: 1 comparison against cached global threshold → skip >95% of hashes.
- * Register distribution: P(K ≤ k) = exp(-a * base^(-k)).
+ * Each item updates one register. At Poisson load lambda=n/m, the register
+ * distribution is P(R <= k) = exp(-lambda * (1-exp(-a * base^(-k)))).
  */
 #ifndef _SETSKETCH_H_
 #define _SETSKETCH_H_
@@ -48,21 +49,18 @@ public:
   SetSketch merge(const SetSketch& other) const;
   double cardinality() const;
 
-  /// Default Jaccard estimator: joint MLE from Ertl 2021 ("estimateJointNew").
-  /// In our benchmarks this yields 2–10× lower MAE than inclusion-exclusion
-  /// across all practical sequence lengths (≥10 kb) and is the SetSketch
-  /// paper's main contribution. Internally falls back to inclusion-exclusion
-  /// for degenerate corner cases (extremely short input vs. large sketch).
+  /// Conditional joint likelihood for this implementation's partitioned
+  /// registers, using separately fitted marginal cardinalities. Includes
+  /// empty and censored ranks; it is not the dense SetSketch rank-order model.
   double jaccard_index(const SetSketch& other) const;
 
   /// Joint MLE estimator. Identical to `jaccard_index()` — kept for explicit
   /// callers that want to make the estimator choice unambiguous.
   double jaccard_index_mle(const SetSketch& other) const;
 
-  /// Classical inclusion-exclusion Jaccard estimator
-  /// (HLL-style: J = (|A|+|B|-|A∪B|)/|A∪B|). Fast but inherits HLL's variance
-  /// amplification at high J. Available for backward compatibility and for
-  /// head-to-head comparisons; new code should use `jaccard_index()`.
+  /// Inclusion-exclusion Jaccard using partitioned marginal/union estimates:
+  /// J = (|A|+|B|-|A union B|)/|A union B|, with a feasible intersection.
+  /// Available for explicit comparisons; the default uses joint likelihood.
   double jaccard_index_inclexcl(const SetSketch& other) const;
 
   double distance(const SetSketch& other) const { return 1.0 - jaccard_index(other); }
@@ -137,27 +135,11 @@ public:
       return std::max(1, static_cast<int>(std::floor(expected - 6.0 * sd)));
   }
 
-  /**
-   * Exact Jaccard from two flat core arrays (SIMD accelerated).
-   * Used by the inverted-index Phase 3 for candidate verification.
-   */
-  /// Static batch Jaccard functions (used by the all-pairs / list-allpairs
-  /// hot path in `rabbitsketch`).
-  ///
-  /// `jaccardFromCores*` implement the **inclusion-exclusion** estimator —
-  /// fast SIMD reduce + tail-sum early-abort. Use them for *screening*: which
-  /// pair passes a `minJaccard` threshold.
-  ///
-  /// `jaccardFromCoresMLE` implements the **joint MLE** (Ertl 2021) on top of
-  /// the same flat-cores layout, with the same `setsketch_mle_kernel` used by
-  /// `jaccard_index_mle()`. Use it for *refinement*: re-estimate the J of
-  /// pairs that survived the incl-excl screen.
-  ///
-  /// Typical pattern in the all-pairs hot loop:
-  ///   double j = jaccardFromCoresBatch(...);          // SIMD + early-abort
-  ///   if (j < minJaccard) continue;                   // 99% of pairs cut here
-  ///   j = jaccardFromCoresMLE(c1, c2, m, baseInvPow,  // MLE refines the rest
-  ///                            factor, c1_card, c2_card, base, q);
+  /// Flat-array inclusion-exclusion estimates use the partitioned union
+  /// cardinality model. Threshold variants evaluate the full estimate and
+  /// return -1 when it is below the threshold; harmonic tail bounds are not
+  /// valid for this model. Filtering on inclusion-exclusion is not a proven
+  /// bound on the separate conditional joint estimate.
   static double jaccardFromCores(const uint8_t* c1, const uint8_t* c2, int m,
                                  const double* baseInvPow, double factor,
                                  double card1, double card2);
@@ -165,26 +147,14 @@ public:
                                            const double* baseInvPow, double factor,
                                            double card1, double card2, double minJaccard);
 
-  /// Joint MLE Jaccard estimator on a flat cores layout. Used for refinement
-  /// after `jaccardFromCoresBatch` clears the screening threshold.
-  /// Internally falls back to incl-excl if the joint state is too degenerate
-  /// (e.g. >30% registers both empty).
+  /// Same partitioned conditional joint estimator as jaccard_index_mle().
   static double jaccardFromCoresMLE(const uint8_t* c1, const uint8_t* c2, int m,
                                     const double* baseInvPow, double factor,
                                     double card1, double card2,
                                     double base, uint32_t q);
 
-  /**
-   * SIMD-batched Jaccard with early abort using precomputed suffix sums.
-   * Processes registers in SIMD chunks of @p tailStep, checking a tight
-   * upper bound at each checkpoint.  Mathematically exact: never misses
-   * a pair above threshold.
-   *
-   * @param tailSum1  Suffix sums for c1, length (m/tailStep + 1).
-   *                  tailSum1[cp] = Σ_{k≥cp*tailStep} baseInvPow[c1[k]].
-   * @param tailSum2  Same for c2.
-   * @param tailStep  Registers per SIMD chunk (multiple of 16, must divide m).
-   */
+  /// Compatibility signature. Suffix sums and tailStep are currently ignored;
+  /// the full corrected inclusion-exclusion estimate is thresholded.
   static double jaccardFromCoresBatch(
       const uint8_t* c1, const uint8_t* c2, int m,
       const double* baseInvPow, double factor,

@@ -1,0 +1,13 @@
+{
+  "all_hashes_match": true,
+  "artifacts": 86,
+  "code_sha256": "382dcb39df6208d664a185a6af3015434328c98a623188316d553e479267c1c5",
+  "frozen_decisions": 302400,
+  "full_input_files_verified": 9720,
+  "native_archives": 564,
+  "portable_decisions_recomputed": 2016,
+  "selected_scores_checked": 282240,
+  "unsupported_decisions_preserved": 20160,
+  "validation_genera": 30,
+  "validation_genomes": 450
+}

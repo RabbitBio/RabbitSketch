@@ -1,0 +1,40 @@
+{
+  "catalog_sha256": {
+    "/home/bigssd/zt/ref/as.bacteria.txt": "21cace9217f29f31209360ae90921fc45ad4018665faf69fe919f7ecf6f5a464",
+    "/home/bigssd/zt/ref/family_real_bacteria_speciesTaxid_origanismName": "5b61c43db605db155bed6a6af6fa11462921a972489ba0fba67940da7d08731b",
+    "/home/bigssd/zt/ref/genus_real_bacteria_speciesTaxid_origanismName": "7b10c0446e5a39399f754f5bdb8d1b28fb58e58b8e682b4a64d67e67f7303ae5",
+    "/home/bigssd/zt/ref/phylum_real_bacteria_speciesTaxid_origanismName": "0cde4fe8627dd1420b790d69e34ec9ec380847a33459a15fa15e03ca8d81c061"
+  },
+  "config_sha256": "c770d65d5177523bf7746c1f215dcf189c39c16038787d197a69af44a46e319a",
+  "families": 25,
+  "genera": 30,
+  "genomes": 450,
+  "metadata_rejections": {
+    "metadata_qc": 27239,
+    "missing_lineage": 10800,
+    "missing_local_version": 262613,
+    "previous_accession": 11414,
+    "previous_genus": 24276,
+    "previous_or_missing_biosample": 23
+  },
+  "overlap_accessions": 0,
+  "overlap_biosamples": 0,
+  "overlap_fingerprints": 0,
+  "overlap_genera": 0,
+  "phyla": 3,
+  "prior_accession_roots": 11414,
+  "prior_biosamples": 11412,
+  "prior_fingerprints": 13233,
+  "prior_manifest_sha256": {
+    "/home/bigssd/zt/rabbitsketch2_benchmark/runs/comprehensive_accuracy_20261030/real_input_sha256.json": "b8164fc3c4a57c986ff49415a36fc325083344d36c9e4b661adebecf1ed1968f",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/runs/compressed_validation_20261001/input_sha256.json": "b2fcd9c26f19f0cac637c60a130ad0066b6074ed3a27fba952e77d4ff06f4a3c",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/runs/containment_holdout_20261001/input_sha256.json": "a79e26c0193d3708c2614155d0fd0681d0b8994be7c7fc8dd85cf2cf560fe22a",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/runs/regimes_20261001/input_sha256.json": "8f8a89fa324071c2ed7d17726f27195d17f4b7ec01b09ff27207d719f53daee6",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/runs/regimes_supplement_20261001/input_sha256.json": "8f8a89fa324071c2ed7d17726f27195d17f4b7ec01b09ff27207d719f53daee6",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/runs/robustness_20261001/input_sha256.json": "48ceca3fc4c90dbc962b0107ed6f867ef9eacc53c64d18ab1c1eddf0bb0b6d89"
+  },
+  "protocol_sha256": "ef4e6a9bf70287018585c19a0ffb778c06bcccad0e28922efe247f80b7cb750b",
+  "qc_rejections": 3,
+  "requested_genera": 30,
+  "species": 90
+}

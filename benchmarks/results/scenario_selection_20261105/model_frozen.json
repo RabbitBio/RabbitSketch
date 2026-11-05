@@ -1,0 +1,28 @@
+{
+  "development_genera": 60,
+  "development_workloads": 600,
+  "files": {
+    "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/scenario_selection_20261105/development_features.csv": "127301836044b4678de4d839a1c9190981f76d0a17590991a21bb29e3104d44e",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/scenario_selection_20261105/development_fixed_choices.csv": "de28e6d615ada3031eba3b447d6c2fa2a6d3f39082097e8a8b3b04942cc795c2",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/scenario_selection_20261105/model/calibration.npz": "622e102e909985b5e0f4ad094e078cafeee24dc617a244113761417bc1909a16",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/scenario_selection_20261105/model/model.json": "792e6c974505269fb5176ca3843be60a3a8613aade81e7ff3c6d66edfa0facc2",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/analysis/scenario_selection_20261105/task_thresholds.json": "25a131dc6fe175ca56b4c4163a25dcdd552e8e2c98bce4b3a95af7668b862201",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/build_comprehensive_20261030/cmake/rabbitsketch_accuracy": "b9d0123f940edf0130b56bf64cc84f8ecdba4c6723f84c8b4ea8d07bc81b4aa2",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/data/scenario_selection_20261105/validation_extension_complete.json": "75058fee206d69a3420e5d70a32c479b13c45709cf41093aedb43b21d07eba6e",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/data/scenario_selection_20261105/validation_objects.tsv": "8854613a4e3725f576da45af7b7586e0063e8f71b38395b197dcc84c882b57d9",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/data/scenario_selection_20261105/validation_pairs.tsv": "b676a229b7f2d22a8c8f403aa8266f66feb0218567bbeb3e736e1e73f1283e63",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/data/scenario_selection_20261105/validation_preparation.json": "0c03d38d97da65c07fe27d2bddfbcf6ec5f2e3b7474bdeb101f004ec81af99bf",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/data/scenario_selection_20261105/validation_workloads.json": "d60e98d1eff3fdebdd1c1643944f4131406f19b3b6c9db45eca5a0f04ae1976b",
+    "/home/bigssd/zt/rabbitsketch2_benchmark/runs/scenario_selection_20261105/input_sha256.json": "e2688b8eec8c8bb24cd5fcc5f14e1c8dd9c32240ca8f1581c28d045331119cb4",
+    "/home/user_home/tongz/Finish/RabbitSketch/benchmarks/scenario_selection/ANALYSIS_ADDENDUM.md": "70ae4016f0933805f9f5b5a1df9db328c6684028037f206cd6674d82d0fc668b",
+    "/home/user_home/tongz/Finish/RabbitSketch/benchmarks/scenario_selection/PROTOCOL.md": "ef4e6a9bf70287018585c19a0ffb778c06bcccad0e28922efe247f80b7cb750b",
+    "/home/user_home/tongz/Finish/RabbitSketch/benchmarks/scenario_selection/advisor.py": "f8c8aaf8c3d41c8b7547f87f800dbcdb51f90bb4bbb5b6e2b82e04030c75558c",
+    "/home/user_home/tongz/Finish/RabbitSketch/benchmarks/scenario_selection/config.json": "c770d65d5177523bf7746c1f215dcf189c39c16038787d197a69af44a46e319a",
+    "/home/user_home/tongz/Finish/RabbitSketch/benchmarks/scenario_selection/extend_validation.py": "007ef6b8780275dc8e7844245b16075377f59eab5781c28dc8c034b72455ba74",
+    "/home/user_home/tongz/Finish/RabbitSketch/benchmarks/scenario_selection/measure.py": "c10e2850d58a8d397f94b9fde08127eae90288eb0ea606a8e8f2d15fd2ab60cd",
+    "/home/user_home/tongz/Finish/RabbitSketch/benchmarks/scenario_selection/scenario_common.py": "60e0097e0f74f8997606fa226101a959a699d3f21d14e01ec933b100af433520",
+    "/home/user_home/tongz/Finish/RabbitSketch/benchmarks/scenario_selection/validation_extra_conditions.json": "8a108a41040b606b19f94f98edbff2bf7ad275fcb9fb9c5d91e6e74a1d0e990e"
+  },
+  "frozen_at": "2026-11-05T12:28:34.727158+00:00",
+  "validation_outcomes_started": false
+}

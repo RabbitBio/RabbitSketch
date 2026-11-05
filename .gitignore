@@ -54,6 +54,7 @@ paper/
 
 # Published analysis validation evidence
 !benchmarks/results/comprehensive_accuracy_20261030/analysis_tests.log
+!benchmarks/results/scenario_selection_20261105/analysis_tests.log
 
 # Local publication staging and generated experiment data
 publication/

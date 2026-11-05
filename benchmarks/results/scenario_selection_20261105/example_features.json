@@ -1,0 +1,18 @@
+{
+  "log_pilot_query_n_max": 6.594503987542553,
+  "log_pilot_query_n_median": 6.471359507913413,
+  "log_pilot_ratio_median": 0.1084461830921383,
+  "log_pilot_ratio_p90": 0.2712358827911271,
+  "log_pilot_reference_n_max": 6.488364801276256,
+  "log_query_bases_max": 6.420272849311607,
+  "log_query_bases_median": 6.396831665823653,
+  "log_query_record_length_median": 4.340662198855608,
+  "log_query_records_median": 1.7160033436347992,
+  "log_reference_bases_max": 6.456653088892663,
+  "pilot_c_mean": 0.2160447859961097,
+  "pilot_c_p90": 0.705264177371222,
+  "pilot_j_mean": 0.1765046296296296,
+  "pilot_j_p90": 0.53125,
+  "pilot_top_margin_mean": 0.1493055555555555,
+  "pilot_zero_fraction": 0.6296296296296297
+}

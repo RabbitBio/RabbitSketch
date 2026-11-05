@@ -4,7 +4,7 @@
 
 完整表格、13 组图及统计方法见[实验报告](benchmarks/results/comprehensive_accuracy_20261030/report.md)。下文给出可直接用于下一步研究的选型依据；[10 月 12 日指南](RabbitSketch2_accuracy_selection_guide.md)保留为历史结果。
 
-**所有 SetSketch-fixed 结论都依赖隔离实验副本的 [partitioned-joint 修正](benchmarks/screening/patches/setsketch_partitioned_joint.patch)。生产 `src/SetSketch.cpp` 尚未替换，不能直接套用到未修正的实现。**
+**所有 SetSketch-fixed 结论都依赖实验副本的 [partitioned-joint 修正](benchmarks/screening/patches/setsketch_partitioned_joint.patch)。2026-11-05，当前库已合入同一估计器修正；历史实验的固定源码与结果保持原样。**
 
 ## 当前应怎样选择
 

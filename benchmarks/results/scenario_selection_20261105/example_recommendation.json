@@ -1,0 +1,17 @@
+{
+  "candidates": "bindash:2048:6",
+  "config": "bindash:2048:6",
+  "mean_neighbor_distance": 0.3567288246789493,
+  "neighbors": 8,
+  "outside_features": "",
+  "payload_guard_bytes": 8192.0,
+  "predicted_availability": 1.0,
+  "predicted_budget_violation": 0.0,
+  "predicted_loss": 0.003702809102833271,
+  "predicted_mae": 0.003702809102833271,
+  "predicted_max_payload": 8192.0,
+  "predicted_p95": 0.015008825808763504,
+  "predicted_zero_fraction": 0.06018518656492233,
+  "status": "candidate",
+  "supported": true
+}
