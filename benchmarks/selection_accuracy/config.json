@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "purpose": "accuracy_only_bindash_setsketch_overlap_boundary",
+  "k": [24],
+  "larger_cardinalities": [100000, 1000000],
+  "size_ratios": [1, 2, 4],
+  "jaccards": [0.0, 0.01, 0.05, 0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0],
+  "replicates": 30,
+  "data_seed": 20261012,
+  "hash_seed": 42,
+  "query_min_ms": 1,
+  "timeout_seconds": 1800,
+  "algorithms": {
+    "bindash": {"parameters": [512, 2048, 8192], "bbits": 16},
+    "setsketch": {"parameters": [10, 12, 14]}
+  },
+  "analysis": {
+    "minimum_replicates": 30,
+    "bootstrap_samples": 10000,
+    "bootstrap_seed": 20261012,
+    "error_equivalence_margin": 0.0,
+    "dominated_regime_fraction": 0.9,
+    "resource_advantage_fraction": 0.1,
+    "error_constraints": [0.001, 0.005, 0.01, 0.05],
+    "query_reuse": [1],
+    "pair_budgets": [2048, 8192, 32768],
+    "minimum_relative_improvement": 0.1,
+    "family_alpha": 0.05
+  }
+}

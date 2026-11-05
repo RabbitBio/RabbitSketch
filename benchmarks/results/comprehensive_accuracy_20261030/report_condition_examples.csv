@@ -1,0 +1,8 @@
+metric,requirement,ratio,C,pair_KiB,calibration_nominee,validation,validation_MAE,validation_candidates
+j_error,relative MAE≤0.2; P95≤2×limit,1,0.1,8.0,BinDash,pass,0.0050723197327261,BinDash; FracMinHash; KSSD; FastKMV; SetSketch-fixed
+j_error,relative MAE≤0.2; P95≤2×limit,1,0.9,8.0,SetSketch-fixed,pass,0.0055486721383335,BinDash; FracMinHash; HLL; KSSD; FastKMV; ProbMinHash-unweighted; SetSketch-fixed
+j_error,relative MAE≤0.2; P95≤2×limit,100,0.5,8.0,无校准候选,no_calibration_candidate,,无
+c_error,absolute MAE≤0.05; P95≤2×limit,50,0.5,8.0,无校准候选,no_calibration_candidate,,无
+c_error,absolute MAE≤0.05; P95≤2×limit,50,0.5,32.0,SetSketch-fixed,pass,0.0264009866827545,SetSketch-fixed
+c_error,relative MAE≤0.2; P95≤2×limit,500,0.05,8.0,无校准候选,no_calibration_candidate,,无
+card_relative_error,absolute MAE≤0.02; P95≤2×limit,1,0.5,8.0,SetSketch-fixed,pass,0.0111722851204064,HLL; SetSketch-fixed

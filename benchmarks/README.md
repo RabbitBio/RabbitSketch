@@ -10,6 +10,8 @@ backend.
 
 | Workflow | Entry points | Purpose |
 | --- | --- | --- |
+| Comprehensive accuracy and scenario selection | [comprehensive_accuracy](comprehensive_accuracy/README.md) | Seven backends, 840 nominal conditions, held-out precision requirements, expanded real/task panels and downstream validation; no runtime ranking |
+| Accuracy-only selection boundaries | [selection_accuracy](selection_accuracy/README.md) | Metric, overlap, size ratio, retained samples and payload; new targeted measurements without performance ranking |
 | Synthetic and real-set screening | [screening](screening/README.md) | Exact Jaccard truth, native resolution sweeps, Pareto diagnostics and paired comparisons |
 | Metric and workload validation | [regimes](regimes/README.md) | ANI, cardinality, directed containment, probability Jaccard and actual all-vs-all |
 | Final external validation | [robustness](robustness/README.md) | Independent bacterial genomes, known substitution/indel edits, frozen advisor evaluation and alignment audits |
@@ -25,12 +27,23 @@ it is not a zero-download public dataset installer.
 
 ## Reports and evidence
 
+- [Current accuracy and scenario selection, 2026-10-31](../RabbitSketch2_comprehensive_accuracy.md)
+- [Full comprehensive report and figures](results/comprehensive_accuracy_20261030/report.md)
+- [Earlier targeted accuracy guide, 2026-10-12](../RabbitSketch2_accuracy_selection_guide.md)
 - [Detailed algorithm-selection analysis](../RabbitSketch2_algorithm_selection_analysis.md)
 - [Independent genomes and mixed-mutation validation](../RabbitSketch2_robustness_validation.md)
 - [Published evidence index](results/README.md)
 - [Publication validation](PUBLICATION_VALIDATION.md)
 
-The external validation contains 900 genomes, 180 species taxids, 60 genera,
+The comprehensive study completed 5,016,096 native configuration/pair
+measurements plus 20,298 exact pair results. It reuses the 900-genome inventory,
+expands natural comparisons to 6,426 pairs at three k values, and checks
+nearest-neighbor recovery, species assignment and clustering on 30 held-out
+genera. Better similarity estimates do not establish a universal switch boundary
+or a reliably improved automatic selector. The report retains unavailable
+outputs, budget failures, unresolved contrasts and downstream reversals.
+
+The earlier 2026-10-01 external validation contains 900 genomes, 180 species taxids, 60 genera,
 1,967 natural pairs, 320 controlled mutation pairs, 94 native/exact batches and
 140 NUCmer reference checks. At k=24 and 8 KiB/pair, BinDash's Jaccard MAE is
 0.484 times MinHash's; SetSketch-fixed's high-overlap MAE is 0.816 times

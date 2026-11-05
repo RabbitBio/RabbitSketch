@@ -1,5 +1,9 @@
 **RabbitSketch2 算法选择的详细数据分析：每个算法为什么值得推荐，以及推荐到什么范围。**
 
+**2026-10-31 更新：当前选型依据见[全面精度与场景选择](RabbitSketch2_comprehensive_accuracy.md)。** 新增七算法共同条件、完整预算/比例/覆盖率网格和真实下游验证；本轮不以运行时间作选择依据。以下保留早期分析及其更新记录，其中的阶段性推荐和“最新”措辞均需结合新报告的适用范围理解。
+
+**2026-10-12 更新：当前只讨论“什么条件下选什么算法”的结论，见[精度与任务边界指南](RabbitSketch2_accuracy_selection_guide.md)。** 新增 10,800 条测量；该指南暂不以性能作为选择依据，重新限定了高重叠、containment、cardinality 的推荐范围。下文保留原有含成本的冻结分析，不能将其中的速度理由直接用于这轮精度选择。
+
 分析日期：2026-10-01。本文主体保留普通 Jaccard 初筛和第二阶段任务评测的冻结结果，面向 RabbitSketch2 的 selection guide 与论文 Results/Discussion；表格直接从源 CSV 提取，数值按展示精度四舍五入。
 
 **后续验证已完成，最新结论见同目录的 [独立多物种与混合突变验证](RabbitSketch2_robustness_validation.md)。** 新增 900 genomes、180 species taxid、60 属的 1,967 对真实比较，以及 20 references 的 320 对 substitution/indel 扰动；94 个 exact/native 批次和 140 对 NUCmer 审核全部完成。未增加第二 CPU 平台，OrderMinHash 仍排除。

@@ -1,0 +1,16 @@
+{
+  "all_eight_supported_report_rows_match_csv": true,
+  "all_inputs_matched": true,
+  "all_native_rows_ok": true,
+  "analysis_sha256": "059dda0058d453e00b08145cbcd6ee0bf15c753f2c665044f66b5224f90f6f48",
+  "analysis_tests": {
+    "command": "python -m pytest -q benchmarks/selection_accuracy/test_accuracy.py",
+    "passed": 21
+  },
+  "exported_accuracy_recomputed": true,
+  "independent_replicates_per_regime": 30,
+  "new_rows": 10800,
+  "no_timing_columns_in_accuracy_tables": true,
+  "paired_contrasts": 180,
+  "tests_sha256": "e1f6bfcb60a493b865c41a734f79de7b7853338c7cd22049ffbf691f62b7e77d"
+}

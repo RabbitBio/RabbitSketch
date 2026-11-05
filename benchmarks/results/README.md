@@ -2,9 +2,16 @@
 
 These are the frozen summary tables, plots and reports underlying the algorithm
 selection guide. Raw FASTA/FASTQ, native binaries, full per-job output archives,
-and the largest per-measurement tables remain outside Git. No estimates were
-recomputed or configurations refitted for publication.
+and the largest per-measurement tables remain outside Git. The 2026-10-01
+cohorts below remain frozen. The 2026-10-12 accuracy-only addition contains new
+targeted native measurements and explicitly labeled reanalysis of frozen data.
+The comprehensive suite registered on 2026-10-30 and completed on 2026-10-31
+adds the full seven-backend grid and expands real/task comparisons on the same
+input inventory. Its precision profiles are explicitly post-registration
+diagnostics; runtime is excluded from all new selection results.
 
+- [Comprehensive accuracy, requirements and downstream validation, 2026-10-31](comprehensive_accuracy_20261030/report.md)
+- [Accuracy-only selection boundaries, 2026-10-12](selection_accuracy_20261012/README.md)
 - [Stage I: systematic characterization](systematic_20261001/report.md)
 - [Stage II: metrics, workloads and advisor](regimes_20261001/report.md)
 - [Final external validation](robustness_20261001/report.md)

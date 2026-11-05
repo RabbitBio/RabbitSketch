@@ -1,0 +1,40 @@
+{
+  "exact_verified_inputs": 24,
+  "native_comparisons": [
+    {
+      "algorithm": "minhash",
+      "estimate": 0.04296875,
+      "matches_frozen": true
+    },
+    {
+      "algorithm": "fracminhash",
+      "estimate": 0.04015056461731493,
+      "matches_frozen": true
+    },
+    {
+      "algorithm": "hll",
+      "estimate": 0.05408445647693282,
+      "matches_frozen": true
+    },
+    {
+      "algorithm": "setsketch",
+      "estimate": 0.04199585750109479,
+      "matches_frozen": true
+    },
+    {
+      "algorithm": "bindash",
+      "estimate": 0.04832532234683757,
+      "matches_frozen": true
+    },
+    {
+      "algorithm": "probminhash",
+      "estimate": 0.0546875,
+      "matches_frozen": true
+    },
+    {
+      "algorithm": "kssd",
+      "estimate": 0.0425531914893617,
+      "matches_frozen": true
+    }
+  ]
+}

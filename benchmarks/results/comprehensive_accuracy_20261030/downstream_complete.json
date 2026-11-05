@@ -1,0 +1,9 @@
+{
+  "calibration_genera": 30,
+  "common_sha256": "a4c2fb83d44fd44ba2978c5bb89ee49d6e8e02f399aae0b1ef3662cf48eff9b6",
+  "genomes": 900,
+  "source_sha256": "a23ccaf20c8001ce64f0cc582775b2d087de3901305e05346b60e1ca244d64ff",
+  "species": 180,
+  "status": "complete",
+  "validation_genera": 30
+}

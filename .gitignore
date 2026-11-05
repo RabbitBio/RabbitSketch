@@ -49,6 +49,12 @@ __pycache__/
 # Locally generated manuscript and paper artifacts
 paper/
 
+# Local cross-chat handoff exports
+/exports/
+
+# Published analysis validation evidence
+!benchmarks/results/comprehensive_accuracy_20261030/analysis_tests.log
+
 # Local publication staging and generated experiment data
 publication/
 .pytest_cache/

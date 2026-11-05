@@ -1,0 +1,10 @@
+{
+  "analysis_sha256": "d75baf179a858a5be2151e2e7f11b2f2f2e680b44971d81c601a93e938588f12",
+  "common_sha256": "a4c2fb83d44fd44ba2978c5bb89ee49d6e8e02f399aae0b1ef3662cf48eff9b6",
+  "intervals_scope": "simultaneous candidate contrasts across budgets within each regime and metric; not across regimes",
+  "native_batches": 12,
+  "native_measurements": 3118080,
+  "nominal_regimes": 840,
+  "realized_conditions": 832,
+  "status": "complete"
+}

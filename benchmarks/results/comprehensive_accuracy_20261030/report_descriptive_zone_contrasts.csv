@@ -1,0 +1,7 @@
+condition,left,right,matched_cells,left_lower_MAE,median_MAE_ratio
+"0<C≤0.1, r≤4",BinDash,SetSketch-fixed,432,419,0.6811998609306964
+"0<C≤0.1, r≤4",SetSketch-fixed,HLL,432,432,0.46875547110984217
+"0.9≤C<1, r≤4",BinDash,SetSketch-fixed,288,8,1.508118385716618
+"0.9≤C<1, r≤4",SetSketch-fixed,HLL,288,223,0.8777946750705905
+"0.9≤C<1, r>4",BinDash,SetSketch-fixed,368,0,3.748041832872122
+"0.9≤C<1, r>4",SetSketch-fixed,HLL,368,324,0.7169492886019999
