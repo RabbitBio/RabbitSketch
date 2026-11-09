@@ -17,10 +17,10 @@ endif()
 
 option(CXXAPI "build pure c++ library instead of python bind interface" OFF)
 # FastKMV key pipeline (only one of these applies to fastkmv.cpp):
-#   default     = single-round murmur3-style fmix after canonical ntHash
+#   default     = single-round murmur3-style fmix after canonical 2-bit encoding
 #   DOUBLE_FMUX = two-round fmix (-DFASTKMV_DOUBLE_FMUX)
-#   NO_FMUX     = raw (canonical ntHash >> 11), ablation (-DFASTKMV_NO_FMUX)
-option(FASTKMV_NO_FMUX "FastKMV: skip fmix (raw ntHash keys)" OFF)
+#   NO_FMUX     = raw (canonical code >> 11), ablation (-DFASTKMV_NO_FMUX)
+option(FASTKMV_NO_FMUX "FastKMV: skip fmix (raw canonical keys)" OFF)
 option(FASTKMV_DOUBLE_FMUX "FastKMV: two-round fmix instead of one" OFF)
 option(RABBITSKETCH_BUILD_TESTS "Build RabbitSketch tests" OFF)
 option(RABBITSKETCH_NATIVE_ARCH
@@ -142,6 +142,9 @@ if (CXXAPI)
 		add_executable(unified_query_test tests/unified_query_test.cpp)
 		target_link_libraries(unified_query_test rabbitsketch_static)
 		add_test(NAME unified_query COMMAND unified_query_test)
+		add_executable(fastkmv_heap_test tests/fastkmv_heap_test.cpp)
+		target_link_libraries(fastkmv_heap_test rabbitsketch_static)
+		add_test(NAME fastkmv_heap COMMAND fastkmv_heap_test)
 		add_executable(setsketch_test tests/setsketch_test.cpp)
 		target_link_libraries(setsketch_test rabbitsketch_static)
 		add_test(NAME setsketch COMMAND setsketch_test)

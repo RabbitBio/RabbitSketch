@@ -1,21 +1,18 @@
 /**
- * FastKMV – K Minimum Values sketch with ntHash rolling + fmix finalizer.
+ * FastKMV – K Minimum Values sketch with 2-bit rolling encoding + fmix.
  *
- * Lazy-sort warmup: the first 2k keys are appended unsorted in O(1).
- * When the buffer fills, compactify() sorts, deduplicates, and truncates
- * to the bottom-k in one pass, producing a sorted array with exact
- * threshold — identical to the original design from that point on.
+ * A reserved max-heap maintains the smallest k distinct keys. A robin-hood set
+ * deduplicates candidates that pass the threshold. Replacing the root needs
+ * one downward sift; successful updates do not sort or shift an entire array.
+ * Ordered reads sort in place once and cache the result. If construction then
+ * resumes, the next accepted key restores heap order once with make_heap.
+ * finalize() sorts if necessary and frees the build-only set.
  *
- * Warmup (sorted_==false): O(1) append into 2k buffer; at 2k entries,
- * compactify() sorts, dedupes, truncates to bottom-k (may repeat if still <k).
- * Steady state: sorted bottom-k, O(log k) lower_bound + O(k) memmove;
- * threshold_ == v[k-1] is exact.
- *
- * Rolling hash: ntHash (Mohamadi et al. 2016), canonical = min(fwd, rc).
+ * Canonical encoding: min(forward 2-bit code, reverse-complement 2-bit code).
  * Finalizer: murmur3 fmix (default 1 round; compile with -DFASTKMV_DOUBLE_FMUX
  * for 2 rounds), 8-wide AVX-512 when available.
  *
- * Ablation: -DFASTKMV_NO_FMUX skips the finalizer and uses (canonical_ntHash >> 11)
+ * Ablation: -DFASTKMV_NO_FMUX skips the finalizer and uses (canonical_code >> 11)
  * as the sketch key (testing only; expect different Jaccard accuracy).
  *
  * Jaccard estimator (standard KMV):
@@ -28,7 +25,7 @@
 #include <cmath>
 
 // Default: single fmix (faster). Define FASTKMV_DOUBLE_FMUX for two rounds (legacy).
-// Define FASTKMV_NO_FMUX to disable fmix entirely (raw ntHash keys; ablation test).
+// Define FASTKMV_NO_FMUX to disable fmix entirely (raw canonical keys; ablation).
 #ifdef FASTKMV_DOUBLE_FMUX
 #define FASTKMV_FMUX_ROUNDS 2
 #else
@@ -75,8 +72,6 @@ static inline __m256i avx2_mullo_epi64(__m256i a, __m256i b) {
 
 FastKMV::FastKMV(uint32_t k, int kmer_size, uint64_t seed)
     : k_(k), kmer_size_(kmer_size), seed_(seed),
-      buf_cap_(k * 2),
-      vals_(new uint64_t[k * 2]),
       size_(0),
       threshold_(UINT64_MAX),
       sorted_(false),
@@ -88,8 +83,9 @@ FastKMV::FastKMV(uint32_t k, int kmer_size, uint64_t seed)
     if (kmer_size < 1 || kmer_size > 32) {
         throw std::invalid_argument("FastKMV k-mer size must be in [1, 32]");
     }
-    // Warmup: append-only until buf full → compactify (see insertKey).
-    // Sentinels UINT64_MAX are applied in compactify / merge, not here.
+    vals_.reset(new uint64_t[k_]);
+    // Root replacement briefly holds K+1 keys before erasing the old maximum.
+    keys_.reserve(static_cast<size_t>(k_) + 1);
 }
 
 FastKMV FastKMV::fromRegisters(
@@ -111,6 +107,7 @@ FastKMV FastKMV::fromRegisters(
     }
     result.size_ = static_cast<uint32_t>(registers.size());
     std::copy(registers.begin(), registers.end(), result.vals_.get());
+    for (uint64_t key : registers) result.keys_.insert(key);
     if (result.size_ < k)
         std::fill(result.vals_.get() + result.size_,
                   result.vals_.get() + k, UINT64_MAX);
@@ -132,8 +129,8 @@ Rank::HashProfile FastKMV::runtimeHashProfile() noexcept {
 
 FastKMV::FastKMV(const FastKMV& o)
     : k_(o.k_), kmer_size_(o.kmer_size_), seed_(o.seed_),
-      buf_cap_(o.buf_cap_),
-      vals_(new uint64_t[o.buf_cap_]),
+      vals_(new uint64_t[o.k_]),
+      keys_(o.keys_),
       size_(o.size_),
       threshold_(o.threshold_),
       sorted_(o.sorted_),
@@ -148,8 +145,8 @@ FastKMV& FastKMV::operator=(FastKMV other) {
     std::swap(k_,         other.k_);
     std::swap(kmer_size_, other.kmer_size_);
     std::swap(seed_,      other.seed_);
-    std::swap(buf_cap_,   other.buf_cap_);
     std::swap(vals_,      other.vals_);
+    keys_.swap(other.keys_);
     std::swap(size_,      other.size_);
     std::swap(threshold_, other.threshold_);
     std::swap(sorted_,    other.sorted_);
@@ -160,67 +157,47 @@ FastKMV& FastKMV::operator=(FastKMV other) {
 // ═══════════════════════════════════════════════════════════════════════════
 // insertKey
 //
-//   Phase A — warmup (!sorted_): O(1) append; threshold_ is UINT64_MAX.
-//   Phase B — sorted but unfilled (sorted_ && size_<k): lower_bound + memmove.
-//   Phase C — full KMV (sorted_ && size_==k): threshold + lower_bound + memmove.
+// Threshold rejection precedes deduplication. Accepted new keys update a
+// max-heap; no full sorting is needed during an uninterrupted build.
 // ═══════════════════════════════════════════════════════════════════════════
 
 void FastKMV::insertKey(uint64_t key) {
     if (key >= threshold_) return;
-
-    if (!sorted_) {
-        vals_[size_++] = key;
-        if (size_ >= buf_cap_)
-            compactify();
-        return;
-    }
-
+    if (!keys_.insert(key).second) return;
     uint64_t* v = vals_.get();
+    if (sorted_) {
+        // An earlier ordered read materialized the cached view in this same
+        // buffer. Rebuild only when a genuinely new key will change the sketch.
+        std::make_heap(v, v + size_);
+        sorted_ = false;
+    }
 
     if (size_ < k_) {
-        uint64_t* pos = std::lower_bound(v, v + size_, key);
-        uint32_t idx = static_cast<uint32_t>(pos - v);
-        if (idx < size_ && v[idx] == key) return;
-        std::memmove(v + idx + 1, v + idx, (size_ - idx) * sizeof(uint64_t));
-        v[idx] = key;
-        ++size_;
-        if (size_ == k_)
-            threshold_ = v[k_ - 1];
-        return;
-    }
-
-    uint64_t* pos = std::lower_bound(v, v + k_, key);
-    uint32_t idx = static_cast<uint32_t>(pos - v);
-    if (idx < k_ && v[idx] == key) return;
-    std::memmove(v + idx + 1, v + idx, (k_ - 1 - idx) * sizeof(uint64_t));
-    v[idx] = key;
-    threshold_ = v[k_ - 1];
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// compactify  –  sort, deduplicate, truncate to k
-// ═══════════════════════════════════════════════════════════════════════════
-
-void FastKMV::compactify() const {
-    uint64_t* v = vals_.get();
-    std::sort(v, v + size_);
-
-    uint32_t w = 0;
-    for (uint32_t r = 0; r < size_; ++r) {
-        if (r == 0 || v[r] != v[r - 1]) {
-            v[w++] = v[r];
-            if (w == k_) break;
+        v[size_++] = key;
+        std::push_heap(v, v + size_);
+    } else {
+        keys_.erase(v[0]);
+        // Replace the maximum with one sift-down, instead of push_heap followed
+        // by pop_heap. Only the path from the root to its new position moves.
+        size_t parent = 0;
+        for (size_t child = 1; child < size_; child = 2 * parent + 1) {
+            if (child + 1 < size_ && v[child] < v[child + 1]) ++child;
+            if (v[child] <= key) break;
+            v[parent] = v[child];
+            parent = child;
         }
+        v[parent] = key;
     }
-    size_ = w;
-    threshold_ = (size_ >= k_) ? v[k_ - 1] : UINT64_MAX;
-    std::fill(v + size_, v + k_, UINT64_MAX);
-    sorted_ = true;
+    threshold_ = size_ == k_ ? v[0] : UINT64_MAX;
 }
 
 void FastKMV::ensureSorted() const {
-    if (!sorted_)
-        compactify();
+    if (!sorted_) {
+        uint64_t* v = vals_.get();
+        std::sort(v, v + size_);
+        std::fill(v + size_, v + k_, UINT64_MAX);
+        sorted_ = true;
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -241,7 +218,9 @@ void FastKMV::addHash(uint64_t h) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 void FastKMV::finalize() {
+    if (sealed_) return;
     ensureSorted();
+    decltype(keys_)().swap(keys_);
     sealed_ = true;
 }
 
@@ -639,13 +618,11 @@ double FastKMV::jaccard(const FastKMV& other, double min_jaccard) const {
 // ═══════════════════════════════════════════════════════════════════════════
 
 double FastKMV::cardinality() const {
-    ensureSorted();
     if (size_ == 0) return 0.0;
     if (size_ == 1) return 1.0;
-    // vals_[size_-1] is the largest (= k-th minimum when sketch is full).
     // For a partial sketch (size_ < k_) we know the exact count.
     if (size_ < k_) return static_cast<double>(size_);
-    const uint64_t tau = vals_[k_ - 1];
+    const uint64_t tau = threshold_;
     if (tau == 0) return static_cast<double>(k_);
     return static_cast<double>(k_ - 1) * static_cast<double>(KEY_MAX)
            / static_cast<double>(tau);
@@ -719,6 +696,7 @@ FastKMV FastKMV::project(uint32_t target_k) const {
     FastKMV ret(target_k, kmer_size_, seed_);
     ret.size_ = std::min(size_, target_k);
     std::copy(vals_.get(), vals_.get() + ret.size_, ret.vals_.get());
+    for (uint32_t i = 0; i < ret.size_; ++i) ret.keys_.insert(ret.vals_[i]);
     if (ret.size_ < target_k) {
         std::fill(ret.vals_.get() + ret.size_,
                   ret.vals_.get() + target_k, UINT64_MAX);
@@ -765,6 +743,8 @@ FastKMV FastKMV::merge(const FastKMV& other) const {
 
     ret.threshold_ = (ret.size_ >= common_k)
         ? ret.vals_[common_k - 1] : UINT64_MAX;
+    for (uint32_t i = 0; i < ret.size_; ++i) ret.keys_.insert(ret.vals_[i]);
+    std::fill(ret.vals_.get() + ret.size_, ret.vals_.get() + common_k, UINT64_MAX);
     ret.sorted_ = true;
     return ret;
 }

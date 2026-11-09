@@ -1,11 +1,14 @@
 /**
  * FastKMV – fast K Minimum Values sketch for genomic k-mers.
  *
- * Canonical k-mer processing: 2-bit lex rolling hash (A→0, C→1, G→2, T→3),
+ * Canonical k-mer processing: 2-bit lex rolling encoding (A→0, C→1, G→2, T→3),
  * canonical = min(fwd_enc, rev_enc), then murmur3_fmix finaliser.
  * SIMD batched fmix (AVX-512 / AVX2) where available.
  * Compile with -DFASTKMV_NO_FMUX to use raw canonical>>11 keys (ablation).
  *
+ * Construction: reserved max-heap plus a set of retained keys for deduplication.
+ * Ordered reads lazily sort the retained keys and reuse that view until a new
+ * key is accepted. Finalization releases the build-only deduplication set.
  * Jaccard: standard KMV two-pointer merge on sorted bottom-k keys.
  */
 
@@ -17,6 +20,7 @@
 #include <memory>
 #include <cassert>
 #include <vector>
+#include "robin_hood.h"
 #include "rank/RankMetadata.h"
 
 namespace Sketch {
@@ -46,7 +50,7 @@ public:
 
     void update(const char* seq, uint64_t length);
 
-    /** Seal the sketch.  Query operations remain valid; later updates fail. */
+    /** Sort once, release build-only state, and seal against later updates. */
     void finalize();
     bool isSealed() const noexcept { return sealed_; }
 
@@ -113,12 +117,13 @@ public:
     /** Merge at min(K1,K2); incompatible rank spaces raise invalid_argument. */
     FastKMV merge(const FastKMV& other) const;
 
+    /** Sorted view, cached until a subsequent accepted update. */
     const uint64_t* getRegisters() const { ensureSorted(); return vals_.get(); }
     uint32_t getK()        const { return k_; }
     uint32_t getM()        const { return k_; }
     int      getKmerSize() const { return kmer_size_; }
     uint64_t getSeed()     const { return seed_; }
-    uint32_t size()        const { ensureSorted(); return size_; }
+    uint32_t size()        const { return size_; }
     Rank::RankMetadata metadata() const;
 
     void printSketch() const;
@@ -126,17 +131,15 @@ public:
 private:
     void addHash(uint64_t h);
     void insertKey(uint64_t key);
-    void compactify() const;
     void ensureSorted() const;
 
     uint32_t k_;
     int      kmer_size_;
     uint64_t seed_;
-    uint32_t buf_cap_;
-
     std::unique_ptr<uint64_t[]> vals_;
-    mutable uint32_t size_;
-    mutable uint64_t threshold_;
+    robin_hood::unordered_set<uint64_t> keys_;
+    uint32_t size_;
+    uint64_t threshold_;
     mutable bool     sorted_;
     bool             sealed_;
 };
