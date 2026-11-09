@@ -24,6 +24,8 @@ using IntersectionFunction = size_t (*)(const uint64_t*, size_t,
                                         const uint64_t*, size_t);
 using RankFilterFunction = uint8_t (*)(const uint64_t*, uint8_t, uint64_t,
                                       uint64_t, uint64_t*);
+using DoubleRankFunction = void (*)(const uint64_t*, uint8_t, uint64_t,
+                                    uint64_t*, uint64_t*);
 
 ByteRelations scalarByteRelations(const uint8_t* left,
                                   const uint8_t* right,
@@ -89,6 +91,19 @@ uint8_t scalarFilterFmix64x8(const uint64_t* canonical_values,
             result |= static_cast<uint8_t>(UINT8_C(1) << lane);
     }
     return result;
+}
+
+void scalarDoubleFmix64x8(const uint64_t* canonical_values,
+                         uint8_t valid_mask,
+                         uint64_t seed,
+                         uint64_t* fingerprints,
+                         uint64_t* values) noexcept {
+    for (unsigned lane = 0; lane < 8; ++lane) {
+        if ((valid_mask & (UINT8_C(1) << lane)) == 0) continue;
+        const uint64_t fingerprint = fmix64(canonical_values[lane], seed);
+        fingerprints[lane] = fingerprint;
+        values[lane] = fmix64(fingerprint, 0);
+    }
 }
 
 #if RABBITSKETCH_X86_FUNCTION_DISPATCH
@@ -379,6 +394,69 @@ uint8_t avx512FilterFmix64x8(const uint64_t* canonical_values,
         _mm512_set1_epi64(static_cast<long long>(threshold)),
         _MM_CMPINT_LE));
 }
+
+RABBITSKETCH_TARGET("avx2")
+void avx2DoubleFmix64x8(const uint64_t* canonical_values,
+                       uint8_t /* valid_mask */,
+                       uint64_t seed,
+                       uint64_t* fingerprints,
+                       uint64_t* values) noexcept {
+    const __m256i seed_vector = _mm256_set1_epi64x(
+        static_cast<long long>(seed));
+    const __m256i first_constant = _mm256_set1_epi64x(
+        static_cast<long long>(UINT64_C(0xff51afd7ed558ccd)));
+    const __m256i second_constant = _mm256_set1_epi64x(
+        static_cast<long long>(UINT64_C(0xc4ceb9fe1a85ec53)));
+    for (unsigned base = 0; base < 8; base += 4) {
+        __m256i value = _mm256_loadu_si256(
+            reinterpret_cast<const __m256i*>(canonical_values + base));
+        value = _mm256_xor_si256(value, seed_vector);
+        value = _mm256_xor_si256(value, _mm256_srli_epi64(value, 33));
+        value = avx2MulloEpi64(value, first_constant);
+        value = _mm256_xor_si256(value, _mm256_srli_epi64(value, 33));
+        value = avx2MulloEpi64(value, second_constant);
+        value = _mm256_xor_si256(value, _mm256_srli_epi64(value, 33));
+        _mm256_storeu_si256(
+            reinterpret_cast<__m256i*>(fingerprints + base), value);
+
+        // Keep the first-round result in registers; the second seed is zero.
+        value = _mm256_xor_si256(value, _mm256_srli_epi64(value, 33));
+        value = avx2MulloEpi64(value, first_constant);
+        value = _mm256_xor_si256(value, _mm256_srli_epi64(value, 33));
+        value = avx2MulloEpi64(value, second_constant);
+        value = _mm256_xor_si256(value, _mm256_srli_epi64(value, 33));
+        _mm256_storeu_si256(
+            reinterpret_cast<__m256i*>(values + base), value);
+    }
+}
+
+RABBITSKETCH_TARGET("avx512f,avx512dq")
+void avx512DoubleFmix64x8(const uint64_t* canonical_values,
+                         uint8_t /* valid_mask */,
+                         uint64_t seed,
+                         uint64_t* fingerprints,
+                         uint64_t* values) noexcept {
+    const __m512i first_constant = _mm512_set1_epi64(
+        static_cast<long long>(UINT64_C(0xff51afd7ed558ccd)));
+    const __m512i second_constant = _mm512_set1_epi64(
+        static_cast<long long>(UINT64_C(0xc4ceb9fe1a85ec53)));
+    __m512i value = _mm512_loadu_si512(canonical_values);
+    value = _mm512_xor_epi64(
+        value, _mm512_set1_epi64(static_cast<long long>(seed)));
+    value = _mm512_xor_epi64(value, _mm512_srli_epi64(value, 33));
+    value = _mm512_mullo_epi64(value, first_constant);
+    value = _mm512_xor_epi64(value, _mm512_srli_epi64(value, 33));
+    value = _mm512_mullo_epi64(value, second_constant);
+    value = _mm512_xor_epi64(value, _mm512_srli_epi64(value, 33));
+    _mm512_storeu_si512(fingerprints, value);
+
+    value = _mm512_xor_epi64(value, _mm512_srli_epi64(value, 33));
+    value = _mm512_mullo_epi64(value, first_constant);
+    value = _mm512_xor_epi64(value, _mm512_srli_epi64(value, 33));
+    value = _mm512_mullo_epi64(value, second_constant);
+    value = _mm512_xor_epi64(value, _mm512_srli_epi64(value, 33));
+    _mm512_storeu_si512(values, value);
+}
 #endif
 
 std::string lower(std::string value) {
@@ -421,6 +499,7 @@ struct Dispatch {
     U64Function u64 = scalarEqualNonZeroU64;
     IntersectionFunction intersection = scalarSortedIntersectionU64;
     RankFilterFunction rank_filter = scalarFilterFmix64x8;
+    DoubleRankFunction double_rank = scalarDoubleFmix64x8;
 };
 
 Dispatch makeDispatch() noexcept {
@@ -470,12 +549,15 @@ Dispatch makeDispatch() noexcept {
         result.info.selected_u64_path = "avx512f";
         if (override_value != "auto" && result.info.cpu_avx512dq) {
             result.rank_filter = avx512FilterFmix64x8;
+            result.double_rank = avx512DoubleFmix64x8;
             result.info.selected_rank_path = "avx512dq";
         } else if (result.info.cpu_avx2) {
             result.rank_filter = avx2FilterFmix64x8;
+            result.double_rank = avx2DoubleFmix64x8;
             result.info.selected_rank_path = "avx2";
         } else if (result.info.cpu_avx512dq) {
             result.rank_filter = avx512FilterFmix64x8;
+            result.double_rank = avx512DoubleFmix64x8;
             result.info.selected_rank_path = "avx512dq";
         }
     } else if (!explicit_scalar && allow_avx2 && result.info.cpu_avx2) {
@@ -483,6 +565,7 @@ Dispatch makeDispatch() noexcept {
         result.u64 = avx2EqualNonZeroU64;
         result.intersection = avx2SortedIntersectionU64;
         result.rank_filter = avx2FilterFmix64x8;
+        result.double_rank = avx2DoubleFmix64x8;
         result.info.selected_byte_path = "avx2";
         result.info.selected_u64_path = "avx2";
         result.info.selected_rank_path = "avx2";
@@ -589,6 +672,18 @@ uint8_t filterFmix64x8(const uint64_t* canonical_values,
         return 0;
     return dispatch().rank_filter(canonical_values, valid_mask, seed,
                                   threshold, fingerprints);
+}
+
+void doubleFmix64x8(const uint64_t* canonical_values,
+                    uint8_t valid_mask,
+                    uint64_t seed,
+                    uint64_t* fingerprints,
+                    uint64_t* values) noexcept {
+    if (valid_mask == 0 || canonical_values == nullptr ||
+        fingerprints == nullptr || values == nullptr)
+        return;
+    dispatch().double_rank(canonical_values, valid_mask, seed,
+                           fingerprints, values);
 }
 
 } // namespace Runtime

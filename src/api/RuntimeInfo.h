@@ -21,6 +21,7 @@ struct RuntimeInfo {
     bool cpu_avx512bw = false;
     std::string selected_byte_path = "scalar";
     std::string selected_u64_path = "scalar";
+    // Shared by the single-round filter and double-round hash kernels.
     std::string selected_rank_path = "scalar";
     std::string environment_override;
     bool environment_override_honored = true;
@@ -62,6 +63,19 @@ uint8_t filterFmix64x8(const uint64_t* canonical_values,
                        uint64_t seed,
                        uint64_t threshold,
                        uint64_t* fingerprints) noexcept;
+
+/**
+ * Compute h = fmix64(canonical, seed), then value = fmix64(h, 0) for eight
+ * lanes. BinDash uses h for bin selection and value for the bin minimum.
+ * All buffers have eight entries; the two output buffers must be distinct.
+ * Only valid-mask lanes are meaningful; invalid-lane outputs are unspecified.
+ * Uses the same runtime ISA selection as filterFmix64x8.
+ */
+void doubleFmix64x8(const uint64_t* canonical_values,
+                    uint8_t valid_mask,
+                    uint64_t seed,
+                    uint64_t* fingerprints,
+                    uint64_t* values) noexcept;
 
 } // namespace Runtime
 } // namespace Sketch

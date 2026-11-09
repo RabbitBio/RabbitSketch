@@ -2,8 +2,8 @@
  * BinDash – b-bit One Permutation Hashing implementation.
  *
  * Algorithm:
- *   1. update(): canonical k-mer sliding window → murmur3_fmix hash →
- *      partition into nbins bins, keep minimum hash per bin.
+ *   1. update(): canonical k-mer sliding window → batched two-round fmix →
+ *      partition using the first hash, keep the minimum second hash per bin.
  *   2. densify(): fill empty bins using optimal densification
  *      (Shrivastava, ICML 2017).
  *   3. packBits(): retain only the lowest bbits of each bin minimum,
@@ -12,7 +12,7 @@
  */
 
 #include "BinDash.h"
-#include "hash_int.h"
+#include "api/RuntimeInfo.h"
 
 #include <algorithm>
 #include <cassert>
@@ -144,28 +144,48 @@ void BinDash::update(const char* seq, uint64_t length) {
         rev = (rev >> 2) | (static_cast<uint64_t>(er & 3u) << (2 * (K - 1)));
     }
 
-    const uint64_t N_body = length - static_cast<uint64_t>(K);
+    const uint64_t windows = length - static_cast<uint64_t>(K) + 1;
+    uint64_t canonical[8] = {};
+    uint64_t fingerprints[8];
+    uint64_t values[8];
 
-    for (uint64_t i = 0; i <= N_body; ++i) {
-        if (inv == 0) {
-            const uint64_t canonical = (fwd <= rev) ? fwd : rev;
-            uint64_t h = mc::murmur3_fmix(canonical, loc_seed);
-            uint32_t binidx = static_cast<uint32_t>((h >> 32) % loc_nbins);
-            uint64_t value  = mc::murmur3_fmix(h, 0ULL);
+    for (uint64_t position = 0; position < windows; ) {
+        const unsigned count = static_cast<unsigned>(
+            std::min<uint64_t>(8, windows - position));
+        uint8_t valid_mask = 0;
+        for (unsigned lane = 0; lane < count; ++lane, ++position) {
+            if (inv == 0) {
+                canonical[lane] = (fwd <= rev) ? fwd : rev;
+                valid_mask |= static_cast<uint8_t>(UINT8_C(1) << lane);
+            }
+
+            if (position + 1 < windows) {
+                const uint8_t ef_out = BD_ENC(seq[position]);
+                const uint8_t ef_in = BD_ENC(seq[position + K]);
+                if (!BD_VALID(ef_out)) --inv;
+                if (!BD_VALID(ef_in)) ++inv;
+                fwd = ((fwd << 2) |
+                       (BD_VALID(ef_in) ? (ef_in & 3u) : 0u)) & kmer_mask;
+                const uint8_t er_in = BD_VALID(ef_in) ? (BD_COMP(ef_in) & 3u) : 0u;
+                rev = (rev >> 2) |
+                      (static_cast<uint64_t>(er_in) << (2 * (K - 1)));
+            }
+        }
+        if (valid_mask == 0) continue;
+
+        Runtime::doubleFmix64x8(canonical, valid_mask, loc_seed,
+                               fingerprints, values);
+        // Update sequentially: lanes may share a bin, and each first update
+        // of an empty bin must increment raw_nonempty_ exactly once.
+        for (unsigned lane = 0; lane < count; ++lane) {
+            if ((valid_mask & (UINT8_C(1) << lane)) == 0) continue;
+            const uint32_t binidx = static_cast<uint32_t>(
+                (fingerprints[lane] >> 32) % loc_nbins);
+            const uint64_t value = values[lane];
             if (value < signs_[binidx]) {
                 if (signs_[binidx] == UINT64_MAX) ++raw_nonempty_;
                 signs_[binidx] = value;
             }
-        }
-
-        if (i < N_body) {
-            uint8_t ef_out = BD_ENC(seq[i]);
-            uint8_t ef_in  = BD_ENC(seq[i + K]);
-            if (!BD_VALID(ef_out)) inv--;
-            if (!BD_VALID(ef_in))  inv++;
-            fwd = ((fwd << 2) | (BD_VALID(ef_in) ? (ef_in & 3u) : 0u)) & kmer_mask;
-            uint8_t er_in = BD_VALID(ef_in) ? (BD_COMP(ef_in) & 3u) : 0u;
-            rev = (rev >> 2) | (static_cast<uint64_t>(er_in) << (2 * (K - 1)));
         }
     }
 }
