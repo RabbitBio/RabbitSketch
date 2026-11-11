@@ -22,8 +22,7 @@
  *   pair mode      -i fileA fileB                 (two FASTA/FASTQ inputs)
  *   list mode      -i list.txt -l                 (file list, all-pairs)
  *   --index        in list mode, run the inverted-index pipeline
- *                  (currently supported for: --fastkmv --probminhash
- *                                            --kssd     --setsketch)
+ *                  (supported for every algorithm, including --bindash)
  *
  * Common options:
  *   -o <path>      output file (default: rabbitsketch.dist)
@@ -72,7 +71,7 @@ static void print_usage(const char* prog) {
 "  -i fileA fileB         pairwise distance between two FASTA/FASTQ files\n"
 "  -i list.txt -l         all-pairs over the file list\n"
 "  --index                use inverted-index pipeline (list mode only;\n"
-"                         supported for minhash/fastkmv/fracminhash/probminhash/kssd/setsketch/hll)\n\n"
+"                         supported for all algorithms, including bindash)\n\n"
 "Common options:\n"
 "  -o <path>              output file (default: rabbitsketch.dist)\n"
 "  -k <int>               k-mer size (default 21; KSSD uses 2 * floor(k/2))\n"

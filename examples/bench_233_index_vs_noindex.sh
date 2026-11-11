@@ -23,7 +23,7 @@
 #   cd /home/user_home/tongz/Finish/RabbitSketch/examples
 #   bash bench_233_index_vs_noindex.sh --threads 64
 #
-# bindash 不支持 --index，mode=index 行会写 exit_code=NA。
+# bindash 的 index 模式使用 bin 位置与压缩值构建倒排索引。
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -166,7 +166,7 @@ declare -A SUPPORTS_INDEX=(
   [kssd]=1
   [hll]=1
   [probminhash]=1
-  [bindash]=0
+  [bindash]=1
   [setsketch]=1
   [fastkmv]=1
 )

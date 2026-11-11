@@ -24,6 +24,7 @@
 #include "KssdIndex.h"
 #include "io/KssdFastx.h"
 #include "BinDash.h"
+#include "BinDashIndex.h"
 #include "fastkmv.h"
 #include "fracminhash.h"
 #include "probmh.h"
@@ -1616,6 +1617,81 @@ static void run_index_kssd(const Args& a, const std::vector<std::string>& files)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// BinDash index: exact (bin position, b-bit value) keys. Posting counts equal
+// the native packed comparison's matching-bin count, including densified bins.
+template<class Key>
+static int run_index_bindash_typed(const Args& a, const std::vector<std::string>& files)
+{
+    namespace BI = Sketch::BinDashIndex;
+    const int n = static_cast<int>(files.size());
+    const int threads = std::max(1, std::min(a.threads, n));
+    const uint32_t bins = a.bdSketch64 * 64;
+    std::vector<std::vector<Key>> keys(n);
+    std::vector<int> sizes(n, static_cast<int>(bins));
+    std::atomic<bool> failed(false);
+    const double t0 = get_sec();
+    #pragma omp parallel for num_threads(threads) schedule(dynamic)
+    for (int i = 0; i < n; ++i) {
+        gzFile fp = gzopen(files[i].c_str(), "r");
+        if (!fp) { failed.store(true); continue; }
+        kseq_t* reader = kseq_init(fp);
+        Sketch::BinDash sketch(a.bdSketch64, a.kmerSize, a.bdBbits, a.seed);
+        int status;
+        while ((status = kseq_read(reader)) >= 0)
+            sketch.update(reader->seq.s, reader->seq.l);
+        kseq_destroy(reader);
+        gzclose(fp);
+        if (status < -1) { failed.store(true); continue; }
+        keys[i] = BI::keys<Key>(sketch);
+    }
+    if (failed.load()) {
+        std::cerr << "ERROR: BinDash could not read one or more FASTX inputs\n";
+        return 1;
+    }
+    const double t1 = get_sec();
+    std::cerr << "sketch + index keys: " << t1 - t0 << " s\n";
+    auto index = Sketch::buildCSRIndexFromKeys<Key>(keys, n, threads, BI::Bucket{});
+    const double t2 = get_sec();
+    std::cerr << "build CSR index: " << t2 - t1 << " s\n";
+    const int minimum = static_cast<int>(BI::minimumMatches(
+        bins, a.bdBbits, a.kmerSize, a.maxDist));
+    std::cerr << "BinDash index: bins=" << bins << " bbits=" << a.bdBbits
+              << " key_bytes=" << sizeof(Key) << " minSamebits=" << minimum
+              << " (mashD<" << a.maxDist << ")\n";
+    auto jaccard = [bins, bits = a.bdBbits](int common, int, int) {
+        return BI::jaccard(static_cast<uint32_t>(common), bins, bits);
+    };
+    auto minCommon = [minimum](int) { return minimum; };
+    std::string output = a.output;
+    struct stat st;
+    if (stat(output.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) {
+        if (output.back() != '/') output += '/';
+        output += "rabbitsketch.dist";
+    }
+    // 32-bit counters also support configurations exceeding 65535 bins.
+    Sketch::computeDistances<Key, decltype(jaccard), decltype(minCommon), uint32_t>(
+        index, keys, sizes, files, n, a.kmerSize, a.maxDist,
+        jaccard, minCommon, output, threads);
+    const double t3 = get_sec();
+    std::cerr << "dist time: " << t3 - t2 << " s\n"
+              << "total time: " << t3 - t0 << " s\n";
+    return 0;
+}
+
+static int run_index_bindash(const Args& a, const std::vector<std::string>& files)
+{
+    const uint64_t bins = uint64_t(a.bdSketch64) * 64;
+    if (bins == 0 || bins >= INT_MAX || a.bdBbits < 1 || a.bdBbits > 64 ||
+        a.kmerSize < 1 || a.kmerSize > 32 || files.size() > INT_MAX) {
+        std::cerr << "ERROR: invalid BinDash sketch size, bit width, k-mer size or input count\n";
+        return 1;
+    }
+    const unsigned bits = Sketch::BinDashIndex::keyBits(static_cast<uint32_t>(bins), a.bdBbits);
+    if (bits <= 32) return run_index_bindash_typed<uint32_t>(a, files);
+    if (bits <= 64) return run_index_bindash_typed<uint64_t>(a, files);
+    return run_index_bindash_typed<Sketch::BinDashIndex::WideKey>(a, files);
+}
+
 //  §9  BinDash all-pairs  (mirrors test_BinDash.cpp – flat_usigs storage,
 //      sort-by-cardinality + cycle-following permutation, 128KB tile-based
 //      dist with size-ratio prune, per-thread temp files merged at the end)
@@ -2293,6 +2369,7 @@ int run_cli(const Args& a) {
             case Algo::FASTKMV:     run_index_fastkmv(a, files);    return 0;
             case Algo::FRACMINHASH: run_index_fracminhash(a, files); return 0;
             case Algo::PROBMINHASH: run_index_probmh(a, files);     return 0;
+            case Algo::BINDASH:     return run_index_bindash(a, files);
             case Algo::KSSD:        run_index_kssd(a, files);       return 0;  // never returns (uses _Exit)
             case Algo::SETSKETCH:   run_index_setsketch(a, files);  return 0;
             case Algo::HLL:         run_index_hll(a, files);        return 0;

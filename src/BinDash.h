@@ -117,13 +117,13 @@ public:
      * Extract the truncated bbits-bit value for a single bin (inverse of packBits).
      * Must be called after finalize().
      */
-    uint16_t getBinValue(uint32_t bin) const {
+    uint64_t getBinValue(uint32_t bin) const {
         const uint32_t bb   = bbits_;
         const uint32_t word = bin / 64;
         const uint32_t bit  = bin % 64;
-        uint16_t val = 0;
+        uint64_t val = 0;
         for (uint32_t b = 0; b < bb; b++)
-            val |= static_cast<uint16_t>(((usigs_[word * bb + b] >> bit) & 1ULL) << b);
+            val |= ((usigs_[word * bb + b] >> bit) & 1ULL) << b;
         return val;
     }
 

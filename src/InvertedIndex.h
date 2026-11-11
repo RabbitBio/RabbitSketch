@@ -23,6 +23,7 @@
 #include <cstring>
 #include <cmath>
 #include <climits>
+#include <limits>
 #include <vector>
 #include <string>
 #include <iostream>
@@ -56,19 +57,18 @@ struct InvertedIndex {
 // Output is a phmap-backed InvertedIndex equivalent to buildCSRIndex's, so
 // the downstream computeDistances / computeDistancesExact code is unchanged.
 // ─────────────────────────────────────────────────────────────────────────────
-template<typename KeyT>
+template<typename KeyT, typename BucketFn>
 InvertedIndex<KeyT> buildCSRIndexFromKeys(
     const std::vector<std::vector<KeyT>>& skKeys,
     int N,
-    int nThreads)
+    int nThreads,
+    BucketFn bucket)
 {
     InvertedIndex<KeyT> idx;
     if (N <= 0) return idx;
 
     constexpr int BK_BITS  = 10;
     constexpr int BK       = 1 << BK_BITS;
-    constexpr int KEY_BITS = static_cast<int>(sizeof(KeyT) * 8);
-    constexpr int SHIFT    = KEY_BITS - BK_BITS;
 
     struct KS { KeyT key; uint32_t sid; };
 
@@ -90,16 +90,15 @@ InvertedIndex<KeyT> buildCSRIndexFromKeys(
 
     // ── Step 1: per-thread per-bucket counts ────────────────────────────────
     std::vector<size_t> cnt(static_cast<size_t>(T) * BK, 0);
-    #pragma omp parallel num_threads(T)
-    {
-        const int tid = omp_get_thread_num();
-        if (tid < T) {
-            size_t* lc = &cnt[static_cast<size_t>(tid) * BK];
-            const int lo = seqLo[tid], hi = seqLo[tid + 1];
-            for (int t = lo; t < hi; ++t)
-                for (KeyT k : skKeys[t])
-                    ++lc[static_cast<size_t>(k) >> SHIFT];
-        }
+    // Iterate logical partitions even if OMP_THREAD_LIMIT / dynamic teams
+    // supply fewer workers than requested.
+    #pragma omp parallel for num_threads(T) schedule(static)
+    for (int tid = 0; tid < T; ++tid) {
+        size_t* lc = &cnt[static_cast<size_t>(tid) * BK];
+        const int lo = seqLo[tid], hi = seqLo[tid + 1];
+        for (int t = lo; t < hi; ++t)
+            for (KeyT k : skKeys[t])
+                ++lc[bucket(k)];
     }
 
     // ── Step 2: bucket totals + per-thread per-bucket write offsets ─────────
@@ -127,20 +126,17 @@ InvertedIndex<KeyT> buildCSRIndexFromKeys(
 
     // ── Step 3: scatter (key, sid) pairs into bucket-grouped flat array ─────
     std::vector<KS> pairs(totalPairs);
-    #pragma omp parallel num_threads(T)
-    {
-        const int tid = omp_get_thread_num();
-        if (tid < T) {
-            std::vector<size_t> cur(BK);
-            std::memcpy(cur.data(), &off[static_cast<size_t>(tid) * BK],
-                        BK * sizeof(size_t));
-            const int lo = seqLo[tid], hi = seqLo[tid + 1];
-            for (int t = lo; t < hi; ++t) {
-                const uint32_t sid = static_cast<uint32_t>(t);
-                for (KeyT k : skKeys[t]) {
-                    int b = static_cast<int>(static_cast<size_t>(k) >> SHIFT);
-                    pairs[cur[b]++] = KS{k, sid};
-                }
+    #pragma omp parallel for num_threads(T) schedule(static)
+    for (int tid = 0; tid < T; ++tid) {
+        std::vector<size_t> cur(BK);
+        std::memcpy(cur.data(), &off[static_cast<size_t>(tid) * BK],
+                    BK * sizeof(size_t));
+        const int lo = seqLo[tid], hi = seqLo[tid + 1];
+        for (int t = lo; t < hi; ++t) {
+            const uint32_t sid = static_cast<uint32_t>(t);
+            for (KeyT k : skKeys[t]) {
+                int b = static_cast<int>(bucket(k));
+                pairs[cur[b]++] = KS{k, sid};
             }
         }
     }
@@ -225,6 +221,19 @@ InvertedIndex<KeyT> buildCSRIndexFromKeys(
 
     std::cerr << "CSR flatten: " << totalPosts << " postings" << std::endl;
     return idx;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Integer-key callers retain their high-bit radix partitioning. A custom
+// bucket function returns [0,1024), supporting exact composite keys as well.
+// ─────────────────────────────────────────────────────────────────────────────
+template<typename KeyT>
+InvertedIndex<KeyT> buildCSRIndexFromKeys(
+    const std::vector<std::vector<KeyT>>& skKeys, int N, int nThreads)
+{
+    constexpr int shift = static_cast<int>(sizeof(KeyT) * 8) - 10;
+    return buildCSRIndexFromKeys<KeyT>(skKeys, N, nThreads,
+        [](KeyT key) { return static_cast<size_t>(key) >> shift; });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -372,11 +381,6 @@ void computeDistances(
 {
     const bool useMashDist = (kmerSize > 0);
     const uint32_t* csrPtr = idx.csrPosts.data();
-    double minJacByDist = 1.0 - maxDist;
-    if (useMashDist) {
-        const double p_exp = std::exp(-static_cast<double>(kmerSize) * maxDist);
-        minJacByDist = p_exp / (2.0 - p_exp);
-    }
 
     // Size-ratio pruning (only meaningful for Mash distance mode)
     const double radio = useMashDist
@@ -467,13 +471,16 @@ void computeDistances(
                 if (jac < 0.0) jac = 0.0;
                 if (jac > 1.0) jac = 1.0;
 
-                if (jac > minJacByDist) {
-                    double dist = 1.0 - jac;
-                    if (useMashDist) {
-                        dist = (jac >= 1.0) ? 0.0
-                            : -std::log(2.0 * jac / (1.0 + jac))
-                              / static_cast<double>(kmerSize);
-                    }
+                double dist = 1.0 - jac;
+                if (useMashDist) {
+                    dist = (jac >= 1.0) ? 0.0 : (jac <= 0.0)
+                        ? std::numeric_limits<double>::infinity()
+                        : -std::log(2.0 * jac / (1.0 + jac))
+                          / static_cast<double>(kmerSize);
+                }
+                // Check the actual cutoff; inverse-transform roundoff can
+                // otherwise change output membership at the boundary.
+                if (dist < maxDist) {
                     char line[1024];
                     int n = snprintf(line, sizeof(line), "%s\t%s\t%.6f\n",
                         fileList[i].c_str(), fileList[j].c_str(), dist);

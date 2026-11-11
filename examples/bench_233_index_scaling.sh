@@ -2,9 +2,8 @@
 # Thread-scaling benchmark for RabbitSketch --index on 233.list.
 #
 # Defaults are intentionally minimal: all algorithm-specific parameters and the
-# distance threshold use rabbitsketch's built-in defaults.  BinDash is recorded
-# as unsupported because the CLI currently falls back to all-pairs for
-# --bindash --index, which is not comparable on the full 233.list.
+# distance threshold use rabbitsketch's built-in defaults. BinDash --index
+# uses the native (bin position, b-bit value) inverted index.
 #
 # Usage:
 #   bash bench_233_index_scaling.sh
@@ -53,7 +52,7 @@ fi
 declare -A DONE
 while IFS=, read -r algo _support _n threads ec _rest; do
   [[ "$algo" == "algo" ]] && continue
-  [[ "$ec" == "0" || "$ec" == "NA" ]] && DONE["${algo}:${threads}"]=1
+  [[ "$ec" == "0" ]] && DONE["${algo}:${threads}"]=1
 done < "$OUT"
 
 ALGO_ORDER=(fastkmv probminhash kssd setsketch hll bindash)
@@ -64,7 +63,7 @@ declare -A SUPPORTS_INDEX=(
   [kssd]=1
   [setsketch]=1
   [hll]=1
-  [bindash]=0
+  [bindash]=1
 )
 
 echo "RabbitSketch --index thread scaling"

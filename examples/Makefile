@@ -25,7 +25,7 @@ exe_test_SetSketch: test_SetSketch.cpp ../src/SetSketch.cpp ../src/InvertedIndex
 
 KSSD_HEADERS=../src/Sketch.h ../src/KssdBuild.h ../src/KssdIndex.h ../src/io/KssdFastx.h
 
-exe_test_Kssd: test_Kssd.cpp sub_command.cpp sub_command.h $(KSSD_HEADERS) ../build/lib/librabbitsketch_static.a
+exe_test_Kssd: test_Kssd.cpp sub_command.cpp sub_command.h ../src/BinDashIndex.h ../src/InvertedIndex.h $(KSSD_HEADERS) ../build/lib/librabbitsketch_static.a
 	$(CXX) $(CXXFLAGS) test_Kssd.cpp sub_command.cpp -o exe_test_Kssd $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -ldeflate -lz -lrabbitsketch_static
 
 exe_test_MinHash: test_MinHash.cpp ../src/InvertedIndex.h
@@ -51,7 +51,7 @@ else
 EXTRA_LDFLAGS=
 endif
 
-rabbitsketch: $(RABBIT_CLI_SRCS) sub_command.h $(RABBIT_SRCS) ../src/InvertedIndex.h $(KSSD_HEADERS) ../build/lib/librabbitsketch_static.a
+rabbitsketch: $(RABBIT_CLI_SRCS) sub_command.h $(RABBIT_SRCS) ../src/BinDash.h ../src/BinDashIndex.h ../src/InvertedIndex.h $(KSSD_HEADERS) ../build/lib/librabbitsketch_static.a
 	$(CXX) $(CXXFLAGS) $(RABBIT_CLI_SRCS) $(RABBIT_SRCS) -o rabbitsketch $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -ldeflate -lz -lrabbitsketch_static
 
 exe_test_ProbMinHash: test_ProbMinHash.cpp ../src/probmh.cpp ../src/InvertedIndex.h
