@@ -21,6 +21,7 @@
  */
 
 #include "fastkmv.h"
+#include "estimators/SimilarityThreshold.h"
 #include "rank/CanonicalKmer.h"
 #include <cmath>
 
@@ -449,24 +450,8 @@ void FastKMV::update(const char* seq, uint64_t length) {
 //   Scalar fallback for remainder / small sketches.
 // ═══════════════════════════════════════════════════════════════════════════
 
-static uint64_t fkmv_scalar_intersect(const uint64_t* list1, uint64_t size1,
-                                      const uint64_t* list2, uint64_t size2,
-                                      uint64_t budget,
-                                      uint64_t* i_a, uint64_t* i_b)
-{
-    uint64_t counter = 0;
-    *i_a = 0;
-    *i_b = 0;
-    while (*i_a < size1 && *i_b < size2 && budget > 0) {
-        if (list1[*i_a] < list2[*i_b])      { ++(*i_a); }
-        else if (list1[*i_a] > list2[*i_b]) { ++(*i_b); }
-        else { ++counter; ++(*i_a); ++(*i_b); }
-        --budget;
-    }
-    return counter;
-}
-
 double FastKMV::jaccard(const FastKMV& other, double min_jaccard) const {
+    detail::validateJaccardThreshold(min_jaccard);
     metadata().requireSameFamily(other.metadata(), "FastKMV::jaccard",
                                  /*allow_resolution_change=*/true);
     ensureSorted();
@@ -487,10 +472,8 @@ double FastKMV::jaccard(const FastKMV& other, double min_jaccard) const {
     // sufficient) match count and therefore preserves threshold recall.
     const uint64_t denominator_lower_bound = (sa == k || sb == k)
         ? k : std::max(sa, sb);
-    const uint64_t need = (min_jaccard > 0.0)
-        ? static_cast<uint64_t>(std::ceil(
-              min_jaccard * static_cast<double>(denominator_lower_bound)))
-        : 0ULL;
+    const uint64_t need = detail::minimumMatchesFixedDenominator(
+        min_jaccard, denominator_lower_bound);
     if (need > 0 && std::min(sa, sb) < need) return 0.0;
 
     uint64_t ia = 0, ib = 0;
@@ -596,11 +579,16 @@ double FastKMV::jaccard(const FastKMV& other, double min_jaccard) const {
 
     // scalar remainder
     uint64_t remaining = k - (ia + ib - common);
-    uint64_t ia_s, ib_s;
-    common += fkmv_scalar_intersect(a + ia, sa - ia, b + ib, sb - ib,
-                                    remaining, &ia_s, &ib_s);
-    ia += ia_s;
-    ib += ib_s;
+    while (ia < sa && ib < sb && remaining > 0) {
+        if (a[ia] < b[ib]) ++ia;
+        else if (a[ia] > b[ib]) ++ib;
+        else { ++common; ++ia; ++ib; }
+        --remaining;
+        // Also prune portable builds and tails, amortizing the bound check.
+        if (need > 0 && (remaining & 31) == 0 &&
+            common + std::min(remaining, std::min(sa - ia, sb - ib)) < need)
+            return 0.0;
+    }
 
     if (need > 0 && common < need) return 0.0;
 
@@ -653,14 +641,8 @@ double FastKMV::distance(const FastKMV& other, double max_distance) const {
     // Derive the minimum Jaccard that still meets max_distance via the
     // inverse Mash formula: D = -ln(2J/(1+J))/k  ⟹  J = 1/(2·exp(k·D) - 1).
     // When max_distance = +∞ (default) we get min_jaccard = 0 ⟹ no pruning.
-    double min_jaccard = 0.0;
-    if (std::isfinite(max_distance) && max_distance >= 0.0) {
-        const double kd    = static_cast<double>(kmer_size_) * max_distance;
-        const double denom = 2.0 * std::exp(kd) - 1.0;
-        min_jaccard = (denom > 0.0) ? (1.0 / denom) : 1.0;
-        if (min_jaccard < 0.0) min_jaccard = 0.0;
-        if (min_jaccard > 1.0) min_jaccard = 1.0;
-    }
+    const double min_jaccard = detail::minimumJaccardForMashDistance(
+        max_distance, kmer_size_);
 
     const double j = jaccard(other, min_jaccard);
     if (j <= 0.0) return std::numeric_limits<double>::infinity();

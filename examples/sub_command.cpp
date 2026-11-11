@@ -2261,6 +2261,10 @@ static void run_index_hll(const Args& a, const std::vector<std::string>& files_i
 // ═══════════════════════════════════════════════════════════════════════════
 int run_cli(const Args& a) {
     if (!a.listMode) return run_pair(a);
+    if (std::isnan(a.maxDist) || a.maxDist < 0.0) {
+        std::cerr << "ERROR: -d must be nonnegative or +infinity\n";
+        return 1;
+    }
 
     auto files = load_file_list(a.inputs[0]);
     if (files.empty()) { std::cerr << "ERROR: empty file list\n"; return 1; }
@@ -2322,7 +2326,9 @@ int run_cli(const Args& a) {
 
     case Algo::KSSD:
         list_allpairs<Sketch::Kssd>(a, files, build_kssd,
-            [](Sketch::Kssd* x, Sketch::Kssd* y) { return x->distance(y); });
+            [cutoff = a.maxDist](Sketch::Kssd* x, Sketch::Kssd* y) {
+                return x->distance(y, cutoff);
+            });
         break;
 
     case Algo::PROBMINHASH:
@@ -2344,8 +2350,12 @@ int run_cli(const Args& a) {
 
     case Algo::FASTKMV:
         list_allpairs<Sketch::FastKMV>(a, files, build_fastkmv,
-            [kmer](Sketch::FastKMV* x, Sketch::FastKMV* y) {
-                return mash_distance(x->jaccard(*y), kmer);
+            [cutoff = a.maxDist](Sketch::FastKMV* x, Sketch::FastKMV* y) {
+                // The CLI historically reports distance 1 for zero overlap.
+                // Broad cutoffs must keep those rows, including -d inf.
+                if (cutoff >= 1.0)
+                    return mash_distance(x->jaccard(*y), x->getKmerSize());
+                return x->distance(*y, cutoff);
             });
         break;
 

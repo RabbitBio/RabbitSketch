@@ -674,9 +674,13 @@ PYBIND11_MODULE(rabbitsketch, m) {
     .def("update", [](Sketch::Kssd& sketch, const std::string& sequence) {
       sketch.update(sequence.data(), sequence.size());
     }, py::call_guard<py::gil_scoped_release>())
-    .def("jaccard", &Sketch::Kssd::jaccard,
+    .def("jaccard", py::overload_cast<Sketch::Kssd*, double>(&Sketch::Kssd::jaccard),
+         py::arg("other"), py::arg("min_jaccard") = 0.0,
          py::call_guard<py::gil_scoped_release>())
-    .def("distance", &Sketch::Kssd::distance)
+    .def("distance", py::overload_cast<Sketch::Kssd*, double>(&Sketch::Kssd::distance),
+         py::arg("other"),
+         py::arg("max_distance") = std::numeric_limits<double>::infinity(),
+         py::call_guard<py::gil_scoped_release>())
     .def("project", &Sketch::Kssd::project,
          py::arg("target_drlevel"))
     .def("finalize", &Sketch::Kssd::finalize,

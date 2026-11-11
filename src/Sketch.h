@@ -554,6 +554,11 @@ namespace Sketch{
       // exactly-projectable sparse resolution.
       double jaccard(Kssd* kssd);
       double distance(Kssd* kssd);
+      // Thresholded comparisons may return 0 / +infinity for rejected pairs.
+      // Qualifying pairs retain the complete native estimate. The original
+      // one-argument overloads always compute the unfiltered estimate.
+      double jaccard(Kssd* kssd, double min_jaccard);
+      double distance(Kssd* kssd, double max_distance);
 
       void loadHashes64(vector<uint64_t> hashArr);
       void loadHashes(vector<uint32_t> hashArr);

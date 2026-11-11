@@ -1,6 +1,7 @@
 #include "api/OpenMPCompat.h"
 #include "Sketch.h"
 #include "KssdBuild.h"
+#include "estimators/SimilarityThreshold.h"
 #include <mutex>
 #include <tuple>
 #include <cstdio>
@@ -744,11 +745,11 @@ namespace Sketch{
 
 	// ── SIMD sorted-set intersection helpers ────────────────────────────────
 	// Both arrays must be sorted ascending (guaranteed by ordered getters/finalize).
-	// Variable-length version: no fixed-k truncation, no min_jaccard early exit.
+	// Variable-length version, with an optional necessary intersection count.
 	// Mirrors FastKMV::jaccard()'s rotational block-compare strategy.
 
 	static int kssd_intersect64(const uint64_t* __restrict__ a, int sa,
-	                             const uint64_t* __restrict__ b, int sb)
+	                             const uint64_t* __restrict__ b, int sb, uint64_t need)
 	{
 		int ia = 0, ib = 0;
 		int64_t common = 0;
@@ -786,6 +787,8 @@ namespace Sketch{
 					              | _mm512_cmpeq_epu64_mask(va, _mm512_permutexvar_epi64(sv5, vb))
 					              | _mm512_cmpeq_epu64_mask(va, _mm512_permutexvar_epi64(sv6, vb));
 					common += _mm_popcnt_u64(cmpA | cmpB);
+					if (need > 0 && static_cast<uint64_t>(common) +
+					    static_cast<uint64_t>(std::min(sa - ia, sb - ib)) < need) return 0;
 				}
 			}
 		}
@@ -812,14 +815,20 @@ namespace Sketch{
 						                _mm256_cmpeq_epi64(va, _mm256_permute4x64_epi64(vb, 0x93))));
 				common += _mm_popcnt_u32(
 					static_cast<unsigned>(_mm256_movemask_pd(_mm256_castsi256_pd(combined))));
+				if (need > 0 && static_cast<uint64_t>(common) +
+				    static_cast<uint64_t>(std::min(sa - ia, sb - ib)) < need) return 0;
 			}
 		}
 #endif
-		// scalar remainder
+		// scalar remainder (also the whole loop in portable builds)
+		unsigned checks = 0;
 		while (ia < sa && ib < sb) {
 			if      (a[ia] < b[ib]) ++ia;
 			else if (a[ia] > b[ib]) ++ib;
 			else { ++common; ++ia; ++ib; }
+			if (need > 0 && (++checks & 31) == 0 &&
+			    static_cast<uint64_t>(common) +
+			    static_cast<uint64_t>(std::min(sa - ia, sb - ib)) < need) return 0;
 		}
 		return static_cast<int>(common);
 	}
@@ -849,7 +858,7 @@ namespace Sketch{
 
 	// 32-bit path: 16-wide AVX-512 or 8-wide AVX2
 	static int kssd_intersect32(const uint32_t* __restrict__ a, int sa,
-	                             const uint32_t* __restrict__ b, int sb)
+	                             const uint32_t* __restrict__ b, int sb, uint64_t need)
 	{
 		int ia = 0, ib = 0;
 		int64_t common = 0;
@@ -877,6 +886,8 @@ namespace Sketch{
 				for (int r = 0; r < 15; r++)
 					hits |= _mm512_cmpeq_epi32_mask(va, _mm512_permutexvar_epi32(sv[r], vb));
 				common += _mm_popcnt_u32(static_cast<uint32_t>(hits));
+				if (need > 0 && static_cast<uint64_t>(common) +
+				    static_cast<uint64_t>(std::min(sa - ia, sb - ib)) < need) return 0;
 			}
 		}
 #elif defined(__AVX2__)
@@ -918,20 +929,32 @@ namespace Sketch{
 				// _mm256_movemask_ps: 1 bit per 32-bit lane → 8-bit mask
 				common += _mm_popcnt_u32(
 					static_cast<unsigned>(_mm256_movemask_ps(_mm256_castsi256_ps(combined))));
+				if (need > 0 && static_cast<uint64_t>(common) +
+				    static_cast<uint64_t>(std::min(sa - ia, sb - ib)) < need) return 0;
 			}
 		}
 #endif
-		// scalar remainder
+		// scalar remainder (also the whole loop in portable builds)
+		unsigned checks = 0;
 		while (ia < sa && ib < sb) {
 			if      (a[ia] < b[ib]) ++ia;
 			else if (a[ia] > b[ib]) ++ib;
 			else { ++common; ++ia; ++ib; }
+			if (need > 0 && (++checks & 31) == 0 &&
+			    static_cast<uint64_t>(common) +
+			    static_cast<uint64_t>(std::min(sa - ia, sb - ib)) < need) return 0;
 		}
 		return static_cast<int>(common);
 	}
 
 	double Kssd::jaccard(Kssd* kssd)
 	{
+		return jaccard(kssd, 0.0);
+	}
+
+	double Kssd::jaccard(Kssd* kssd, double min_jaccard)
+	{
+		detail::validateJaccardThreshold(min_jaccard);
 		if (kssd == nullptr)
 			throw std::invalid_argument("Kssd::jaccard sketch must not be null");
 		if (half_k_ != kssd->half_k_ ||
@@ -944,7 +967,7 @@ namespace Sketch{
 			const int common_drlevel = std::max(drlevel_, kssd->drlevel_);
 			Kssd left = project(common_drlevel);
 			Kssd right = kssd->project(common_drlevel);
-			return left.jaccard(&right);
+			return left.jaccard(&right, min_jaccard);
 		}
 		if (use64 != kssd->use64)
 			throw std::logic_error(
@@ -955,8 +978,11 @@ namespace Sketch{
 			if (a.empty() || b.empty()) return 0.0;
 			const int sa = static_cast<int>(a.size());
 			const int sb = static_cast<int>(b.size());
-			const int common = kssd_intersect64(a.data(), sa, b.data(), sb);
-			const int denom  = sa + sb - common;
+			const uint64_t total = static_cast<uint64_t>(sa) + sb;
+			const uint64_t need = detail::minimumMatchesSetJaccard(min_jaccard, total);
+			if (static_cast<uint64_t>(std::min(sa, sb)) < need) return 0.0;
+			const int common = kssd_intersect64(a.data(), sa, b.data(), sb, need);
+			const uint64_t denom = total - common;
 			return denom > 0 ? static_cast<double>(common) / denom : 0.0;
 		} else {
 			const auto& a = getHashes();
@@ -964,16 +990,31 @@ namespace Sketch{
 			if (a.empty() || b.empty()) return 0.0;
 			const int sa = static_cast<int>(a.size());
 			const int sb = static_cast<int>(b.size());
-			const int common = kssd_intersect32(a.data(), sa, b.data(), sb);
-			const int denom  = sa + sb - common;
+			const uint64_t total = static_cast<uint64_t>(sa) + sb;
+			const uint64_t need = detail::minimumMatchesSetJaccard(min_jaccard, total);
+			if (static_cast<uint64_t>(std::min(sa, sb)) < need) return 0.0;
+			const int common = kssd_intersect32(a.data(), sa, b.data(), sb, need);
+			const uint64_t denom = total - common;
 			return denom > 0 ? static_cast<double>(common) / denom : 0.0;
 		}
 	}
 
 	double Kssd::distance(Kssd* kssd)
 	{
+		return distance(kssd, std::numeric_limits<double>::infinity());
+	}
+
+	double Kssd::distance(Kssd* kssd, double max_distance)
+	{
+		detail::validateDistanceThreshold(max_distance);
+		// Preserve the historical distance 1 for zero overlap. Cutoffs >= 1
+		// therefore use the complete estimator; genomic cutoffs use pruning.
+		const double min_jaccard = max_distance >= 1.0 ? 0.0 :
+			detail::minimumJaccardForMashDistance(max_distance, kmer_size);
 		double distance = 1.0;
-		double jaccard_ = jaccard(kssd);
+		double jaccard_ = jaccard(kssd, min_jaccard);
+		if (jaccard_ == 0.0 && min_jaccard > 0.0)
+			return std::numeric_limits<double>::infinity();
 		if(jaccard_ == 0.0)
 			distance = 1.0;
 		else if (jaccard_ == 1.0)

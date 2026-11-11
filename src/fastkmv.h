@@ -63,22 +63,20 @@ public:
      * Seed, k-mer semantics, and hash profile must match.
      *
      * @param other        the other coordinated FastKMV sketch.
-     * @param min_jaccard  target Jaccard threshold for early-abort. If
-     *                     > 0, the intersection loop is aborted as soon
-     *                     as the achievable match count is guaranteed to
-     *                     fall below ceil(min_jaccard * k); the function
-     *                     then returns 0.0 (a value strictly below any
-     *                     positive threshold). With the default value
-     *                     0.0 no pruning is applied and the exact KMV
-     *                     Jaccard is returned.
+     * @param min_jaccard  finite threshold in [0,1]. A positive threshold
+     *                     enables early rejection when the maximum possible
+     *                     overlap cannot meet a necessary match count. The
+     *                     denominator bound accounts for partial sketches.
+     *                     Rejected pairs return 0.0; qualifying pairs retain
+     *                     the full estimate. Default 0.0 disables pruning.
      */
     double jaccard(const FastKMV& other, double min_jaccard = 0.0) const;
 
     /**
      * Mash distance D = -ln(2J/(1+J)) / k, derived from KMV Jaccard.
      *
-     * @param other         the other sketch (must share k and kmer_size).
-     * @param max_distance  target distance threshold. If finite, it is
+     * @param other         a compatible sketch (K values may differ).
+     * @param max_distance  nonnegative distance threshold. If finite, it is
      *                      mapped to a minimum Jaccard via the inverse
      *                      Mash formula and handed to jaccard() so that
      *                      pairs that cannot meet the threshold abort
