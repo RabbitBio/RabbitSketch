@@ -96,23 +96,9 @@ static double exact_kmer_jaccard(const std::string& sa, const std::string& sb, i
 // ─── KSSD shared-param cache ────────────────────────────────────────────────────
 
 static std::shared_ptr<const Sketch::kssd_parameter_t>
-get_kssd_params(int half_k, int half_subk, int drlevel)
-{
-    static std::mutex mtx;
-    static std::map<std::tuple<int,int,int>,
-                    std::shared_ptr<Sketch::kssd_parameter_t>> cache;
-    std::lock_guard<std::mutex> lk(mtx);
-    auto key = std::make_tuple(half_k, half_subk, drlevel);
-    auto it  = cache.find(key);
-    if (it != cache.end()) return it->second;
-    try {
-        auto p = std::make_shared<Sketch::kssd_parameter_t>(half_k, half_subk, drlevel);
-        cache[key] = p;
-        return p;
-    } catch (...) {
-        cache[key] = nullptr; // invalid combo – remember and skip
-        return nullptr;
-    }
+get_kssd_params(int half_k, int half_subk, int drlevel) {
+    try { return Sketch::getKssdParameters(half_k, half_subk, drlevel); }
+    catch (const std::invalid_argument&) { return nullptr; }
 }
 
 // ─── Parameter combo descriptor ────────────────────────────────────────────────
@@ -332,8 +318,8 @@ static double eval_one_pair(const Combo& co,
     if (algo == "kssd") {
         Sketch::Kssd* k1 = new Sketch::Kssd(kp);
         Sketch::Kssd* k2 = new Sketch::Kssd(kp);
-        k1->update(const_cast<char*>(sa.c_str()));
-        k2->update(const_cast<char*>(sb.c_str()));
+        k1->update(sa.data(), sa.size());
+        k2->update(sb.data(), sb.size());
         double r = k1->jaccard(k2);
         delete k1; delete k2;
         return r;

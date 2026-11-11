@@ -672,7 +672,7 @@ PYBIND11_MODULE(rabbitsketch, m) {
     }), py::arg("parameters"),
         py::arg("seed") = 42)
     .def("update", [](Sketch::Kssd& sketch, const std::string& sequence) {
-      sketch.update(sequence.c_str());
+      sketch.update(sequence.data(), sequence.size());
     }, py::call_guard<py::gil_scoped_release>())
     .def("jaccard", &Sketch::Kssd::jaccard,
          py::call_guard<py::gil_scoped_release>())

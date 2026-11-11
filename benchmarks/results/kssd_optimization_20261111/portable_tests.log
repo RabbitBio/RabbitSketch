@@ -1,0 +1,30 @@
+Internal ctest changing into directory: /home/bigssd/zt/rabbitsketch2_benchmark/build_kssd_optimization_portable
+Test project /home/bigssd/zt/rabbitsketch2_benchmark/build_kssd_optimization_portable
+      Start  1: unified_query
+ 1/12 Test  #1: unified_query ....................   Passed    0.00 sec
+      Start  2: fastkmv_heap
+ 2/12 Test  #2: fastkmv_heap .....................   Passed    0.19 sec
+      Start  3: kssd_build
+ 3/12 Test  #3: kssd_build .......................   Passed    1.67 sec
+      Start  4: setsketch
+ 4/12 Test  #4: setsketch ........................   Passed    0.50 sec
+      Start  5: fracminhash
+ 5/12 Test  #5: fracminhash ......................   Passed    0.03 sec
+      Start  6: fastx_builder
+ 6/12 Test  #6: fastx_builder ....................   Passed    1.22 sec
+      Start  7: orderminhash_query
+ 7/12 Test  #7: orderminhash_query ...............   Passed    0.00 sec
+      Start  8: runtime_dispatch
+ 8/12 Test  #8: runtime_dispatch .................   Passed    0.00 sec
+      Start  9: runtime_dispatch_scalar
+ 9/12 Test  #9: runtime_dispatch_scalar ..........   Passed    0.00 sec
+      Start 10: runtime_dispatch_avx2
+10/12 Test #10: runtime_dispatch_avx2 ............   Passed    0.00 sec
+      Start 11: runtime_dispatch_avx512
+11/12 Test #11: runtime_dispatch_avx512 ..........   Passed    0.00 sec
+      Start 12: rankstream_python_vectors
+12/12 Test #12: rankstream_python_vectors ........   Passed    0.01 sec
+
+100% tests passed, 0 tests failed out of 12
+
+Total Test time (real) =   3.65 sec

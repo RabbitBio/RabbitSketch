@@ -248,8 +248,7 @@ int main(int argc, char* argv[])
     if (numThreads < 1) numThreads = 1;
 
     // ── KSSD parameters (shuffle dictionary generated in memory) ───────────
-    Sketch::kssd_parameter_t kssdPara; // half_k=10, half_subk=6, drlevel=3
-    auto kssdParaPtr = std::make_shared<const Sketch::kssd_parameter_t>(std::move(kssdPara));
+    auto kssdParaPtr = Sketch::getKssdParameters(); // half_k=10, half_subk=6, drlevel=3
 
     vector<double> rates = {0.001, 0.005, 0.01, 0.02, 0.05,
                             0.1,   0.15,  0.2,  0.25, 0.3};
@@ -311,8 +310,8 @@ int main(int argc, char* argv[])
         // ── KSSD (k=20, half_k=10, half_subk=6, drlevel=3) ────────────
         Sketch::Kssd* k1 = new Sketch::Kssd(kssdParaPtr);
         Sketch::Kssd* k2 = new Sketch::Kssd(kssdParaPtr);
-        k1->update(seq_a.data());
-        k2->update(seq_b.data());
+        k1->update(seq_a.data(), seq_a.size());
+        k2->update(seq_b.data(), seq_b.size());
         double kssd_j = k1->jaccard(k2);
         delete k1;
         delete k2;
@@ -563,7 +562,7 @@ int main(int argc, char* argv[])
 
         Sketch::Kssd* k1 = new Sketch::Kssd(kssdParaPtr);
         Sketch::Kssd* k2 = new Sketch::Kssd(kssdParaPtr);
-        k1->update(seq_a.data()); k2->update(seq_b.data());
+        k1->update(seq_a.data(), seq_a.size()); k2->update(seq_b.data(), seq_b.size());
         double kssd_j = k1->jaccard(k2);
         delete k1; delete k2;
 
@@ -961,7 +960,7 @@ int main(int argc, char* argv[])
         {
             Sketch::Kssd* k1 = new Sketch::Kssd(kssdParaPtr);
             Sketch::Kssd* k2 = new Sketch::Kssd(kssdParaPtr);
-            k1->update(sa.data()); k2->update(sb.data());
+            k1->update(sa.data(), sa.size()); k2->update(sb.data(), sb.size());
             fres[idx].kssd_j = k1->jaccard(k2);
             delete k1; delete k2;
         }

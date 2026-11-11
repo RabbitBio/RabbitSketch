@@ -10,8 +10,8 @@
  *   §5  run_index_fastkmv  (mirrors test_FastKMV.cpp)
  *   §6  run_index_probmh   (mirrors test_ProbMinHash.cpp)
  *   §7  run_index_setsketch (mirrors test_SetSketch.cpp inverted-index mode)
- *   §8  run_index_kssd     (mirrors test_Kssd.cpp – SIMD encode + 64-shard merge
- *                          + flat CSR index + stamp-based dist + 5-col output)
+ *   §8  run_index_kssd     (shared with test_Kssd.cpp: bitmap admission,
+ *                          SIMD encoding and contiguous CSR index)
  *   §9  run_allpairs_bindash (mirrors test_BinDash.cpp – flat_usigs + sort by
  *                          cardinality + tile-based dist + per-thread temp files)
  *   §10 run_cli            — dispatch table
@@ -20,8 +20,12 @@
 #include "sub_command.h"
 
 #include "Sketch.h"
+#include "KssdBuild.h"
+#include "KssdIndex.h"
+#include "io/KssdFastx.h"
 #include "BinDash.h"
 #include "fastkmv.h"
+#include "fracminhash.h"
 #include "probmh.h"
 #include "SetSketch.h"
 #include "InvertedIndex.h"
@@ -354,25 +358,10 @@ static void stream_seq(const std::string& path, CB&& cb) {
     gzclose(fp);
 }
 
-// kssd_parameter_t cache.  generate_shuffle_dim() inside the constructor uses
-// libc srand/rand which is *not* thread-safe; concurrent constructions corrupt
-// the dim shuffle map and produce zero-Jaccard sketches.  We cache one
-// parameter object per (half_k, half_subk, drlevel) tuple under a mutex so
-// every thread receives the same fully-initialised shared_ptr.
-// Returning shared_ptr (not raw ref) lets Kssd objects hold shared ownership,
-// so the large tables (shuffled_dim + shuffled_map, ~192 MB) are allocated
-// exactly ONCE regardless of how many Kssd objects are constructed.
+// The library owns the shared immutable parameter cache.
 static std::shared_ptr<const Sketch::kssd_parameter_t>
 get_kssd_params(int half_k, int half_subk, int drlevel) {
-    static std::mutex mu;
-    static std::vector<std::pair<std::tuple<int,int,int>,
-                                 std::shared_ptr<Sketch::kssd_parameter_t>>> cache;
-    std::lock_guard<std::mutex> lk(mu);
-    const auto key = std::make_tuple(half_k, half_subk, drlevel);
-    for (auto& [k, v] : cache) if (k == key) return v;
-    cache.emplace_back(key,
-        std::make_shared<Sketch::kssd_parameter_t>(half_k, half_subk, drlevel));
-    return cache.back().second;
+    return Sketch::getKssdParameters(half_k, half_subk, drlevel);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -395,15 +384,28 @@ static Sketch::HyperLogLog* build_hll(const std::string& path, const Args& a) {
 }
 
 static Sketch::Kssd* build_kssd(const std::string& path, const Args& a) {
-    auto* sk = new Sketch::Kssd(get_kssd_params(/*half_k*/ a.kmerSize / 2,
-                                                /*half_subk*/ 6,
-                                                /*drlevel*/ a.kssdDrlevel));
-    sk->fileName = path;
-    stream_seq(path, [&](char* seq, uint64_t /*len*/) { sk->update(seq); });
-    // Compact hashList to exact size and release any hashSet capacity.
-    // Mirrors MinHash::finalize() / BinDash::finalize() in the other builders.
-    sk->finalize();
-    return sk;
+    const auto parameters = get_kssd_params(a.kmerSize / 2, 6, a.kssdDrlevel);
+    auto sketch = std::make_unique<Sketch::Kssd>(parameters, a.seed);
+    sketch->fileName = path;
+    Sketch::KssdBuild::FastxReader reader;
+    Sketch::KssdBuild::Stream stream(*parameters);
+    bool okay;
+    if (parameters->half_k - parameters->drlevel > 8) {
+        Sketch::KssdBuild::Accumulator<uint64_t> hashes(false);
+        hashes.reset();
+        okay = reader.read(path, stream, [&](uint64_t hash) { hashes.insert(hash); });
+        std::vector<uint64_t> values; hashes.finish(values);
+        sketch->loadHashes64(std::move(values));
+    } else {
+        Sketch::KssdBuild::Accumulator<uint32_t> hashes(false);
+        hashes.reset();
+        okay = reader.read(path, stream, [&](uint64_t hash) { hashes.insert(hash); });
+        std::vector<uint32_t> values; hashes.finish(values);
+        sketch->loadHashes(std::move(values));
+    }
+    if (!okay) throw std::runtime_error("KSSD: cannot read FASTX input: " + path);
+    sketch->finalize();
+    return sketch.release();
 }
 
 static Sketch::ProbMinHash4* build_probminhash(const std::string& path, const Args& a) {
@@ -434,6 +436,13 @@ static Sketch::FastKMV* build_fastkmv(const std::string& path, const Args& a) {
     stream_seq(path, [&](char* seq, uint64_t len) { sk->update(seq, len); });
     // Drop the per-call SIMD encoding scratch buffer (sized to the largest
     // contig seen).  See FastKMV::finalize().
+    sk->finalize();
+    return sk;
+}
+
+static Sketch::FracMinHash* build_fracminhash(const std::string& path, const Args& a) {
+    auto* sk = new Sketch::FracMinHash(a.fracScaled, a.kmerSize, a.seed);
+    stream_seq(path, [&](char* seq, uint64_t len) { sk->update(seq, len); });
     sk->finalize();
     return sk;
 }
@@ -487,6 +496,12 @@ static int run_pair(const Args& a) {
         std::unique_ptr<Sketch::FastKMV> sa(build_fastkmv(fA, a));
         std::unique_ptr<Sketch::FastKMV> sb(build_fastkmv(fB, a));
         d = mash_distance(sa->jaccard(*sb), a.kmerSize);
+        break;
+    }
+    case Algo::FRACMINHASH: {
+        std::unique_ptr<Sketch::FracMinHash> sa(build_fracminhash(fA, a));
+        std::unique_ptr<Sketch::FracMinHash> sb(build_fracminhash(fB, a));
+        d = sa->distance(*sb);
         break;
     }
     default: return 1;
@@ -686,19 +701,16 @@ static void list_allpairs(const Args& a,
 //      1. Each genome's bottom-k hash list is published into a per-thread
 //         local inverted index (hash → list of genome IDs).
 //      2. Local indices are merged into a single CSR-format inverted index.
-//      3. computeDistancesExact() walks each genome's keys, follows the posting
-//         list for each key, and uses stamp/epoch counting to accumulate the
-//         intersection size c against every other genome in
-//         O(N · K · avg_pl).
-//
-//  Jaccard estimated as c / min(s0+s1-c, K), equivalent to FastKMV::jaccard()
-//  for full sketches (= c/K, the standard KMV estimator).  O(1) per pair from
-//  the inverted-index intersection count — no re-merge of sorted lists needed.
+//      3. Use total shared keys as a necessary candidate bound, then verify
+//         with the native bottom-k UNION-prefix estimator. The intersection
+//         of the two complete sketches divided by K is not that estimator:
+//         shared keys above the kth union key must not enter its numerator.
 // ═══════════════════════════════════════════════════════════════════════════
 static void run_index_fastkmv(const Args& a, const std::vector<std::string>& files) {
     const int N = static_cast<int>(files.size());
     std::vector<int>                   sketchSizes(N);
     std::vector<std::vector<uint64_t>> skKeys(N);
+    std::vector<std::unique_ptr<Sketch::FastKMV>> nativeSketches(N);
 
     const int actualThreads = std::min(a.threads, N);
     std::vector<phmap::flat_hash_map<uint64_t, std::vector<uint32_t>>> threadIdx(actualThreads);
@@ -711,25 +723,16 @@ static void run_index_fastkmv(const Args& a, const std::vector<std::string>& fil
 
         #pragma omp for schedule(dynamic)
         for (int t = 0; t < N; ++t) {
-            gzFile fp = gzopen(files[t].c_str(), "r");
-            if (!fp) continue;
-            kseq_t* ks = kseq_init(fp);
-
-            Sketch::FastKMV sk(a.fkmvK, a.kmerSize, a.seed);
-            while (kseq_read(ks) >= 0)
-                sk.update(ks->seq.s, ks->seq.l);
-
-            kseq_destroy(ks);
-            gzclose(fp);
-
-            const uint64_t* regs = sk.getRegisters();
-            uint32_t sz = sk.size();
+            std::unique_ptr<Sketch::FastKMV> sk(build_fastkmv(files[t], a));
+            const uint64_t* regs = sk->getRegisters();
+            uint32_t sz = sk->size();
             sketchSizes[t] = static_cast<int>(sz);
             skKeys[t].resize(sz);
             for (uint32_t i = 0; i < sz; ++i) {
                 skKeys[t][i] = regs[i];
                 localIdx[regs[i]].push_back(static_cast<uint32_t>(t));
             }
+            nativeSketches[t] = std::move(sk);
         }
     }
     double t1 = get_sec();
@@ -749,23 +752,73 @@ static void run_index_fastkmv(const Args& a, const std::vector<std::string>& fil
               << "  (minJac=" << minJac << ", mashD<" << a.maxDist
               << ", k=" << a.kmerSize << ")\n";
 
-    // Jaccard estimator: c / min(s0 + s1 - c, K)
-    // For full sketches (s0 = s1 = K, typical case):
-    //   min(2K - c, K) = K  (since c ≤ K → 2K - c ≥ K)
-    //   → Jaccard = c / K   (standard KMV estimator, identical to FastKMV::jaccard())
-    // This is O(1) from the pre-computed intersection count c; no re-merge needed.
-    const int K_fkmv = a.fkmvK;
-    auto setJaccard = [K_fkmv](int c, int s0, int s1) -> double {
-        const int denom = std::min(s0 + s1 - c, K_fkmv);
-        return (denom <= 0) ? 0.0 : static_cast<double>(c) / denom;
+    auto exactJaccard = [&](int i, int j) -> double {
+        return nativeSketches[i]->jaccard(*nativeSketches[j], minJac);
     };
-    auto minCommonFn = [minCommon](int) { return minCommon; };
+    // For partial sketches the denominator is at least their own size;
+    // using K unconditionally would incorrectly drop small identical sets.
+    auto minCommonFn = [minJac](int size) {
+        return std::max(1, static_cast<int>(std::ceil(minJac * size)));
+    };
 
     double t3 = get_sec();
-    Sketch::computeDistances<uint64_t>(csrIdx, skKeys, sketchSizes, files,
-        N, a.kmerSize, a.maxDist, setJaccard, minCommonFn, a.output, a.threads);
+    Sketch::computeDistancesExact<uint64_t>(csrIdx, skKeys, files,
+        N, a.kmerSize, a.maxDist, exactJaccard, minCommonFn, a.output, a.threads);
     double t4 = get_sec();
     std::cerr << "dist time: "  << t4 - t3 << " s\n";
+    std::cerr << "total time: " << t4 - t0 << " s\n";
+}
+
+// FracMinHash: all sketches share the same sampling threshold, so posting
+// counts directly give the native sampled-set intersection and union.
+static void run_index_fracminhash(const Args& a, const std::vector<std::string>& files) {
+    const int N = static_cast<int>(files.size());
+    std::vector<int> sizes(N);
+    std::vector<std::vector<uint64_t>> keys(N);
+    double t0 = get_sec();
+    #pragma omp parallel for num_threads(a.threads) schedule(dynamic)
+    for (int i = 0; i < N; ++i) {
+        std::unique_ptr<Sketch::FracMinHash> sk(build_fracminhash(files[i], a));
+        keys[i] = sk->hashes();
+        // Threshold-sampled hashes occupy only the low 1/scaled interval.
+        // A bijective 64-bit permutation preserves equality but spreads the
+        // radix index across all buckets, so index building can use all cores.
+        for (auto& key : keys[i]) key = splitmix64(key);
+        std::sort(keys[i].begin(), keys[i].end());
+        sizes[i] = static_cast<int>(keys[i].size());
+    }
+    const double t1 = get_sec();
+    std::cerr << "sketch time: " << t1 - t0 << " s\n";
+    auto index = Sketch::buildCSRIndexFromKeys<uint64_t>(keys, N, a.threads);
+    const double t2 = get_sec();
+    std::cerr << "build CSR index: " << t2 - t1 << " s\n";
+    const double minJac = 1.0 / (2.0 * std::exp(a.kmerSize * a.maxDist) - 1.0);
+    auto jaccard = [](int common, int left, int right) {
+        return static_cast<double>(common) / (static_cast<double>(left) + right - common);
+    };
+    auto minCommon = [minJac](int size) {
+        return std::max(1, static_cast<int>(std::ceil(minJac * size)));
+    };
+    const double t3 = get_sec();
+    Sketch::computeDistances<uint64_t, decltype(jaccard), decltype(minCommon), uint32_t>(
+        index, keys, sizes, files, N, a.kmerSize, a.maxDist,
+        jaccard, minCommon, a.output, a.threads);
+    // The native class defines J(empty, empty)=1. These pairs have no posting.
+    if (a.maxDist > 0) {
+        std::vector<int> empty;
+        for (int i = 0; i < N; ++i) if (sizes[i] == 0) empty.push_back(i);
+        if (empty.size() > 1) {
+            FILE* output = std::fopen(a.output.c_str(), "a");
+            if (!output) err(errno, "cannot append empty-sketch pairs");
+            for (size_t i = 0; i < empty.size(); ++i)
+                for (size_t j = i + 1; j < empty.size(); ++j)
+                    std::fprintf(output, "%s\t%s\t0.000000\n",
+                        files[empty[i]].c_str(), files[empty[j]].c_str());
+            std::fclose(output);
+        }
+    }
+    const double t4 = get_sec();
+    std::cerr << "dist time: " << t4 - t3 << " s\n";
     std::cerr << "total time: " << t4 - t0 << " s\n";
 }
 
@@ -993,7 +1046,11 @@ static void run_index_setsketch(const Args& a, const std::vector<std::string>& f
             return Sketch::SetSketch::jaccardFromCoresMLE(
                 c1, c2, m, bip, factor, si, sj, ssBase, ssQ);
         };
-        auto minCommonFn = [minCommon](int) { return minCommon; };
+        // Partial witness sets must not be screened with the full-K count:
+        // two identical short inputs can have fewer than minCommon keys.
+        auto minCommonFn = [minCommon, keysPerSketch](int actualKeys) {
+            return actualKeys < keysPerSketch ? 1 : minCommon;
+        };
 
         Sketch::computeDistancesExact<uint64_t>(
             csrIdx, skKeys, fileList,
@@ -1349,312 +1406,72 @@ static void run_index_setsketch(const Args& a, const std::vector<std::string>& f
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  §8  Kssd --index  (mirrors test_Kssd.cpp – inlined SIMD encoder + 64-shard
+//  §8  KSSD indexed comparison (shared SIMD/bitmap construction + contiguous
 //      merge + flat CSR posting array + stamp-based dist kernel + 5-col output)
 // ═══════════════════════════════════════════════════════════════════════════
 static void run_index_kssd(const Args& a, const std::vector<std::string>& files)
 {
     using namespace std;
-
-    // Build (or fetch from cache) shared kssd parameters.  Because Kssd's
-    // raw test does `kssd_parameter_t P;` (uses defaults) we reproduce that
-    // by feeding the user-controllable drlevel through but keeping
-    // half_k=10, half_subk=6 hard-coded — same defaults as the Sketch
-    // library and as test_Kssd.
-    const auto   Pptr      = get_kssd_params(/*half_k*/ 10,
-                                             /*half_subk*/ 6,
-                                             /*drlevel*/ a.kssdDrlevel);
-    const Sketch::kssd_parameter_t& P = *Pptr;
-    const int    kmerSize  = P.kmer_size;
-    const bool   use64     = (P.half_k - P.drlevel) > 8;
-    const uint64_t tupmask = P.tupmask, domask = P.domask;
-    const uint64_t umask0  = P.undomask0, umask1 = P.undomask1;
-    const int    revmov    = P.rev_add_move;
-    const int    domS      = P.half_outctx_len * 2;
-    const int    drS       = P.drlevel * 4;
-    const int    undoS     = kmerSize * 2 - P.half_outctx_len * 4;
-    const int    dimStart  = P.dim_start;
-    const auto&  smap      = P.shuffled_map;
-
-    std::cerr << "half_k=" << P.half_k << " half_subk=" << P.half_subk
-              << " drlevel=" << P.drlevel
-              << " kmer=" << kmerSize << " use64=" << use64 << "\n";
-
-    // Scalar encode table for non-SIMD tail
-    uint8_t BM_U8[256];
-    std::memset(BM_U8, 0xFF, sizeof(BM_U8));
-    BM_U8['A'] = BM_U8['a'] = 0;
-    BM_U8['C'] = BM_U8['c'] = 1;
-    BM_U8['G'] = BM_U8['g'] = 2;
-    BM_U8['T'] = BM_U8['t'] = 3;
-
+    // Same effective k as the native builder: 2 * floor(k / 2), default 20.
+    const auto parameters = get_kssd_params(a.kmerSize / 2, 6, a.kssdDrlevel);
+    const auto& P = *parameters;
+    const int kmerSize = P.kmer_size;
+    const bool use64 = (P.half_k - P.drlevel) > 8;
     const int N = static_cast<int>(files.size());
-    int progress = N / 20; if (progress < 1) progress = 1;
-
-    struct GSketch {
-        std::vector<uint32_t> h32;
-        std::vector<uint64_t> h64;
-    };
+    const int progress = std::max(1, N / 20);
+    const int actualThreads = std::max(1, std::min(a.threads, N));
+    std::cerr << "half_k=" << P.half_k << " half_subk=" << P.half_subk
+              << " drlevel=" << P.drlevel << " kmer=" << kmerSize
+              << " use64=" << use64 << "\n";
+    struct GSketch { std::vector<uint32_t> h32; std::vector<uint64_t> h64; };
     std::vector<GSketch> sketches(N);
-
-    const int actualThreads = std::min(a.threads, N);
-    std::vector<phmap::flat_hash_map<uint64_t, std::vector<uint32_t>>>
-        threadIdx(actualThreads);
-
-    double t0 = get_sec();
-
-    #pragma omp parallel num_threads(a.threads)
+    std::atomic<bool> failed(false);
+    const double t0 = get_sec();
+    #pragma omp parallel num_threads(actualThreads)
     {
-        const int tid = omp_get_thread_num();
-        phmap::flat_hash_set<uint32_t> hs32;
-        phmap::flat_hash_set<uint64_t> hs64;
-        hs32.reserve(1 << 16);
-        hs64.reserve(1 << 16);
-        auto& localIdx = (tid < actualThreads) ? threadIdx[tid] : threadIdx[0];
-
-#if defined(__AVX512BW__)
-        const __m512i vlut512 = _mm512_broadcast_i32x4(_mm_setr_epi8(
-            -1, 0, -1, 1, 3, -1, -1, 2,
-            -1,-1, -1,-1,-1, -1, -1,-1));
-        const __m512i vmask512 = _mm512_set1_epi8(0x0F);
-#elif defined(__AVX2__)
-        const __m256i vlut256 = _mm256_broadcastsi128_si256(_mm_setr_epi8(
-            -1, 0, -1, 1, 3, -1, -1, 2,
-            -1,-1, -1,-1,-1, -1, -1,-1));
-        const __m256i vmask256 = _mm256_set1_epi8(0x0F);
-#endif
-
-        std::vector<char> fileBuf;
-        std::vector<char> seqBuf;
-
-        // k-mer chunk processor inlined to keep the hot loop branchless.
-        auto processSeq = [&](const char* s, int len) {
-            if (len < kmerSize) return;
-            alignas(64) uint8_t enc[4096];
-            uint64_t fwd = 0, rev = 0;
-            int run = 0;
-            for (int cs = 0; cs < len; cs += 4096) {
-                const int clen = std::min(4096, len - cs);
-                const char* cp = s + cs;
-                int p = 0;
-#if defined(__AVX512BW__)
-                for (; p + 64 <= clen; p += 64) {
-                    __m512i v = _mm512_loadu_si512(cp + p);
-                    v = _mm512_shuffle_epi8(vlut512,
-                            _mm512_and_si512(v, vmask512));
-                    _mm512_storeu_si512(enc + p, v);
-                }
-#elif defined(__AVX2__)
-                for (; p + 32 <= clen; p += 32) {
-                    __m256i v = _mm256_loadu_si256((const __m256i*)(cp + p));
-                    v = _mm256_shuffle_epi8(vlut256,
-                            _mm256_and_si256(v, vmask256));
-                    _mm256_storeu_si256((__m256i*)(enc + p), v);
-                }
-#endif
-                for (; p < clen; ++p)
-                    enc[p] = BM_U8[(unsigned char)cp[p]];
-                for (int i = 0; i < clen; i++) {
-                    const uint8_t b = enc[i];
-                    if (__builtin_expect(b <= 3, 1)) {
-                        fwd = ((fwd << 2) | b) & tupmask;
-                        rev = (rev >> 2) + (((uint64_t)(b ^ 3)) << revmov);
-                        if (__builtin_expect(++run >= kmerSize, 1)) {
-                            const uint64_t u = (fwd < rev) ? fwd : rev;
-                            const uint32_t d = static_cast<uint32_t>(
-                                (u & domask) >> domS);
-                            auto sit = smap.find(d);
-                            if (__builtin_expect(sit == smap.end(), 1)) continue;
-                            const uint64_t h =
-                                (((u & umask0)
-                                  | ((u & umask1) << undoS))
-                                 >> drS)
-                                | static_cast<uint64_t>(sit->second - dimStart);
-                            if (use64) hs64.emplace(h);
-                            else       hs32.emplace(static_cast<uint32_t>(h));
-                        }
-                    } else {
-                        run = 0; fwd = 0; rev = 0;
-                    }
-                }
-            }
-        };
-
+        Sketch::KssdBuild::FastxReader reader;
+        Sketch::KssdBuild::Stream stream(P);
+        // Only the active width allocates storage. Workspaces survive files.
+        Sketch::KssdBuild::Accumulator<uint32_t> hashes32(false);
+        Sketch::KssdBuild::Accumulator<uint64_t> hashes64(false);
         #pragma omp for schedule(dynamic)
-        for (int t = 0; t < N; t++) {
-            hs32.clear(); hs64.clear();
-
-            struct stat st;
-            if (stat(files[t].c_str(), &st) != 0) continue;
-            const size_t fsize = static_cast<size_t>(st.st_size);
-            if (fsize < 2) continue;
-            fileBuf.resize(fsize);
-            FILE* ff = std::fopen(files[t].c_str(), "rb");
-            if (!ff) continue;
-            const size_t rd = std::fread(fileBuf.data(), 1, fsize, ff);
-            std::fclose(ff);
-
-            const bool isGz =
-                (static_cast<unsigned char>(fileBuf[0]) == 0x1f
-              && static_cast<unsigned char>(fileBuf[1]) == 0x8b);
-
-            if (isGz) {
-                gzFile fp = gzopen(files[t].c_str(), "r");
-                if (!fp) continue;
-                gzbuffer(fp, 1 << 18);
-                kseq_t* ks = kseq_init(fp);
-                while (kseq_read(ks) >= 0)
-                    processSeq(ks->seq.s, static_cast<int>(ks->seq.l));
-                kseq_destroy(ks);
-                gzclose(fp);
-            } else {
-                const char* data = fileBuf.data();
-                size_t pos = 0;
-                while (pos < rd) {
-                    if (data[pos] != '>') { pos++; continue; }
-                    while (pos < rd && data[pos] != '\n') pos++;
-                    if (pos < rd) pos++;
-                    seqBuf.clear();
-                    while (pos < rd && data[pos] != '>') {
-                        size_t ls = pos;
-                        while (pos < rd && data[pos] != '\n'
-                               && data[pos] != '\r') pos++;
-                        seqBuf.insert(seqBuf.end(), data + ls, data + pos);
-                        while (pos < rd && (data[pos] == '\n'
-                               || data[pos] == '\r')) pos++;
-                    }
-                    processSeq(seqBuf.data(), static_cast<int>(seqBuf.size()));
-                }
-            }
-
-            // hash set → sketch + inverted index in one pass (no sort needed)
+        for (int i = 0; i < N; ++i) {
+            bool okay;
             if (use64) {
-                sketches[t].h64.reserve(hs64.size());
-                for (uint64_t h : hs64) {
-                    sketches[t].h64.push_back(h);
-                    localIdx[h].push_back(static_cast<uint32_t>(t));
-                }
+                hashes64.reset();
+                okay = reader.read(files[i], stream, [&](uint64_t h) { hashes64.insert(h); });
+                hashes64.finish(sketches[i].h64);
             } else {
-                sketches[t].h32.reserve(hs32.size());
-                for (uint32_t h : hs32) {
-                    sketches[t].h32.push_back(h);
-                    localIdx[static_cast<uint64_t>(h)]
-                        .push_back(static_cast<uint32_t>(t));
-                }
+                hashes32.reset();
+                okay = reader.read(files[i], stream, [&](uint64_t h) { hashes32.insert(h); });
+                hashes32.finish(sketches[i].h32);
             }
-            if (t % progress == 0)
-                std::cerr << "  sketch " << t << " / " << N << "\n";
-        }
-    }
-    double t1 = get_sec();
-    std::cerr << "sketch + local index: " << t1 - t0 << " s\n";
-
-    // ── Parallel merge into sharded global inverted index ────────────────────
-    double t2 = get_sec();
-    const int NUM_SHARDS = 64;
-    const uint64_t SHARD_MASK = NUM_SHARDS - 1;
-    std::vector<phmap::flat_hash_map<uint64_t, std::vector<uint32_t>>>
-        invShards(NUM_SHARDS);
-    {
-        omp_lock_t locks[64];
-        for (int s = 0; s < NUM_SHARDS; s++) omp_init_lock(&locks[s]);
-
-        #pragma omp parallel num_threads(a.threads)
-        {
-            int tid = omp_get_thread_num();
-            if (tid < actualThreads) {
-                for (auto& [key, vec] : threadIdx[tid]) {
-                    int shard = static_cast<int>(key & SHARD_MASK);
-                    omp_set_lock(&locks[shard]);
-                    auto [it, ins] = invShards[shard].try_emplace(key, std::move(vec));
-                    if (!ins)
-                        it->second.insert(it->second.end(), vec.begin(), vec.end());
-                    omp_unset_lock(&locks[shard]);
-                }
-                phmap::flat_hash_map<uint64_t, std::vector<uint32_t>>()
-                    .swap(threadIdx[tid]);
+            if (!okay) {
+                failed.store(true, std::memory_order_relaxed);
+                #pragma omp critical
+                std::cerr << "KSSD: cannot read FASTX input: " << files[i] << "\n";
             }
-        }
-        for (int s = 0; s < NUM_SHARDS; s++) omp_destroy_lock(&locks[s]);
-        threadIdx.clear();
-    }
-    size_t totalUnique = 0;
-    for (auto& sh : invShards) totalUnique += sh.size();
-    std::cerr << "merge index: " << totalUnique << " unique hashes, "
-              << get_sec() - t2 << " s\n";
-
-    // Singleton removal
-    size_t totalBefore = totalUnique, totalAfter = 0;
-    #pragma omp parallel for num_threads(a.threads) reduction(+:totalAfter)
-    for (int s = 0; s < NUM_SHARDS; s++) {
-        for (auto it = invShards[s].begin(); it != invShards[s].end(); ) {
-            if (it->second.size() <= 1) it = invShards[s].erase(it);
-            else { ++it; totalAfter++; }
+            if (i % progress == 0)
+                std::cerr << "  sketch " << i << " / " << N << "\n";
         }
     }
-    std::cerr << "singleton removal: " << totalBefore << " -> " << totalAfter
-              << " (" << (totalBefore - totalAfter) << " removed), "
-              << get_sec() - t2 << " s\n";
-
-    // ── Flatten posting lists into contiguous CSR array ──────────────────────
-    double tFlat = get_sec();
-    size_t totalPostings = 0;
-    for (int s = 0; s < NUM_SHARDS; s++)
-        for (auto& [k, v] : invShards[s])
-            totalPostings += v.size();
-    std::cerr << "total non-singleton postings: " << totalPostings
-              << " (" << totalPostings * 4.0 / (1ULL << 30) << " GB)\n";
-
-    const uint32_t HASH_SPACE = use64 ? 0
-        : (1u << std::min(4 * (P.half_k - P.drlevel), 28));
-    std::vector<size_t>   csrOff;
-    std::vector<uint32_t> csrPosts;
-
-    struct PostRange { size_t off; uint32_t cnt; };
-    phmap::flat_hash_map<uint64_t, PostRange> postIdx64;
-
-    csrPosts.resize(totalPostings);
-
-    if (!use64 && HASH_SPACE > 0) {
-        csrOff.resize(static_cast<size_t>(HASH_SPACE) + 1, 0);
-        for (int s = 0; s < NUM_SHARDS; s++)
-            for (auto& [k, v] : invShards[s])
-                csrOff[static_cast<uint32_t>(k) + 1] = v.size();
-        for (uint32_t h = 0; h < HASH_SPACE; h++)
-            csrOff[h + 1] += csrOff[h];
-        for (int s = 0; s < NUM_SHARDS; s++) {
-            for (auto& [k, v] : invShards[s]) {
-                uint32_t h = static_cast<uint32_t>(k);
-                std::memcpy(&csrPosts[csrOff[h]], v.data(),
-                            v.size() * sizeof(uint32_t));
-            }
-            invShards[s].clear();
-        }
-    } else {
-        postIdx64.reserve(totalAfter);
-        size_t pos = 0;
-        for (int s = 0; s < NUM_SHARDS; s++) {
-            for (auto& [k, v] : invShards[s]) {
-                std::memcpy(&csrPosts[pos], v.data(),
-                            v.size() * sizeof(uint32_t));
-                postIdx64[k] = {pos, static_cast<uint32_t>(v.size())};
-                pos += v.size();
-            }
-            invShards[s].clear();
-        }
-    }
-    invShards.clear(); invShards.shrink_to_fit();
-    std::cerr << "flatten CSR: " << get_sec() - tFlat << " s"
-              << (use64 ? " (hash map)" : " (direct array)") << "\n";
-
-    // Sort each genome's sketch for sequential CSR access
-    double tSort = get_sec();
-    #pragma omp parallel for num_threads(a.threads) schedule(dynamic)
-    for (int i = 0; i < N; i++) {
-        if (use64) std::sort(sketches[i].h64.begin(), sketches[i].h64.end());
-        else       std::sort(sketches[i].h32.begin(), sketches[i].h32.end());
-    }
-    std::cerr << "sort sketches: " << get_sec() - tSort << " s\n";
+    if (failed.load()) throw std::runtime_error("KSSD input read failed");
+    const double t1 = get_sec();
+    std::cerr << "sketch time: " << t1 - t0 << " s\n";
+    const unsigned keyBits = 4 * (P.half_k - P.drlevel);
+    auto index = use64
+        ? Sketch::KssdBuild::buildIndex<uint64_t>(N, actualThreads, keyBits,
+            [&](int i) -> const std::vector<uint64_t>& { return sketches[i].h64; })
+        : Sketch::KssdBuild::buildIndex<uint32_t>(N, actualThreads, keyBits,
+            [&](int i) -> const std::vector<uint32_t>& { return sketches[i].h32; });
+    auto& csrOff = index.offsets;
+    auto& csrPosts = index.postings;
+    auto& postIdx64 = index.sparse;
+    const double t2 = get_sec();
+    std::cerr << "build CSR index: " << t2 - t1 << " s\n"
+              << "unique hashes: " << index.unique_before << " -> " << index.unique_after << "\n"
+              << "total non-singleton postings: " << csrPosts.size() << "\n"
+              << "index offsets: " << (csrOff.empty() ? "sparse" : "direct array") << "\n";
 
     // ── Phase 3: Distance via flat CSR index ─────────────────────────────────
     double t3 = get_sec();
@@ -1662,7 +1479,7 @@ static void run_index_kssd(const Args& a, const std::vector<std::string>& files)
     const double inv_kmer_size = 1.0 / kmerSize;
     const double p_exp   = std::exp(-static_cast<double>(kmerSize) * a.maxDist);
     const double minJac  = p_exp / (2.0 - p_exp);
-    const double radio   = 2.0 * std::exp(a.maxDist * (kmerSize - 1)) - 1.0;
+    const double radio   = 2.0 * std::exp(a.maxDist * kmerSize) - 1.0;
     std::cerr << "pruning: minJac=" << minJac << "  radio=" << radio
               << "  (mashD<" << a.maxDist << ", k=" << kmerSize << ")\n";
 
@@ -1675,6 +1492,7 @@ static void run_index_kssd(const Args& a, const std::vector<std::string>& files)
     const uint32_t* csrPostPtr = csrPosts.data();
 
     FILE* fout = std::fopen(a.output.c_str(), "w");
+    if (!fout) throw std::runtime_error("KSSD: cannot open output");
     std::setvbuf(fout, nullptr, _IOFBF, 1 << 24);
     std::fprintf(fout, "genome0\tgenome1\tcommon|size0|size1\tjaccard\tmashD\n");
 
@@ -1702,13 +1520,10 @@ static void run_index_kssd(const Args& a, const std::vector<std::string>& files)
                 ep = 1;
             }
 
-            if (use64) {
-                const auto& harr = sketches[i].h64;
-                const size_t hsz = harr.size();
+            if (csrOff.empty()) {
+                const size_t hsz = use64 ? sketches[i].h64.size() : sketches[i].h32.size();
                 for (size_t idx = 0; idx < hsz; idx++) {
-                    if (__builtin_expect(idx + 1 < hsz, 1))
-                        __builtin_prefetch(&harr[idx + 1], 0, 1);
-                    const uint64_t hv = harr[idx];
+                    const uint64_t hv = use64 ? sketches[i].h64[idx] : sketches[i].h32[idx];
                     auto it = postIdx64.find(hv);
                     if (__builtin_expect(it == postIdx64.end(), 0)) continue;
                     const uint32_t* pl = csrPostPtr + it->second.off;
@@ -2182,7 +1997,11 @@ static void run_index_hll(const Args& a, const std::vector<std::string>& files_i
             if (si > 0.0 && sj / si < minJac) return -1.0;
             return vhll[i]->jaccard_index(*vhll[j]);
         };
-        auto minCommonFn = [minCommon](int) { return minCommon; };
+        // Partial witness sets must not be screened with the full-K count:
+        // two identical short inputs can have fewer than minCommon keys.
+        auto minCommonFn = [minCommon, keysPerSketch](int actualKeys) {
+            return actualKeys < keysPerSketch ? 1 : minCommon;
+        };
 
         Sketch::computeDistancesExact<uint64_t>(
             csrIdx, skKeys, fileList,
@@ -2455,14 +2274,20 @@ int run_cli(const Args& a) {
         case Algo::BINDASH:     std::cerr << "BinDash";     break;
         case Algo::SETSKETCH:   std::cerr << "SetSketch";   break;
         case Algo::FASTKMV:     std::cerr << "FastKMV";     break;
+        case Algo::FRACMINHASH: std::cerr << "FracMinHash"; break;
         default: break;
     }
-    std::cerr << (a.useIndex ? "  (inverted index)\n" : "  (all-pairs)\n");
+    // KSSD list comparisons use the optimized index by default. The explicit
+    // diagnostic override preserves the native estimator as a validation oracle.
+    const bool useIndex = a.useIndex ||
+        (a.algo == Algo::KSSD && !std::getenv("RABBIT_FORCE_ALLPAIRS"));
+    std::cerr << (useIndex ? "  (inverted index)\n" : "  (all-pairs)\n");
 
-    if (a.useIndex) {
+    if (useIndex) {
         switch (a.algo) {
             case Algo::MINHASH:     run_index_minhash(a, files);    return 0;
             case Algo::FASTKMV:     run_index_fastkmv(a, files);    return 0;
+            case Algo::FRACMINHASH: run_index_fracminhash(a, files); return 0;
             case Algo::PROBMINHASH: run_index_probmh(a, files);     return 0;
             case Algo::KSSD:        run_index_kssd(a, files);       return 0;  // never returns (uses _Exit)
             case Algo::SETSKETCH:   run_index_setsketch(a, files);  return 0;
@@ -2521,6 +2346,13 @@ int run_cli(const Args& a) {
         list_allpairs<Sketch::FastKMV>(a, files, build_fastkmv,
             [kmer](Sketch::FastKMV* x, Sketch::FastKMV* y) {
                 return mash_distance(x->jaccard(*y), kmer);
+            });
+        break;
+
+    case Algo::FRACMINHASH:
+        list_allpairs<Sketch::FracMinHash>(a, files, build_fracminhash,
+            [](Sketch::FracMinHash* x, Sketch::FracMinHash* y) {
+                return x->distance(*y);
             });
         break;
 

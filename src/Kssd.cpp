@@ -1,5 +1,8 @@
 #include "api/OpenMPCompat.h"
 #include "Sketch.h"
+#include "KssdBuild.h"
+#include <mutex>
+#include <tuple>
 #include <cstdio>
 #include <math.h>
 #include <sys/stat.h>
@@ -547,58 +550,32 @@ namespace Sketch{
 
 	}
 
-	void Kssd::SetToList()
-	{
-		if(hashList.empty())//first update the hashList
-		{
-			for(auto &x : hashSet)
-				hashList.push_back(x);
-		}
-		else//not the first update the hashList, need merge.
-		{
-			for (const uint32_t hash : hashList)
-				hashSet.insert(hash);
-			hashList.clear();
-			for(auto &x : hashSet)
-			{
-				hashList.push_back(x);
-				//cerr << x << endl;
-			}
-			//cerr << endl;
-		}
+    std::shared_ptr<const kssd_parameter_t> getKssdParameters(
+        int half_k, int half_subk, int drlevel) {
+        static std::mutex mutex;
+        static std::map<std::tuple<int, int, int>,
+                        std::weak_ptr<const kssd_parameter_t>> cache;
+        const std::lock_guard<std::mutex> guard(mutex);
+        const auto key = std::make_tuple(half_k, half_subk, drlevel);
+        auto& entry = cache[key];
+        if (auto parameters = entry.lock()) return parameters;
+        auto parameters = std::make_shared<const kssd_parameter_t>(
+            half_k, half_subk, drlevel);
+        entry = parameters;
+        return parameters;
+    }
 
-		//cerr << "hashList.size() is: " << hashList.size() << endl;
-		phmap::flat_hash_set<uint32_t>().swap(hashSet); // release memory
-		std::sort(hashList.begin(), hashList.end());
-	}
-
-
-
-
-	void Kssd::SetToList64()
-	{
-		if(hashList64.empty())//first update the hashList
-		{
-			for(auto &x : hashSet64)
-				hashList64.push_back(x);
-		}
-		else//not the first update the hashList, need merge.
-		{
-			for (const uint64_t hash : hashList64)
-				hashSet64.insert(hash);
-			hashList64.clear();
-			for(auto &x : hashSet64)
-			{
-				hashList64.push_back(x);
-				//cerr << x << endl;
-			}
-			//cerr << endl;
-		}
-
-		//cerr << "hashList.size() is: " << hashList.size() << endl;
-		phmap::flat_hash_set<uint64_t>().swap(hashSet64); // release memory
-		std::sort(hashList64.begin(), hashList64.end());
-	}
+    void Kssd::ensureSorted() const {
+        if (!sorted_dirty_) return;
+        if (use64) {
+            hashList64.assign(hashSet64.begin(), hashSet64.end());
+            std::sort(hashList64.begin(), hashList64.end());
+        } else {
+            hashList.assign(hashSet.begin(), hashSet.end());
+            std::sort(hashList.begin(), hashList.end());
+        }
+        sorted_dirty_ = false;
+    }
 
 	int Kssd::get_half_k() const{
 		return half_k_;
@@ -611,99 +588,69 @@ namespace Sketch{
 		return drlevel_;
 	}
 
-	void Kssd::loadHashes64(std::vector<uint64_t> hashArr){
-		if (sealed_)
-			throw std::logic_error("Kssd::loadHashes64 called after finalize");
-		hashList64 = hashArr;
-	}
-	void Kssd::loadHashes(std::vector<uint32_t> hashArr){
-		if (sealed_)
-			throw std::logic_error("Kssd::loadHashes called after finalize");
-		hashList = hashArr;
-	}
+    void Kssd::loadHashes64(std::vector<uint64_t> hashes) {
+        if (sealed_) throw std::logic_error("Kssd::loadHashes64 called after finalize");
+        std::sort(hashes.begin(), hashes.end());
+        hashes.erase(std::unique(hashes.begin(), hashes.end()), hashes.end());
+        hashList64 = std::move(hashes);
+        hashSet64.clear();
+        build_set_ready_ = false;
+        sorted_dirty_ = false;
+    }
 
-	void Kssd::update(const char* seq){
-		if (sealed_)
-			throw std::logic_error("Kssd::update called after finalize");
-		if (seq == nullptr)
-			throw std::invalid_argument("Kssd::update sequence must not be null");
-		const int length = strlen(seq);
-		if (length < kmer_size) return;
+    void Kssd::loadHashes(std::vector<uint32_t> hashes) {
+        if (sealed_) throw std::logic_error("Kssd::loadHashes called after finalize");
+        std::sort(hashes.begin(), hashes.end());
+        hashes.erase(std::unique(hashes.begin(), hashes.end()), hashes.end());
+        hashList = std::move(hashes);
+        hashSet.clear();
+        build_set_ready_ = false;
+        sorted_dirty_ = false;
+    }
 
-		// Pre-compute loop-invariant constants
-		const int shift        = kmer_size * 2 - half_outctx_len * 4;
-		const int dom_shift    = half_outctx_len * 2;
-		const int dr_shift     = drlevel_ * 4;
+    void Kssd::update(const char* sequence) {
+        if (!sequence) throw std::invalid_argument("Kssd::update sequence must not be null");
+        update(sequence, std::strlen(sequence));
+        // Preserve direct access to the historical public hashList fields.
+        ensureSorted();
+    }
 
-		// Adaptive pre-allocation: estimate surviving k-mers
-		const int n_kmers      = length - kmer_size + 1;
-		const double ratio     = static_cast<double>(dim_end - dim_start) / (1 << (4 * half_subk_));
-		const int estimated    = static_cast<int>(n_kmers * ratio * 0.85) + 64;
+    void Kssd::update(const char* sequence, size_t length) {
+        if (sealed_) throw std::logic_error("Kssd::update called after finalize");
+        if (!sequence) throw std::invalid_argument("Kssd::update sequence must not be null");
+        if (length < static_cast<size_t>(kmer_size)) return;
+        if (!build_set_ready_) {
+            if (use64) hashSet64.insert(hashList64.begin(), hashList64.end());
+            else hashSet.insert(hashList.begin(), hashList.end());
+            build_set_ready_ = true;
+        }
+        KssdBuild::Stream stream(*params_ptr_, KssdBuild::Lookup::Automatic, drlevel_);
+        // Reserve once, not once per contig. The set retains capacity and grows
+        // only when distinct admitted tuples require it.
+        const size_t estimate = std::min<size_t>(65536,
+            static_cast<size_t>((length - kmer_size + 1) * admissionProbability()) + 64);
+        if (use64) {
+            if (!hashSet64.capacity()) hashSet64.reserve(estimate);
+            stream.append(sequence, length, [&](uint64_t hash) {
+                if (hashSet64.insert(hash).second) sorted_dirty_ = true;
+            });
+        } else {
+            if (!hashSet.capacity()) hashSet.reserve(estimate);
+            stream.append(sequence, length, [&](uint64_t hash) {
+                if (hashSet.insert(static_cast<uint32_t>(hash)).second) sorted_dirty_ = true;
+            });
+        }
+    }
 
-		if (use64) {
-			if (hashSet64.capacity() < static_cast<size_t>(estimated))
-				hashSet64.reserve(estimated);
-		} else {
-			if (hashSet.capacity() < static_cast<size_t>(estimated))
-				hashSet.reserve(estimated);
-		}
-		uint64_t tuple = 0LLU, rvs_tuple = 0LLU;
-		int base = 1;
-
-		for (int i = 0; i < length; i++) {
-			const uint8_t basenum = Rank::encodeBase(
-				static_cast<unsigned char>(seq[i]));
-			if (__builtin_expect(Rank::validBase(basenum), 1)) {
-				tuple     = ((tuple << 2) | basenum) & tupmask;
-				rvs_tuple = (rvs_tuple >> 2) + (((uint64_t)basenum ^ 3LLU) << rev_add_move);
-				base++;
-
-				if (__builtin_expect(base > kmer_size, 0)) {
-					const uint64_t uni_tuple = (tuple < rvs_tuple) ? tuple : rvs_tuple;
-					const uint32_t dim_id    = static_cast<uint32_t>((uni_tuple & domask) >> dom_shift);
-
-
-				auto it = shuffled_map_->find(dim_id);
-				if (it == shuffled_map_->end() || it->second >= dim_end) continue;
-
-					const uint64_t dr_tuple =
-						(((uni_tuple & undomask0) |
-						  ((uni_tuple & undomask1) << shift)) >> dr_shift)
-						| static_cast<uint64_t>(it->second - dim_start);
-
-					if (use64) hashSet64.emplace(dr_tuple);
-					else        hashSet.emplace(dr_tuple);
-				}
-			} else {
-				// Invalid base: reset sliding window
-				base      = 1;
-				tuple     = 0LLU;
-				rvs_tuple = 0LLU;
-			}
-		}
-
-		if (use64) SetToList64();
-		else        SetToList();
-	}
-
-	// ── Kssd::finalize ──────────────────────────────────────────────────────
-	// SetToList()/SetToList64() are invoked once per update() (i.e. per contig),
-	// so for multi-contig genomes the active hashList capacity can grow well
-	// beyond the final size due to vector geometric reallocation.  Call this
-	// once after the build phase to shrink hashList to its exact final size
-	// and free any residual hashSet allocation.  For 200k bacterial sketches
-	// this typically cuts peak RSS roughly in half during the dist phase.
-	void Kssd::finalize() {
-		if (sealed_) return;
-		if (use64) {
-			hashList64.shrink_to_fit();
-			phmap::flat_hash_set<uint64_t>().swap(hashSet64);
-		} else {
-			hashList.shrink_to_fit();
-			phmap::flat_hash_set<uint32_t>().swap(hashSet);
-		}
-		sealed_ = true;
-	}
+    void Kssd::finalize() {
+        if (sealed_) return;
+        ensureSorted();
+        if (use64) hashList64.shrink_to_fit();
+        else hashList.shrink_to_fit();
+        phmap::flat_hash_set<uint64_t>().swap(hashSet64);
+        phmap::flat_hash_set<uint32_t>().swap(hashSet);
+        sealed_ = true;
+    }
 
 	double Kssd::admissionProbability() const {
 		const double admitted = static_cast<double>(dim_end - dim_start);
@@ -732,6 +679,7 @@ namespace Sketch{
 	}
 
 	Kssd Kssd::project(int target_drlevel) const {
+        ensureSorted();
 		if (target_drlevel < drlevel_)
 			throw std::invalid_argument(
 				"Kssd::project cannot reconstruct a denser drlevel");
@@ -786,16 +734,16 @@ namespace Sketch{
 	}
 
 	vector<uint32_t> Kssd::storeHashes(){
-		return hashList;
+		return getHashes();
 	}
 
 	vector<uint64_t> Kssd::storeHashes64(){
-		return hashList64;
+		return getHashes64();
 	}
 
 
 	// ── SIMD sorted-set intersection helpers ────────────────────────────────
-	// Both arrays must be sorted ascending (guaranteed by SetToList/SetToList64).
+	// Both arrays must be sorted ascending (guaranteed by ordered getters/finalize).
 	// Variable-length version: no fixed-k truncation, no min_jaccard early exit.
 	// Mirrors FastKMV::jaccard()'s rotational block-compare strategy.
 
@@ -1002,8 +950,8 @@ namespace Sketch{
 			throw std::logic_error(
 				"Kssd::jaccard: equal drlevel selected different tuple widths");
 		if (use64) {
-			const auto& a = hashList64;
-			const auto& b = kssd->hashList64;
+			const auto& a = getHashes64();
+			const auto& b = kssd->getHashes64();
 			if (a.empty() || b.empty()) return 0.0;
 			const int sa = static_cast<int>(a.size());
 			const int sb = static_cast<int>(b.size());
@@ -1011,8 +959,8 @@ namespace Sketch{
 			const int denom  = sa + sb - common;
 			return denom > 0 ? static_cast<double>(common) / denom : 0.0;
 		} else {
-			const auto& a = hashList;
-			const auto& b = kssd->hashList;
+			const auto& a = getHashes();
+			const auto& b = kssd->getHashes();
 			if (a.empty() || b.empty()) return 0.0;
 			const int sa = static_cast<int>(a.size());
 			const int sb = static_cast<int>(b.size());

@@ -355,7 +355,8 @@ InvertedIndex<KeyT> buildCSRIndex(
 //   jaccardFn   = [p,n](int c,int,int){ return (c/n-p)/(1-p); }
 //   minCommonFn = [minSame](int){ return minSame; }   // global constant
 // ─────────────────────────────────────────────────────────────────────────────
-template<typename KeyT, typename JaccardFn, typename MinCommonFn>
+template<typename KeyT, typename JaccardFn, typename MinCommonFn,
+         typename CounterT = uint16_t>
 void computeDistances(
     const InvertedIndex<KeyT>&              idx,
     const std::vector<std::vector<KeyT>>&   skKeys,
@@ -379,7 +380,7 @@ void computeDistances(
 
     // Size-ratio pruning (only meaningful for Mash distance mode)
     const double radio = useMashDist
-        ? 2.0 * std::exp(maxDist * (kmerSize - 1)) - 1.0
+        ? 2.0 * std::exp(maxDist * kmerSize) - 1.0
         : 1e18;
 
     // If outputPath is a directory, append a default filename
@@ -403,12 +404,9 @@ void computeDistances(
 
     #pragma omp parallel num_threads(nThreads)
     {
-        // uint16_t isect: max common ≤ min(s_i, s_j) ≤ K (sketch size).
-        // FastKMV / ProbMinHash default K = 1024; SetSketch witnessesPerSketch
-        // = m/4 = 1024 for ssBits=13.  Halving the per-thread footprint
-        // (vs int) doubles L2 cache density for random-write hot path and
-        // is the largest single contributor to perf scaling vs N.
-        std::vector<uint16_t> isect(N, 0);
+        // Fixed-size callers keep compact 16-bit counters. Threshold sketches
+        // can exceed 65535 retained hashes and explicitly select uint32_t.
+        std::vector<CounterT> isect(N, 0);
         std::vector<int>      stamp(N, 0);
         int ep = 0;
         std::vector<int> cand;

@@ -16,6 +16,7 @@
  *   --bindash      b-bit one-permutation hashing
  *   --setsketch    register-based set sketch
  *   --fastkmv      FastKMV bottom-k sketch
+ *   --fracminhash  threshold-sampled FracMinHash
  *
  * Modes:
  *   pair mode      -i fileA fileB                 (two FASTA/FASTQ inputs)
@@ -43,9 +44,10 @@
  *                   -a   <float>   parameter a                     (default 5.0)
  *                   -B   <float>   base                            (default 2.0)
  *   --fastkmv       -K   <int>     sketch size (k smallest)        (default 1024)
+ *   --fracminhash   --scaled <int> threshold sampling factor       (default 1000)
  *
  * Output (TSV):  <fileA>\t<fileB>\t<distance>
- *   (Kssd --index uses an extended 5-column format identical to test_Kssd.cpp.)
+ *   (KSSD list mode defaults to an index and shares test_Kssd.cpp's 5-column format.)
  * Distance is the Mash distance D = -ln(2J/(1+J))/k for all algorithms.
  */
 
@@ -65,27 +67,28 @@ static void print_usage(const char* prog) {
     std::cerr <<
 "Usage: " << prog << " --<algo> [--index] -i <file>... [-l] [options]\n\n"
 "Algorithms (choose one):\n"
-"  --minhash --kssd --hll --probminhash --bindash --setsketch --fastkmv\n\n"
+"  --minhash --kssd --hll --probminhash --bindash --setsketch --fastkmv --fracminhash\n\n"
 "Modes:\n"
 "  -i fileA fileB         pairwise distance between two FASTA/FASTQ files\n"
 "  -i list.txt -l         all-pairs over the file list\n"
 "  --index                use inverted-index pipeline (list mode only;\n"
-"                         supported for minhash/fastkmv/probminhash/kssd/setsketch/hll)\n\n"
+"                         supported for minhash/fastkmv/fracminhash/probminhash/kssd/setsketch/hll)\n\n"
 "Common options:\n"
 "  -o <path>              output file (default: rabbitsketch.dist)\n"
-"  -k <int>               k-mer size (default 21; hll & setsketch use 32)\n"
+"  -k <int>               k-mer size (default 21; KSSD uses 2 * floor(k/2))\n"
 "  -t <int>               threads (default: omp_get_max_threads())\n"
 "  -d <float>             max Mash distance filter (default 0.05; use 1.0 for no filter)\n"
 "  --seed <u64>           hash seed (default 42)\n\n"
 "Algorithm-specific:\n"
 "  --minhash      -s <int>             sketch size      (1000)\n"
-"  --kssd         --drlevel <int>      (3)\n"
+"  --kssd         --drlevel <int>      (3; list mode uses the optimized index by default)\n"
 "  --hll          -b <int>             log2(registers)  (13)\n"
 "  --probminhash  -m <int> -L <int>   sketch size / max-L (1024, 0)\n"
 "                  freq-weighted PMH-norm (J_P estimator, coverage-robust)\n"
 "  --bindash      --bbits <int> --sketch64 <int>  (16, 16)\n"
 "  --setsketch    -b <int> -a <float> -B <float>  (13, 5.0, 2.0)\n"
-"  --fastkmv      -K <int>             sketch size      (1024)\n";
+"  --fastkmv      -K <int>             sketch size      (1024)\n"
+"  --fracminhash  --scaled <int>       sampling factor  (1000)\n";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -116,6 +119,7 @@ static int parse_args(int argc, char* argv[], Args& a) {
         else if (s == "--bindash")      setAlgo(Algo::BINDASH);
         else if (s == "--setsketch")    setAlgo(Algo::SETSKETCH);
         else if (s == "--fastkmv")      setAlgo(Algo::FASTKMV);
+        else if (s == "--fracminhash")  setAlgo(Algo::FRACMINHASH);
         else if (s == "--index")        a.useIndex = true;
         else if (s == "-l")             a.listMode = true;
         else if (s == "-i") {
@@ -144,6 +148,15 @@ static int parse_args(int argc, char* argv[], Args& a) {
         else if (s == "-a")             { need(i, "-a"); a.ssA    = std::stod(argv[++i]); }
         else if (s == "-B")             { need(i, "-B"); a.ssBase = std::stod(argv[++i]); }
         else if (s == "-K")             { need(i, "-K"); a.fkmvK  = static_cast<uint32_t>(std::stoul(argv[++i])); }
+        else if (s == "--scaled") {
+            need(i, "--scaled");
+            const auto scaled = std::stoull(argv[++i]);
+            if (scaled == 0 || scaled > UINT32_MAX) {
+                std::cerr << "ERROR: --scaled must be between 1 and " << UINT32_MAX << "\n";
+                return 1;
+            }
+            a.fracScaled = static_cast<uint32_t>(scaled);
+        }
         else if (s == "-h" || s == "--help") { print_usage(argv[0]); std::exit(0); }
         else {
             std::cerr << "ERROR: unknown option: " << s << "\n";

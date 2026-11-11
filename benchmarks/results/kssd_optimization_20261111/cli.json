@@ -1,0 +1,52 @@
+[
+  {
+    "tag": "full233_t64_r0_after",
+    "panel": "full233",
+    "threads": 64,
+    "repeat": 0,
+    "version": "after",
+    "process_seconds": 110.68709269165993,
+    "peak_rss_kib": 6437448,
+    "sketch_seconds": 77.6121,
+    "legacy_sketch_local_index_seconds": null,
+    "index_seconds": 2.05869,
+    "similarity_seconds": 30.2395,
+    "internal_total_seconds": 109.91,
+    "output_digest": {
+      "rows": 399999929,
+      "bytes": 48649627562,
+      "canonical_xxh3_128_sum": "9918c0360f43476df9e5607121a0af99",
+      "canonical_xxh3_128_xor": "d363c57a37058f57f49e7d1555614b5b",
+      "all_fields_sum": "f26025905a456efc7fd28e23d95b7f74",
+      "all_fields_xor": "e9a6246729725c37f429adf661c810de"
+    },
+    "binary_sha256": "4bc8773ad3eb28b3423c54c986a7165c29a51f008782b05eecb38f0acca79aa8",
+    "input_list_sha256": "88e9147198fdeaa94b55109cd84cf5733965fb88497bc04c9b54ef0d8602b1e8",
+    "prepare_seconds": 79.6705
+  },
+  {
+    "tag": "full233_t64_r0_before",
+    "panel": "full233",
+    "threads": 64,
+    "repeat": 0,
+    "version": "before",
+    "process_seconds": 192.74926194548607,
+    "peak_rss_kib": 11110484,
+    "sketch_seconds": null,
+    "legacy_sketch_local_index_seconds": 144.872,
+    "index_seconds": null,
+    "similarity_seconds": 33.2883,
+    "internal_total_seconds": 191.86,
+    "output_digest": {
+      "rows": 399999929,
+      "bytes": 48649627562,
+      "canonical_xxh3_128_sum": "9918c0360f43476df9e5607121a0af99",
+      "canonical_xxh3_128_xor": "d363c57a37058f57f49e7d1555614b5b",
+      "all_fields_sum": "f26025905a456efc7fd28e23d95b7f74",
+      "all_fields_xor": "e9a6246729725c37f429adf661c810de"
+    },
+    "binary_sha256": "abee075bd4d6ef69ea1194cbdd32556e903f8594d60e5b715f4fcaf87d5e2541",
+    "input_list_sha256": "88e9147198fdeaa94b55109cd84cf5733965fb88497bc04c9b54ef0d8602b1e8",
+    "prepare_seconds": 158.57170000000002
+  }
+]

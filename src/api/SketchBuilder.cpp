@@ -268,12 +268,12 @@ private:
 class KssdLane final : public Lane {
 public:
     explicit KssdLane(const SketchConfig& config)
-        : Lane(config), parameters_(std::make_shared<kssd_parameter_t>(
+        : Lane(config), parameters_(getKssdParameters(
               config.kmer_size / 2, config.kssd_half_subk,
               static_cast<int>(config.resolution))),
           sketch_(parameters_, config.seed) {}
     void updateSegment(const std::string& sequence) override {
-        sketch_.update(sequence.c_str());
+        sketch_.update(sequence.data(), sequence.size());
     }
     BuiltSketch finish(BuildStats&) override {
         sketch_.finalize();

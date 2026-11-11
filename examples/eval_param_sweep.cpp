@@ -113,23 +113,9 @@ static double theo_containment(double p, int k)
 // ─── KSSD shared-param cache (copy from sub_command.cpp pattern) ───────────────
 
 static std::shared_ptr<const Sketch::kssd_parameter_t>
-get_kssd_params(int half_k, int half_subk, int drlevel)
-{
-    static std::mutex mtx;
-    static std::map<std::tuple<int,int,int>,
-                    std::shared_ptr<Sketch::kssd_parameter_t>> cache;
-    std::lock_guard<std::mutex> lk(mtx);
-    auto key = std::make_tuple(half_k, half_subk, drlevel);
-    auto it = cache.find(key);
-    if (it != cache.end()) return it->second;
-    try {
-        auto p = std::make_shared<Sketch::kssd_parameter_t>(half_k, half_subk, drlevel);
-        cache[key] = p;
-        return p;
-    } catch (...) {
-        cache[key] = nullptr;
-        return nullptr;
-    }
+get_kssd_params(int half_k, int half_subk, int drlevel) {
+    try { return Sketch::getKssdParameters(half_k, half_subk, drlevel); }
+    catch (const std::invalid_argument&) { return nullptr; }
 }
 
 // ─── per-algo evaluation ──────────────────────────────────────────────────────
@@ -233,8 +219,8 @@ eval_algo(EvalMode mode,
             // KSSD has no containment method – always use jaccard
             Sketch::Kssd* k1 = new Sketch::Kssd(kssd_params);
             Sketch::Kssd* k2 = new Sketch::Kssd(kssd_params);
-            k1->update(const_cast<char*>(sa));
-            k2->update(const_cast<char*>(sb));
+            k1->update(sa, static_cast<size_t>(La));
+            k2->update(sb, static_cast<size_t>(Lb));
             est = k1->jaccard(k2);
             delete k1; delete k2;
         }

@@ -1,0 +1,41 @@
+{
+  "files": 208753,
+  "input_bytes": 945020243458,
+  "threads": 64,
+  "k": 20,
+  "drlevel": 3,
+  "cutoff": 0.05,
+  "repetitions": 1,
+  "output_digest": {
+    "rows": 399999929,
+    "bytes": 48649627562,
+    "canonical_xxh3_128_sum": "9918c0360f43476df9e5607121a0af99",
+    "canonical_xxh3_128_xor": "d363c57a37058f57f49e7d1555614b5b",
+    "all_fields_sum": "f26025905a456efc7fd28e23d95b7f74",
+    "all_fields_xor": "e9a6246729725c37f429adf661c810de"
+  },
+  "before": {
+    "process_seconds": 192.74926194548607,
+    "prepare_seconds": 158.57170000000002,
+    "similarity_seconds": 33.2883,
+    "peak_rss_kib": 11110484,
+    "process_range": [
+      192.74926194548607,
+      192.74926194548607
+    ]
+  },
+  "after": {
+    "process_seconds": 110.68709269165993,
+    "prepare_seconds": 79.6705,
+    "similarity_seconds": 30.2395,
+    "peak_rss_kib": 6437448,
+    "process_range": [
+      110.68709269165993,
+      110.68709269165993
+    ]
+  },
+  "end_to_end_speedup": 1.7413887857947992,
+  "prepare_speedup": 1.9903439792645963,
+  "time_reduction_percent": 42.57456989746359,
+  "memory_reduction_percent": 42.05969784934662
+}

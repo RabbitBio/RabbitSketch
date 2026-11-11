@@ -1,0 +1,14 @@
+{
+  "request": "user stopped second measurement; promote optimized KSSD to all entry points",
+  "utc": "2026-11-11T12:17:54.991052+00:00",
+  "previous_progress": {
+    "status": "running",
+    "phase": "full233_t64_r1_before",
+    "runner_pid": 1411350,
+    "utc": "2026-11-11T12:16:48.550830+00:00"
+  },
+  "terminated_children": [
+    1414497,
+    1414496
+  ]
+}

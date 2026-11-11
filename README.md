@@ -29,6 +29,13 @@ same corrected SetSketch estimator that was validated in that study.
 | BinDash | b-bit bins | set metrics, ANI | same bin count |
 | OrderMinHash | ordered samples | order similarity/distance | shorter prefix |
 
+KSSD list comparisons use the optimized inverted index by default. The CLI and
+`examples/exe_test_Kssd` share the same implementation (CLI defaults: effective k=20,
+drlevel=3, distance cutoff 0.05). Construction uses exact bitmap admission,
+shared parameters and reusable deduplication storage. C++ streaming callers can
+use `update(sequence, length)` and finish with `finalize()`; Python and the
+unified FASTX builder use this path automatically.
+
 The FASTX builder accepts DNA and RNA from plain or gzip FASTA/FASTQ, standard
 input, or in-memory records. It supports multiline records, canonical k-mers,
 ambiguous-base policies, Phred filtering, homopolymer compression,

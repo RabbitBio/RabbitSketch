@@ -352,6 +352,9 @@ namespace Sketch{
     uint64_t undomask1;
     uint64_t shuffle_fingerprint;
     phmap::flat_hash_map<uint32_t, int> shuffled_map;
+    // Exact admission filter; an unset bit rejects a dimension without probing
+    // the rank map. Dense (drlevel=0) configurations use the permutation directly.
+    std::vector<uint64_t> admitted_dimensions;
 
   private:
     static int _checked_dim_end(int half_k_, int half_subk_, int drlevel_) {
@@ -376,13 +379,18 @@ namespace Sketch{
       undomask0 = undomask ^ undomask1;
       int dim_size  = 1 << (4 * half_subk);
       int dim_limit = 1 << (4 * (half_subk - drlevel));
-      shuffled_map.reserve(dim_size);
+      shuffled_map.reserve(dim_limit);
+      if (dim_limit < dim_size)
+        admitted_dimensions.assign((static_cast<size_t>(dim_size) + 63) / 64, 0);
       shuffle_fingerprint = UINT64_C(1469598103934665603);
       for (int t = 0; t < dim_size; t++) {
         shuffle_fingerprint ^= static_cast<uint32_t>(shuffled_dim[t]);
         shuffle_fingerprint *= UINT64_C(1099511628211);
-        if (shuffled_dim[t] >= 0 && shuffled_dim[t] < dim_limit)
+        if (shuffled_dim[t] >= 0 && shuffled_dim[t] < dim_limit) {
           shuffled_map.emplace(t, shuffled_dim[t]);
+          if (!admitted_dimensions.empty())
+            admitted_dimensions[t >> 6] |= UINT64_C(1) << (t & 63);
+        }
       }
     }
 
@@ -427,6 +435,11 @@ namespace Sketch{
       _init_masks_and_map();
     }
   };
+
+  // Shared immutable generated parameters. Custom shuffle-file parameters are
+  // deliberately not cached. Expired entries do not keep large tables alive.
+  std::shared_ptr<const kssd_parameter_t> getKssdParameters(
+      int half_k = 10, int half_subk = 6, int drlevel = 3);
 
   struct KssdLite {
     std::string fileName;               
@@ -481,6 +494,7 @@ namespace Sketch{
       Kssd& operator=(const Kssd&) = delete;
 
       KssdLite toLite() const {
+        ensureSorted();
         KssdLite lite;
         lite.fileName = fileName;
         lite.id = id;
@@ -496,15 +510,19 @@ namespace Sketch{
       ~Kssd() = default;
       phmap::flat_hash_set<uint32_t> hashSet;
       phmap::flat_hash_set<uint64_t> hashSet64;
-      std::vector<uint64_t> hashList64;
-      std::vector<uint32_t> hashList;
+      mutable std::vector<uint64_t> hashList64;
+      mutable std::vector<uint32_t> hashList;
 
       std::string fileName;
       vector<uint32_t> storeHashes();
       vector<uint64_t> storeHashes64();
-      const vector<uint32_t>& getHashes() const { return hashList; }
-      const vector<uint64_t>& getHashes64() const { return hashList64; }
+      const vector<uint32_t>& getHashes() const { ensureSorted(); return hashList; }
+      const vector<uint64_t>& getHashes64() const { ensureSorted(); return hashList64; }
+      // Legacy overload materializes the public hashList fields before return.
       void update(const char* seq);
+      // Streaming overload: retains the build set across records; ordered
+      // getters, toLite(), queries and finalize() materialize sorted hashes.
+      void update(const char* seq, size_t length);
       uint64_t getShuffleFingerprint() const {
         return params_ptr_->shuffle_fingerprint;
       }
@@ -522,9 +540,7 @@ namespace Sketch{
        * for filtering/remapping.  A denser state cannot be reconstructed.
        */
       Kssd project(int target_drlevel) const;
-      // Compact sketch storage after all update() calls: shrinks the sorted
-      // hashList vector to its exact size (dropping any capacity overshoot
-      // accumulated by multi-contig merges) and releases the hashSet's heap.
+      // Materialize sorted hashes once, compact storage and release the build set.
       // Single-threaded; call once per sketch before pairwise distance loop.
       void finalize();
       bool isSealed() const noexcept { return sealed_; }
@@ -591,14 +607,15 @@ namespace Sketch{
       uint64_t undomask0;
       uint64_t undomask1;
       int get_hashSize(int half_k, int drlevel);
-      void SetToList64();
-      void SetToList();
+      void ensureSorted() const;
 
       // Pointer into params_ptr_->shuffled_map — no per-object copy.
       const phmap::flat_hash_map<uint32_t, int>* shuffled_map_;
 
       uint64_t seed_;
       bool sealed_ = false;
+      bool build_set_ready_ = false;
+      mutable bool sorted_dirty_ = false;
 
   };
 

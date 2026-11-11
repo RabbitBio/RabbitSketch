@@ -1,3 +1,4 @@
+#include <mutex>
 #include "shuffle.h"
 #include <cstdio>
 #include <err.h>
@@ -61,6 +62,8 @@ int write_shuffle_dim_file(dim_shuffle_stat_t* stat, string shuffle_file){
 }
 
 int * generate_shuffle_dim(int half_subk){
+    static std::mutex mutex;
+    const std::lock_guard<std::mutex> guard(mutex);
 	int dim_size = 1 << 4 * half_subk;
 	int * shuffled_dim = shuffleN(dim_size, 0);
 	shuffled_dim = shuffle(shuffled_dim, dim_size, 348842630);

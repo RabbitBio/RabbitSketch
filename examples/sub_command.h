@@ -3,9 +3,8 @@
  *
  *   main.cpp            : argument parsing + dispatch only
  *   sub_command.{h,cpp} : Args struct definition + every algorithm's
- *                         actual sketch / distance pipeline.  Each
- *                         indexed runner mirrors its corresponding
- *                         test_*.cpp byte-for-byte.
+ *                         actual sketch / distance pipeline.  KSSD main and test entry points share
+ *                         the same indexed runner.
  */
 
 #ifndef RABBITSKETCH_SUB_COMMAND_H
@@ -27,6 +26,7 @@ enum class Algo {
     BINDASH,
     SETSKETCH,
     FASTKMV,
+    FRACMINHASH,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -60,6 +60,7 @@ struct Args {
     double      ssBase      = 2.0;
 
     uint32_t    fkmvK       = 1024;
+    uint32_t    fracScaled  = 1000;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

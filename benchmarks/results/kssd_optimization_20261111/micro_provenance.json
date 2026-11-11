@@ -1,0 +1,12 @@
+{
+  "before_binary_sha256": "abee075bd4d6ef69ea1194cbdd32556e903f8594d60e5b715f4fcaf87d5e2541",
+  "after_binary_sha256": "511444ff7eb7cee8d6eacfc305364b1a0a6ef0dba960d9af400398330bd0b17f",
+  "before_bench_sha256": "5ba67f16e3d1f092ab1c47d93a2d3512400983a4478eccddb9723cee9f65d7b0",
+  "after_bench_sha256": "1ed71f8e31f5adfb2bd7763ca9317c17cedfc06a3f215c17c7ffaf63d9bc7cbd",
+  "cpu_affinity": "0..threads-1",
+  "distance_cutoff": 0.05,
+  "effective_k": 20,
+  "drlevel": 3,
+  "cache_policy": "ordinary filesystem cache; no eviction; paired order alternates",
+  "timing": "CLI wall includes read, sketch, index, comparison and output; validation excluded"
+}

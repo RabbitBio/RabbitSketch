@@ -1,0 +1,730 @@
+[
+  {
+    "tag": "real128_api_f0_t1_before",
+    "panel": "real128",
+    "mode": "api",
+    "version": "before",
+    "threads": 1,
+    "fragment": 0,
+    "peak_rss_kib": 940976,
+    "dump_sha256": "2532a0807e89690545354c0797613639ddfbdf82a6332b1b319a6e27bceb1ba1",
+    "trials": [
+      {
+        "mode": "api",
+        "repeat": -1,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.500773896463,
+        "seconds": 4.64512279257
+      },
+      {
+        "mode": "api",
+        "repeat": 0,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.500773896463,
+        "seconds": 4.62623775937
+      },
+      {
+        "mode": "api",
+        "repeat": 1,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.500773896463,
+        "seconds": 4.62587782089
+      },
+      {
+        "mode": "api",
+        "repeat": 2,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.500773896463,
+        "seconds": 4.62558028661
+      }
+    ]
+  },
+  {
+    "tag": "real128_api_f0_t1_after",
+    "panel": "real128",
+    "mode": "api",
+    "version": "after",
+    "threads": 1,
+    "fragment": 0,
+    "peak_rss_kib": 647676,
+    "dump_sha256": "2532a0807e89690545354c0797613639ddfbdf82a6332b1b319a6e27bceb1ba1",
+    "trials": [
+      {
+        "mode": "api",
+        "repeat": -1,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.427300499752,
+        "seconds": 2.38394370303
+      },
+      {
+        "mode": "api",
+        "repeat": 0,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.427300499752,
+        "seconds": 2.37882902287
+      },
+      {
+        "mode": "api",
+        "repeat": 1,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.427300499752,
+        "seconds": 2.37751287501
+      },
+      {
+        "mode": "api",
+        "repeat": 2,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.427300499752,
+        "seconds": 2.37657245342
+      }
+    ]
+  },
+  {
+    "tag": "real128_api_f0_t8_before",
+    "panel": "real128",
+    "mode": "api",
+    "version": "before",
+    "threads": 8,
+    "fragment": 0,
+    "peak_rss_kib": 941488,
+    "dump_sha256": "2532a0807e89690545354c0797613639ddfbdf82a6332b1b319a6e27bceb1ba1",
+    "trials": [
+      {
+        "mode": "api",
+        "repeat": -1,
+        "threads": 8,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.50407832209,
+        "seconds": 0.698297311552
+      },
+      {
+        "mode": "api",
+        "repeat": 0,
+        "threads": 8,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.50407832209,
+        "seconds": 0.692998790182
+      },
+      {
+        "mode": "api",
+        "repeat": 1,
+        "threads": 8,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.50407832209,
+        "seconds": 0.69650872983
+      },
+      {
+        "mode": "api",
+        "repeat": 2,
+        "threads": 8,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.50407832209,
+        "seconds": 0.69699413795
+      }
+    ]
+  },
+  {
+    "tag": "real128_api_f0_t8_after",
+    "panel": "real128",
+    "mode": "api",
+    "version": "after",
+    "threads": 8,
+    "fragment": 0,
+    "peak_rss_kib": 647880,
+    "dump_sha256": "2532a0807e89690545354c0797613639ddfbdf82a6332b1b319a6e27bceb1ba1",
+    "trials": [
+      {
+        "mode": "api",
+        "repeat": -1,
+        "threads": 8,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.46437510848,
+        "seconds": 0.296493680216
+      },
+      {
+        "mode": "api",
+        "repeat": 0,
+        "threads": 8,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.46437510848,
+        "seconds": 0.296412253752
+      },
+      {
+        "mode": "api",
+        "repeat": 1,
+        "threads": 8,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.46437510848,
+        "seconds": 0.297579461709
+      },
+      {
+        "mode": "api",
+        "repeat": 2,
+        "threads": 8,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.46437510848,
+        "seconds": 0.296850848012
+      }
+    ]
+  },
+  {
+    "tag": "one_api_f1000_t1_before",
+    "panel": "one",
+    "mode": "api",
+    "version": "before",
+    "threads": 1,
+    "fragment": 1000,
+    "peak_rss_kib": 365740,
+    "dump_sha256": "d5e31711df839c1b87aea2bdfcb8244e5d61b8478e8c878bacf800e23935d454",
+    "trials": [
+      {
+        "mode": "api",
+        "repeat": -1,
+        "threads": 1,
+        "files": 1,
+        "records": 2477,
+        "bases": 2396359,
+        "hashes": 550,
+        "setup_seconds": 0.510520234704,
+        "seconds": 0.0534508069977
+      },
+      {
+        "mode": "api",
+        "repeat": 0,
+        "threads": 1,
+        "files": 1,
+        "records": 2477,
+        "bases": 2396359,
+        "hashes": 550,
+        "setup_seconds": 0.510520234704,
+        "seconds": 0.0401550438255
+      },
+      {
+        "mode": "api",
+        "repeat": 1,
+        "threads": 1,
+        "files": 1,
+        "records": 2477,
+        "bases": 2396359,
+        "hashes": 550,
+        "setup_seconds": 0.510520234704,
+        "seconds": 0.0398778403178
+      },
+      {
+        "mode": "api",
+        "repeat": 2,
+        "threads": 1,
+        "files": 1,
+        "records": 2477,
+        "bases": 2396359,
+        "hashes": 550,
+        "setup_seconds": 0.510520234704,
+        "seconds": 0.0396688757464
+      }
+    ]
+  },
+  {
+    "tag": "one_api_f1000_t1_after",
+    "panel": "one",
+    "mode": "api",
+    "version": "after",
+    "threads": 1,
+    "fragment": 1000,
+    "peak_rss_kib": 74256,
+    "dump_sha256": "d5e31711df839c1b87aea2bdfcb8244e5d61b8478e8c878bacf800e23935d454",
+    "trials": [
+      {
+        "mode": "api",
+        "repeat": -1,
+        "threads": 1,
+        "files": 1,
+        "records": 2477,
+        "bases": 2396359,
+        "hashes": 550,
+        "setup_seconds": 0.448632589541,
+        "seconds": 0.011076210998
+      },
+      {
+        "mode": "api",
+        "repeat": 0,
+        "threads": 1,
+        "files": 1,
+        "records": 2477,
+        "bases": 2396359,
+        "hashes": 550,
+        "setup_seconds": 0.448632589541,
+        "seconds": 0.00996211357415
+      },
+      {
+        "mode": "api",
+        "repeat": 1,
+        "threads": 1,
+        "files": 1,
+        "records": 2477,
+        "bases": 2396359,
+        "hashes": 550,
+        "setup_seconds": 0.448632589541,
+        "seconds": 0.00981511734426
+      },
+      {
+        "mode": "api",
+        "repeat": 2,
+        "threads": 1,
+        "files": 1,
+        "records": 2477,
+        "bases": 2396359,
+        "hashes": 550,
+        "setup_seconds": 0.448632589541,
+        "seconds": 0.00976244267076
+      }
+    ]
+  },
+  {
+    "tag": "builder8_builder_f0_t1_before",
+    "panel": "builder8",
+    "mode": "builder",
+    "version": "before",
+    "threads": 1,
+    "fragment": 0,
+    "peak_rss_kib": 2902352,
+    "dump_sha256": "4d1147f13dbdf9ba284027229efba61cf9f526e111c4525f55fd812f1fe0949f",
+    "trials": [
+      {
+        "mode": "builder",
+        "repeat": -1,
+        "threads": 1,
+        "files": 8,
+        "records": 325,
+        "bases": 32067034,
+        "hashes": 0,
+        "setup_seconds": 2.53319740295e-07,
+        "seconds": 4.98503270186
+      },
+      {
+        "mode": "builder",
+        "repeat": 0,
+        "threads": 1,
+        "files": 8,
+        "records": 325,
+        "bases": 32067034,
+        "hashes": 0,
+        "setup_seconds": 2.53319740295e-07,
+        "seconds": 4.72591226175
+      },
+      {
+        "mode": "builder",
+        "repeat": 1,
+        "threads": 1,
+        "files": 8,
+        "records": 325,
+        "bases": 32067034,
+        "hashes": 0,
+        "setup_seconds": 2.53319740295e-07,
+        "seconds": 4.71263163444
+      },
+      {
+        "mode": "builder",
+        "repeat": 2,
+        "threads": 1,
+        "files": 8,
+        "records": 325,
+        "bases": 32067034,
+        "hashes": 0,
+        "setup_seconds": 2.53319740295e-07,
+        "seconds": 4.6411053231
+      }
+    ]
+  },
+  {
+    "tag": "builder8_builder_f0_t1_after",
+    "panel": "builder8",
+    "mode": "builder",
+    "version": "after",
+    "threads": 1,
+    "fragment": 0,
+    "peak_rss_kib": 119380,
+    "dump_sha256": "4d1147f13dbdf9ba284027229efba61cf9f526e111c4525f55fd812f1fe0949f",
+    "trials": [
+      {
+        "mode": "builder",
+        "repeat": -1,
+        "threads": 1,
+        "files": 8,
+        "records": 325,
+        "bases": 32067034,
+        "hashes": 0,
+        "setup_seconds": 3.44589352608e-07,
+        "seconds": 0.761797348969
+      },
+      {
+        "mode": "builder",
+        "repeat": 0,
+        "threads": 1,
+        "files": 8,
+        "records": 325,
+        "bases": 32067034,
+        "hashes": 0,
+        "setup_seconds": 3.44589352608e-07,
+        "seconds": 0.765201762319
+      },
+      {
+        "mode": "builder",
+        "repeat": 1,
+        "threads": 1,
+        "files": 8,
+        "records": 325,
+        "bases": 32067034,
+        "hashes": 0,
+        "setup_seconds": 3.44589352608e-07,
+        "seconds": 0.757545849308
+      },
+      {
+        "mode": "builder",
+        "repeat": 2,
+        "threads": 1,
+        "files": 8,
+        "records": 325,
+        "bases": 32067034,
+        "hashes": 0,
+        "setup_seconds": 3.44589352608e-07,
+        "seconds": 0.764899350703
+      }
+    ]
+  },
+  {
+    "tag": "real128_bitmap",
+    "panel": "real128",
+    "mode": "bitmap",
+    "version": "after",
+    "threads": 1,
+    "fragment": 0,
+    "peak_rss_kib": 647704,
+    "dump_sha256": "2532a0807e89690545354c0797613639ddfbdf82a6332b1b319a6e27bceb1ba1",
+    "trials": [
+      {
+        "mode": "bitmap",
+        "repeat": -1,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.439461055212,
+        "seconds": 2.19823960122
+      },
+      {
+        "mode": "bitmap",
+        "repeat": 0,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.439461055212,
+        "seconds": 2.19447615556
+      },
+      {
+        "mode": "bitmap",
+        "repeat": 1,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.439461055212,
+        "seconds": 2.19303390384
+      },
+      {
+        "mode": "bitmap",
+        "repeat": 2,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.439461055212,
+        "seconds": 2.19197328482
+      }
+    ]
+  },
+  {
+    "tag": "real128_map",
+    "panel": "real128",
+    "mode": "map",
+    "version": "after",
+    "threads": 1,
+    "fragment": 0,
+    "peak_rss_kib": 647096,
+    "dump_sha256": "2532a0807e89690545354c0797613639ddfbdf82a6332b1b319a6e27bceb1ba1",
+    "trials": [
+      {
+        "mode": "map",
+        "repeat": -1,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.451416710392,
+        "seconds": 2.88271529507
+      },
+      {
+        "mode": "map",
+        "repeat": 0,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.451416710392,
+        "seconds": 2.8855797993
+      },
+      {
+        "mode": "map",
+        "repeat": 1,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.451416710392,
+        "seconds": 2.87800009921
+      },
+      {
+        "mode": "map",
+        "repeat": 2,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.451416710392,
+        "seconds": 2.88086138014
+      }
+    ]
+  },
+  {
+    "tag": "real128_direct",
+    "panel": "real128",
+    "mode": "direct",
+    "version": "after",
+    "threads": 1,
+    "fragment": 0,
+    "peak_rss_kib": 647104,
+    "dump_sha256": "2532a0807e89690545354c0797613639ddfbdf82a6332b1b319a6e27bceb1ba1",
+    "trials": [
+      {
+        "mode": "direct",
+        "repeat": -1,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.447234897874,
+        "seconds": 4.21282238234
+      },
+      {
+        "mode": "direct",
+        "repeat": 0,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.447234897874,
+        "seconds": 4.21284223348
+      },
+      {
+        "mode": "direct",
+        "repeat": 1,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.447234897874,
+        "seconds": 4.26679928694
+      },
+      {
+        "mode": "direct",
+        "repeat": 2,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.447234897874,
+        "seconds": 4.20549210068
+      }
+    ]
+  },
+  {
+    "tag": "real128_bitmap-set",
+    "panel": "real128",
+    "mode": "bitmap-set",
+    "version": "after",
+    "threads": 1,
+    "fragment": 0,
+    "peak_rss_kib": 647428,
+    "dump_sha256": "2532a0807e89690545354c0797613639ddfbdf82a6332b1b319a6e27bceb1ba1",
+    "trials": [
+      {
+        "mode": "bitmap-set",
+        "repeat": -1,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.445171986707,
+        "seconds": 2.09172774013
+      },
+      {
+        "mode": "bitmap-set",
+        "repeat": 0,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.445171986707,
+        "seconds": 2.08098481875
+      },
+      {
+        "mode": "bitmap-set",
+        "repeat": 1,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.445171986707,
+        "seconds": 2.07960364036
+      },
+      {
+        "mode": "bitmap-set",
+        "repeat": 2,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.445171986707,
+        "seconds": 2.07953940704
+      }
+    ]
+  },
+  {
+    "tag": "real128_file",
+    "panel": "real128",
+    "mode": "file",
+    "version": "after",
+    "threads": 1,
+    "fragment": 0,
+    "peak_rss_kib": 668528,
+    "dump_sha256": "2532a0807e89690545354c0797613639ddfbdf82a6332b1b319a6e27bceb1ba1",
+    "trials": [
+      {
+        "mode": "file",
+        "repeat": -1,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.473150457256,
+        "seconds": 2.12941306643
+      },
+      {
+        "mode": "file",
+        "repeat": 0,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.473150457256,
+        "seconds": 2.12084806059
+      },
+      {
+        "mode": "file",
+        "repeat": 1,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.473150457256,
+        "seconds": 2.12033692002
+      },
+      {
+        "mode": "file",
+        "repeat": 2,
+        "threads": 1,
+        "files": 128,
+        "records": 13270,
+        "bases": 587520797,
+        "hashes": 138921,
+        "setup_seconds": 0.473150457256,
+        "seconds": 2.11920415144
+      }
+    ]
+  }
+]

@@ -124,15 +124,7 @@ static double kmer_entropy_weight(uint64_t can, int k, double w_min = 0.1) {
 // ── KSSD parameter cache (thread-safe) ────────────────────────────────────
 static std::shared_ptr<const Sketch::kssd_parameter_t>
 get_kssd_params(int half_k, int half_subk, int drlevel) {
-    static std::mutex mu;
-    static std::vector<std::pair<std::tuple<int,int,int>,
-                                 std::shared_ptr<const Sketch::kssd_parameter_t>>> cache;
-    std::lock_guard<std::mutex> lk(mu);
-    const auto key = std::make_tuple(half_k, half_subk, drlevel);
-    for (auto& [k, v] : cache) if (k == key) return v;
-    cache.emplace_back(key,
-        std::make_shared<const Sketch::kssd_parameter_t>(half_k, half_subk, drlevel));
-    return cache.back().second;
+    return Sketch::getKssdParameters(half_k, half_subk, drlevel);
 }
 
 // ── Per-file data ──────────────────────────────────────────────────────────
@@ -224,10 +216,11 @@ static void build_sketches(FileData& fd, int k, int skSize) {
         fd.hll->update(seq);
         fd.ssk->update(seq);
         fd.bindash->update(seq, (uint64_t)len);
-        fd.kssd->update(seq);
+        fd.kssd->update(seq, static_cast<size_t>(len));
     }
     kseq_destroy(ks); gzclose(fp);
 
+    fd.kssd->finalize();
     fd.minhash->finalize();
     fd.bindash->finalize();
 }
@@ -408,9 +401,9 @@ static double containment_from_jaccard(double j, double size_query, double size_
 }
 
 static double kssd_list_size(const Sketch::Kssd* sk) {
-    return sk->hashList64.empty()
-        ? (double)sk->hashList.size()
-        : (double)sk->hashList64.size();
+    return sk->getHashes64().empty()
+        ? (double)sk->getHashes().size()
+        : (double)sk->getHashes64().size();
 }
 
 static double kssd_containment_query_in_ref(Sketch::Kssd* q, Sketch::Kssd* r) {

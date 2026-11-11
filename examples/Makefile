@@ -1,4 +1,4 @@
-INCLUDE=-I../build/include -I../src
+INCLUDE=-I../src -I../build/include
 # CMake places librabbitsketch_static.a in ../build; shared lib is under ../build/lib
 RABBIT_LIBDIRS=-L../build/lib -L../build
 CXX=g++
@@ -23,8 +23,10 @@ exe_test_HLL: test_HLL.cpp ../src/HyperLogLog.cpp ../src/InvertedIndex.h
 exe_test_SetSketch: test_SetSketch.cpp ../src/SetSketch.cpp ../src/InvertedIndex.h
 	$(CXX) $(CXXFLAGS) test_SetSketch.cpp ../src/SetSketch.cpp -o exe_test_SetSketch $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -lz -lrabbitsketch_static
 
-exe_test_Kssd: test_Kssd.cpp
-	$(CXX) $(CXXFLAGS) test_Kssd.cpp ../src/shuffle.cpp -o exe_test_Kssd $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -lz -lrabbitsketch_static
+KSSD_HEADERS=../src/Sketch.h ../src/KssdBuild.h ../src/KssdIndex.h ../src/io/KssdFastx.h
+
+exe_test_Kssd: test_Kssd.cpp sub_command.cpp sub_command.h $(KSSD_HEADERS) ../build/lib/librabbitsketch_static.a
+	$(CXX) $(CXXFLAGS) test_Kssd.cpp sub_command.cpp -o exe_test_Kssd $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -ldeflate -lz -lrabbitsketch_static
 
 exe_test_MinHash: test_MinHash.cpp ../src/InvertedIndex.h
 	$(CXX) $(CXXFLAGS) test_MinHash.cpp  -o exe_test_MinHash $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -lz -lrabbitsketch_static
@@ -32,7 +34,7 @@ exe_test_MinHash: test_MinHash.cpp ../src/InvertedIndex.h
 exe_test_OMH: test_OMH.cpp
 	$(CXX) $(CXXFLAGS) test_OMH.cpp -o exe_test_OMH $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -lz -lrabbitsketch_static
 
-RABBIT_SRCS=../src/probmh.cpp ../src/fastkmv.cpp ../src/BinDash.cpp ../src/SetSketch.cpp ../src/shuffle.cpp ../src/HyperLogLog.cpp
+RABBIT_SRCS=../src/probmh.cpp ../src/fastkmv.cpp ../src/fracminhash.cpp ../src/BinDash.cpp ../src/SetSketch.cpp ../src/shuffle.cpp ../src/HyperLogLog.cpp
 RABBIT_CLI_SRCS=main.cpp sub_command.cpp
 
 # The pre-built static library was compiled against a newer libstdc++
@@ -49,7 +51,7 @@ else
 EXTRA_LDFLAGS=
 endif
 
-rabbitsketch: $(RABBIT_CLI_SRCS) sub_command.h $(RABBIT_SRCS) ../src/InvertedIndex.h
+rabbitsketch: $(RABBIT_CLI_SRCS) sub_command.h $(RABBIT_SRCS) ../src/InvertedIndex.h $(KSSD_HEADERS) ../build/lib/librabbitsketch_static.a
 	$(CXX) $(CXXFLAGS) $(RABBIT_CLI_SRCS) $(RABBIT_SRCS) -o rabbitsketch $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -ldeflate -lz -lrabbitsketch_static
 
 exe_test_ProbMinHash: test_ProbMinHash.cpp ../src/probmh.cpp ../src/InvertedIndex.h
@@ -64,10 +66,10 @@ exe_test_FastKMV: test_FastKMV.cpp ../src/fastkmv.cpp ../src/InvertedIndex.h
 exe_test_TopLProbMinHash: test_TopLProbMinHash.cpp ../src/probmh.cpp
 	$(CXX) $(CXXFLAGS) test_TopLProbMinHash.cpp ../src/probmh.cpp -o exe_test_TopLProbMinHash $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -lz -lrabbitsketch_static
 
-exe_eval_reads: eval_reads.cpp ../src/probmh.cpp ../src/fastkmv.cpp ../src/BinDash.cpp ../src/SetSketch.cpp
+exe_eval_reads: eval_reads.cpp ../src/probmh.cpp ../src/fastkmv.cpp ../src/BinDash.cpp ../src/SetSketch.cpp $(KSSD_HEADERS) ../build/lib/librabbitsketch_static.a
 	$(CXX) $(CXXFLAGS) eval_reads.cpp ../src/probmh.cpp ../src/fastkmv.cpp ../src/BinDash.cpp ../src/SetSketch.cpp -o exe_eval_reads $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -lz -lrabbitsketch_static
 
-exe_eval_sketch_acc: eval_sketch_accuracy.cpp ../src/probmh.cpp ../src/probmh_op.cpp ../src/fastkmv.cpp ../src/BinDash.cpp
+exe_eval_sketch_acc: eval_sketch_accuracy.cpp ../src/probmh.cpp ../src/probmh_op.cpp ../src/fastkmv.cpp ../src/BinDash.cpp $(KSSD_HEADERS) ../build/lib/librabbitsketch_static.a
 	$(CXX) $(CXXFLAGS) eval_sketch_accuracy.cpp ../src/probmh.cpp ../src/probmh_op.cpp ../src/fastkmv.cpp ../src/BinDash.cpp -o exe_eval_sketch_acc $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -lz -lrabbitsketch_static
 
 exe_test_ani_containment: test_ani_containment.cpp ../src/probmh.cpp ../src/fastkmv.cpp
@@ -78,3 +80,10 @@ exe_test_BinDash: test_BinDash.cpp ../src/BinDash.cpp ../src/InvertedIndex.h
 
 clean:
 	rm -f *.o exe_* rabbitsketch
+
+# KSSD evaluation entry points share the library cache and streaming builder.
+exe_eval_param_sweep: eval_param_sweep.cpp $(KSSD_HEADERS) ../build/lib/librabbitsketch_static.a
+	$(CXX) $(CXXFLAGS) $< -o $@ $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -lz -lrabbitsketch_static
+
+exe_eval_alisim_sweep: eval_alisim_sweep.cpp $(KSSD_HEADERS) ../build/lib/librabbitsketch_static.a
+	$(CXX) $(CXXFLAGS) $< -o $@ $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -lz -lrabbitsketch_static

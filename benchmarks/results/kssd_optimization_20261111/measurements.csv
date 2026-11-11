@@ -1,0 +1,3 @@
+version,repeat,threads,process_seconds,prepare_seconds,sketch_seconds,legacy_sketch_local_index_seconds,index_seconds,similarity_seconds,peak_rss_kib,binary_sha256
+after,0,64,110.68709269165993,79.6705,77.6121,,2.05869,30.2395,6437448,4bc8773ad3eb28b3423c54c986a7165c29a51f008782b05eecb38f0acca79aa8
+before,0,64,192.74926194548607,158.57170000000002,,144.872,,33.2883,11110484,abee075bd4d6ef69ea1194cbdd32556e903f8594d60e5b715f4fcaf87d5e2541

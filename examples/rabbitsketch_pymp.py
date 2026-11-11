@@ -2,6 +2,7 @@ import rabbitsketch as sketch
 import fastx,time  
 import pymp
 THREAD_NUM = 64
+MAX_DIST = 0.05
 file_list = []
 t1 = time.time()
 half_k = 10
@@ -12,8 +13,7 @@ info.half_k = half_k
 info.half_subk = half_subk
 info.drlevel = drlevel
 
-file_path = "shuf_file/L3K10.shuf"
-kssd_para = sketch.kssd_parameter_t(half_k, half_subk, drlevel, file_path)
+kssd_para = sketch.kssd_parameter_t(half_k, half_subk, drlevel)
 vkssd = pymp.shared.list()
 with open('100.list', "r") as bact1000:
     for genomefile in bact1000:
@@ -31,6 +31,7 @@ with pymp.Parallel(THREAD_NUM) as p:
             for name, seq, qual in fastx.Fastx(file_list[index]): 
                 kssd.update(seq)
             
+            kssd.finalize()
             kssd_lite = kssd.toLite()
             vkssd.append(kssd_lite)
 
@@ -45,6 +46,6 @@ sketch.trans_sketches(vkssd, info, "pysketch.dict", "pysketch.index", THREAD_NUM
 t3 = time.time()
 print("trans time is :", t3-t2)
 
-sketch.index_dict(vkssd, info, "pysketch", "pysketch.dist", 20, 1, 0, THREAD_NUM)
+sketch.index_dict(vkssd, info, "pysketch", "pysketch.dist", 20, MAX_DIST, 0, THREAD_NUM)
 t4 = time.time()
 print("dist time is :", t4-t3)
