@@ -24,7 +24,6 @@
 #include "InvertedIndex.h"
 #include "common.h"
 #include "kseq.h"
-#include "phmap.h"
 
 #include <zlib.h>
 #include <sys/time.h>
@@ -112,7 +111,7 @@ int main(int argc, char* argv[])
 
     #pragma omp parallel for num_threads(nThreads) schedule(dynamic)
     for (int t = 0; t < N; t++) {
-        Sketch::SetSketch sk(BITS, 2.0, 5.0);
+        Sketch::SetSketch sk(BITS, 2.0, 5.0, KMER_SIZE, /*track_witnesses=*/true);
         gzFile fp = gzopen(fileList[t].c_str(), "r");
         if (!fp) continue;
         kseq_t* ks = kseq_init(fp);
@@ -194,33 +193,15 @@ int main(int argc, char* argv[])
     if (useInvIdx) {
         // ═════════════════════════════════════════════════════════════════════
         //  MODE A:  Inverted index (witness hashes) + exact verification
-        //           Same clean flow as FastKMV: buildCSRIndex → computeDistancesExact
+        //           buildCSRIndexFromKeys → computeDistancesExact
         // ═════════════════════════════════════════════════════════════════════
         cerr << "mode: INVERTED INDEX (witness hashes)\n";
 
-        // Phase 2: build per-thread inverted index from (sorted) skKeys
-        const int actualThreads = min(nThreads, N);
-        vector<phmap::flat_hash_map<uint64_t, vector<uint32_t>>> threadIdx(actualThreads);
-
+        // Phase 2: bucket scatter/sort into a CSR index from witness keys
         double ti0 = get_sec();
-        #pragma omp parallel num_threads(nThreads)
-        {
-            int tid = omp_get_thread_num();
-            if (tid < actualThreads) {
-                auto& localIdx = threadIdx[tid];
-                #pragma omp for schedule(static)
-                for (int t = 0; t < N; t++) {
-                    for (uint64_t key : skKeys[t])
-                        localIdx[key].push_back(static_cast<uint32_t>(t));
-                }
-            }
-        }
-        double ti1 = get_sec();
-        cerr << "local index: " << ti1 - ti0 << " s" << endl;
-
-        auto csrIdx = Sketch::buildCSRIndex<uint64_t>(threadIdx, nThreads);
+        auto csrIdx = Sketch::buildCSRIndexFromKeys<uint64_t>(skKeys, N, nThreads);
         double ti2 = get_sec();
-        cerr << "CSR build: " << ti2 - ti1 << " s" << endl;
+        cerr << "CSR build: " << ti2 - ti0 << " s" << endl;
 
         // ── Post-filter skKeys: drop singleton witnesses ──────────────────────
         // A singleton key (present in exactly one sketch) can never produce a

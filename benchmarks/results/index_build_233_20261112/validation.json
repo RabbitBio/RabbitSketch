@@ -1,0 +1,78 @@
+{
+  "all_passed": true,
+  "cases": [
+    {
+      "algorithm": "fastkmv",
+      "mode": "map",
+      "rows": 114,
+      "statistics": {
+        "files": 128,
+        "load_seconds": 0.000509904,
+        "restore_seconds": 0.000462742,
+        "index_seconds": 0.010831078,
+        "index_peak_rss_kib": 22952,
+        "index_keys": 11519,
+        "postings": 39852,
+        "query_seconds": 0.000879583,
+        "index_query_seconds": 0.011710661,
+        "internal_total_seconds": 0.012735146
+      },
+      "matches_current_cli": true
+    },
+    {
+      "algorithm": "fastkmv",
+      "mode": "bucket",
+      "rows": 114,
+      "statistics": {
+        "files": 128,
+        "load_seconds": 0.000506047,
+        "restore_seconds": 0.000420747,
+        "index_seconds": 0.001940255,
+        "index_peak_rss_kib": 19192,
+        "index_keys": 11519,
+        "postings": 39852,
+        "query_seconds": 0.000781809,
+        "index_query_seconds": 0.002722064,
+        "internal_total_seconds": 0.003698612
+      },
+      "matches_current_cli": true
+    },
+    {
+      "algorithm": "probminhash",
+      "mode": "map",
+      "rows": 114,
+      "statistics": {
+        "files": 128,
+        "load_seconds": 0.000571716,
+        "restore_seconds": 3.4e-08,
+        "index_seconds": 0.010990604,
+        "index_peak_rss_kib": 22892,
+        "index_keys": 11167,
+        "postings": 35522,
+        "query_seconds": 0.000786616,
+        "index_query_seconds": 0.01177722,
+        "internal_total_seconds": 0.012398016
+      },
+      "matches_current_cli": true
+    },
+    {
+      "algorithm": "probminhash",
+      "mode": "bucket",
+      "rows": 114,
+      "statistics": {
+        "files": 128,
+        "load_seconds": 0.000534254,
+        "restore_seconds": 4.2e-08,
+        "index_seconds": 0.002160296,
+        "index_peak_rss_kib": 19192,
+        "index_keys": 11167,
+        "postings": 35522,
+        "query_seconds": 0.000722939,
+        "index_query_seconds": 0.002883235,
+        "internal_total_seconds": 0.003463076
+      },
+      "matches_current_cli": true
+    }
+  ],
+  "digest_matches_serial": true
+}

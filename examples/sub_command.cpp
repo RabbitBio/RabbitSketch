@@ -7,8 +7,8 @@
  *   §2  Per-algorithm sketch builders (build_*)        — pair / all-pairs mode
  *   §3  run_pair                                       — pairwise distance
  *   §4  list_allpairs<T>                               — generic O(N²)
- *   §5  run_index_fastkmv  (mirrors test_FastKMV.cpp)
- *   §6  run_index_probmh   (mirrors test_ProbMinHash.cpp)
+ *   §5  run_index_fastkmv  (bucket CSR + native bottom-k verification)
+ *   §6  run_index_probmh   (bucket CSR + frequency-weighted winner keys)
  *   §7  run_index_setsketch (mirrors test_SetSketch.cpp inverted-index mode)
  *   §8  run_index_kssd     (shared with test_Kssd.cpp: bitmap admission,
  *                          SIMD encoding and contiguous CSR index)
@@ -33,7 +33,6 @@
 #include "shuffle.h"
 #include "common.h"
 #include "kseq.h"
-#include "phmap.h"
 
 #include <zlib.h>
 #include <omp.h>
@@ -525,44 +524,29 @@ static int run_pair(const Args& a) {
 // ═══════════════════════════════════════════════════════════════════════════
 static void run_index_minhash(const Args& a, const std::vector<std::string>& files) {
     const int N = static_cast<int>(files.size());
-    std::vector<int>                   sketchSizes(N);
     std::vector<std::vector<uint64_t>> skKeys(N);
 
-    const int actualThreads = std::min(a.threads, N);
-    std::vector<phmap::flat_hash_map<uint64_t, std::vector<uint32_t>>> threadIdx(actualThreads);
+    const int actualThreads = std::max(1, std::min(a.threads, N));
 
     double t0 = get_sec();
-    #pragma omp parallel num_threads(a.threads)
-    {
-        int tid = omp_get_thread_num();
-        auto& localIdx = (tid < actualThreads) ? threadIdx[tid] : threadIdx[0];
+    #pragma omp parallel for num_threads(actualThreads) schedule(dynamic)
+    for (int t = 0; t < N; ++t) {
+        gzFile fp = gzopen(files[t].c_str(), "r");
+        if (!fp) continue;
+        kseq_t* ks = kseq_init(fp);
 
-        #pragma omp for schedule(dynamic)
-        for (int t = 0; t < N; ++t) {
-            gzFile fp = gzopen(files[t].c_str(), "r");
-            if (!fp) continue;
-            kseq_t* ks = kseq_init(fp);
+        Sketch::MinHash sk(a.kmerSize, a.minhashSize,
+                           static_cast<uint32_t>(a.seed), /*rc=*/true);
+        while (kseq_read(ks) >= 0) sk.update(ks->seq.s);
+        kseq_destroy(ks);
+        gzclose(fp);
 
-            Sketch::MinHash sk(a.kmerSize, a.minhashSize,
-                               static_cast<uint32_t>(a.seed), /*rc=*/true);
-            while (kseq_read(ks) >= 0) sk.update(ks->seq.s);
-            kseq_destroy(ks);
-            gzclose(fp);
-
-            const auto& hashes = sk.getHashesSorted();   // calls finalize() internally
-            const int sz = static_cast<int>(hashes.size());
-            sketchSizes[t] = sz;
-            skKeys[t].resize(sz);
-            for (int i = 0; i < sz; ++i) {
-                skKeys[t][i] = hashes[i];
-                localIdx[hashes[i]].push_back(static_cast<uint32_t>(t));
-            }
-        }
+        skKeys[t] = sk.getHashesSorted(); // calls finalize() internally
     }
     double t1 = get_sec();
-    std::cerr << "sketch + local index: " << t1 - t0 << " s\n";
+    std::cerr << "sketch time: " << t1 - t0 << " s\n";
 
-    auto csrIdx = Sketch::buildCSRIndex<uint64_t>(threadIdx, a.threads);
+    auto csrIdx = Sketch::buildCSRIndexFromKeys<uint64_t>(skKeys, N, actualThreads);
     double t2 = get_sec();
     std::cerr << "build CSR index: " << t2 - t1 << " s\n";
 
@@ -697,11 +681,10 @@ static void list_allpairs(const Args& a,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  §5  FastKMV --index  (mirrors test_FastKMV.cpp exactly)
+//  §5  FastKMV --index
 //
-//      1. Each genome's bottom-k hash list is published into a per-thread
-//         local inverted index (hash → list of genome IDs).
-//      2. Local indices are merged into a single CSR-format inverted index.
+//      1. Extract each genome's bottom-k hash list.
+//      2. Build CSR with the shared parallel bucket scatter/sort builder.
 //      3. Use total shared keys as a necessary candidate bound, then verify
 //         with the native bottom-k UNION-prefix estimator. The intersection
 //         of the two complete sketches divided by K is not that estimator:
@@ -709,37 +692,22 @@ static void list_allpairs(const Args& a,
 // ═══════════════════════════════════════════════════════════════════════════
 static void run_index_fastkmv(const Args& a, const std::vector<std::string>& files) {
     const int N = static_cast<int>(files.size());
-    std::vector<int>                   sketchSizes(N);
     std::vector<std::vector<uint64_t>> skKeys(N);
     std::vector<std::unique_ptr<Sketch::FastKMV>> nativeSketches(N);
 
-    const int actualThreads = std::min(a.threads, N);
-    std::vector<phmap::flat_hash_map<uint64_t, std::vector<uint32_t>>> threadIdx(actualThreads);
-
+    const int actualThreads = std::max(1, std::min(a.threads, N));
     double t0 = get_sec();
-    #pragma omp parallel num_threads(a.threads)
-    {
-        int tid = omp_get_thread_num();
-        auto& localIdx = (tid < actualThreads) ? threadIdx[tid] : threadIdx[0];
-
-        #pragma omp for schedule(dynamic)
-        for (int t = 0; t < N; ++t) {
-            std::unique_ptr<Sketch::FastKMV> sk(build_fastkmv(files[t], a));
-            const uint64_t* regs = sk->getRegisters();
-            uint32_t sz = sk->size();
-            sketchSizes[t] = static_cast<int>(sz);
-            skKeys[t].resize(sz);
-            for (uint32_t i = 0; i < sz; ++i) {
-                skKeys[t][i] = regs[i];
-                localIdx[regs[i]].push_back(static_cast<uint32_t>(t));
-            }
-            nativeSketches[t] = std::move(sk);
-        }
+    #pragma omp parallel for num_threads(actualThreads) schedule(dynamic)
+    for (int t = 0; t < N; ++t) {
+        std::unique_ptr<Sketch::FastKMV> sk(build_fastkmv(files[t], a));
+        const uint64_t* regs = sk->getRegisters();
+        skKeys[t].assign(regs, regs + sk->size());
+        nativeSketches[t] = std::move(sk);
     }
     double t1 = get_sec();
-    std::cerr << "sketch + local index: " << t1 - t0 << " s\n";
+    std::cerr << "sketch time: " << t1 - t0 << " s\n";
 
-    auto csrIdx = Sketch::buildCSRIndex<uint64_t>(threadIdx, a.threads);
+    auto csrIdx = Sketch::buildCSRIndexFromKeys<uint64_t>(skKeys, N, actualThreads);
     double t2 = get_sec();
     std::cerr << "build CSR index: " << t2 - t1 << " s\n";
 
@@ -781,11 +749,7 @@ static void run_index_fracminhash(const Args& a, const std::vector<std::string>&
     for (int i = 0; i < N; ++i) {
         std::unique_ptr<Sketch::FracMinHash> sk(build_fracminhash(files[i], a));
         keys[i] = sk->hashes();
-        // Threshold-sampled hashes occupy only the low 1/scaled interval.
-        // A bijective 64-bit permutation preserves equality but spreads the
-        // radix index across all buckets, so index building can use all cores.
-        for (auto& key : keys[i]) key = splitmix64(key);
-        std::sort(keys[i].begin(), keys[i].end());
+        // The shared builder mixes only bucket selection, preserving raw keys.
         sizes[i] = static_cast<int>(keys[i].size());
     }
     const double t1 = get_sec();
@@ -829,8 +793,7 @@ static void run_index_fracminhash(const Args& a, const std::vector<std::string>&
 //  Two-pass frequency-weighted pipeline:
 //    Pass-1: count k-mer occurrences (1/PMH_SDIV hash-sampling for memory).
 //    Pass-2: insert each unique k-mer once with weight = count/total_kmers.
-//  This estimates J_P = Σ min(p_A,p_B) / Σ max(p_A,p_B), which is
-//  invariant to sequencing depth — the core PMH advantage over BJ estimators.
+//  Same-register winner matches estimate the native probability Jaccard.
 //  Index key = winners_[k] XOR (k × golden-ratio) via getWinnerIndexKeys().
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -840,31 +803,21 @@ static void run_index_probmh(const Args& a, const std::vector<std::string>& file
     std::vector<int> sketchSizes(N, mSize);
     std::vector<std::vector<uint64_t>> skKeys(N);
 
-    const int actualThreads = std::min(a.threads, N);
-    std::vector<phmap::flat_hash_map<uint64_t, std::vector<uint32_t>>> threadIdx(actualThreads);
+    const int actualThreads = std::max(1, std::min(a.threads, N));
 
     double t0 = get_sec();
 
-    #pragma omp parallel num_threads(a.threads)
-    {
-        int tid = omp_get_thread_num();
-        auto& localIdx = (tid < actualThreads) ? threadIdx[tid] : threadIdx[0];
-
-        #pragma omp for schedule(dynamic)
-        for (int t = 0; t < N; ++t) {
-            std::unique_ptr<Sketch::ProbMinHash4> sk(
-                pmh_build_weighted(files[t], a.pmhM, a.kmerSize, a.seed, a.pmhMaxL));
-
-            sk->getWinnerIndexKeys(skKeys[t]);
-            for (uint64_t key : skKeys[t])
-                localIdx[key].push_back(static_cast<uint32_t>(t));
-        }
+    #pragma omp parallel for num_threads(actualThreads) schedule(dynamic)
+    for (int t = 0; t < N; ++t) {
+        std::unique_ptr<Sketch::ProbMinHash4> sk(
+            pmh_build_weighted(files[t], a.pmhM, a.kmerSize, a.seed, a.pmhMaxL));
+        sk->getWinnerIndexKeys(skKeys[t]);
     }
 
     double t1 = get_sec();
-    std::cerr << "sketch + local index: " << t1 - t0 << " s\n";
+    std::cerr << "sketch time: " << t1 - t0 << " s\n";
 
-    auto csrIdx = Sketch::buildCSRIndex<uint64_t>(threadIdx, a.threads);
+    auto csrIdx = Sketch::buildCSRIndexFromKeys<uint64_t>(skKeys, N, actualThreads);
     double t2 = get_sec();
     std::cerr << "build CSR index: " << t2 - t1 << " s\n";
 

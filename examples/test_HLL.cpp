@@ -14,7 +14,7 @@
  *      so witness-overlap is a high-quality candidate generator.
  *   3. Sort by cardinality descending so the size-ratio bound becomes a
  *      `break` instead of `continue` in any inner loop.
- *   4. Build a CSR inverted index over witness hashes, singleton-filter,
+ *   4. Bucket scatter/sort into a CSR index over witness hashes, singleton-filter,
  *      then verify each candidate with HyperLogLog::distance() (Ertl joint MLE).
  *
  *   Mode A (expectedOverlap >= 20)  → inverted index + exact verify.
@@ -34,7 +34,6 @@
 #include "InvertedIndex.h"
 #include "common.h"
 #include "kseq.h"
-#include "phmap.h"
 
 #include <zlib.h>
 #include <sys/time.h>
@@ -180,27 +179,10 @@ int main(int argc, char* argv[])
     if (useInvIdx) {
         cerr << "mode: INVERTED INDEX (HLL witness hashes)" << endl;
 
-        const int actualThreads = min(nThreads, N);
-        vector<phmap::flat_hash_map<uint64_t, vector<uint32_t>>> threadIdx(actualThreads);
-
         double ti0 = get_sec();
-        #pragma omp parallel num_threads(nThreads)
-        {
-            int tid = omp_get_thread_num();
-            if (tid < actualThreads) {
-                auto& localIdx = threadIdx[tid];
-                #pragma omp for schedule(static)
-                for (int t = 0; t < N; ++t)
-                    for (uint64_t key : skKeys[t])
-                        localIdx[key].push_back(static_cast<uint32_t>(t));
-            }
-        }
-        double ti1 = get_sec();
-        cerr << "local index: " << ti1 - ti0 << " s" << endl;
-
-        auto csrIdx = Sketch::buildCSRIndex<uint64_t>(threadIdx, nThreads);
+        auto csrIdx = Sketch::buildCSRIndexFromKeys<uint64_t>(skKeys, N, nThreads);
         double ti2 = get_sec();
-        cerr << "CSR build: " << ti2 - ti1 << " s" << endl;
+        cerr << "CSR build: " << ti2 - ti0 << " s" << endl;
 
         // Singleton-filter: drop keys present in only one sketch.
         {

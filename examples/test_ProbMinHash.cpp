@@ -16,7 +16,6 @@
 #include "InvertedIndex.h"
 #include "common.h"
 #include "kseq.h"
-#include "phmap.h"
 
 #include <zlib.h>
 #include <sys/time.h>
@@ -59,46 +58,37 @@ int main(int argc, char* argv[])
     static const uint64_t SEED  = 42;
     const int mSize = static_cast<int>(M);
 
-    // ── Phase 1: Sketch + local inverted index ───────────────────────────────
+    // ── Phase 1: Sketch + native index keys ──────────────────────────────────
     vector<int> sketchSizes(N, mSize);
     vector<vector<uint64_t>> skKeys(N);
 
-    const int actualThreads = min(nThreads, N);
-    vector<phmap::flat_hash_map<uint64_t, vector<uint32_t>>> threadIdx(actualThreads);
+    const int actualThreads = max(1, min(nThreads, N));
 
     double t0 = get_sec();
 
-    #pragma omp parallel num_threads(actualThreads)
-    {
-        int tid = omp_get_thread_num();
-        auto& localIdx = threadIdx[tid];
+    #pragma omp parallel for num_threads(actualThreads) schedule(dynamic)
+    for (int t = 0; t < N; t++) {
+        gzFile fp = gzopen(fileList[t].c_str(), "r");
+        if (!fp) continue;
+        kseq_t* ks = kseq_init(fp);
 
-        #pragma omp for schedule(dynamic)
-        for (int t = 0; t < N; t++) {
-            gzFile fp = gzopen(fileList[t].c_str(), "r");
-            if (!fp) continue;
-            kseq_t* ks = kseq_init(fp);
-
-            Sketch::ProbMinHash4 sk(M, KSIZE, SEED);
-            while (kseq_read(ks) >= 0) {
-                uint64_t L = static_cast<uint64_t>(ks->seq.l);
-                if (L >= static_cast<uint64_t>(KSIZE))
-                    sk.updateEntropy(ks->seq.s, L);
-            }
-            kseq_destroy(ks);
-            gzclose(fp);
-
-            sk.getInvertedIndexKeys(skKeys[t]);
-            for (auto key : skKeys[t])
-                localIdx[key].push_back(static_cast<uint32_t>(t));
+        Sketch::ProbMinHash4 sk(M, KSIZE, SEED);
+        while (kseq_read(ks) >= 0) {
+            uint64_t L = static_cast<uint64_t>(ks->seq.l);
+            if (L >= static_cast<uint64_t>(KSIZE))
+                sk.updateEntropy(ks->seq.s, L);
         }
+        kseq_destroy(ks);
+        gzclose(fp);
+
+        sk.getInvertedIndexKeys(skKeys[t]);
     }
 
     double t1 = get_sec();
-    cerr << "sketch + local index: " << t1 - t0 << " s" << endl;
+    cerr << "sketch time: " << t1 - t0 << " s" << endl;
 
     // ── Phase 2: Build CSR inverted index ────────────────────────────────────
-    auto csrIdx = Sketch::buildCSRIndex<uint64_t>(threadIdx, nThreads);
+    auto csrIdx = Sketch::buildCSRIndexFromKeys<uint64_t>(skKeys, N, actualThreads);
     double t2 = get_sec();
     cerr << "build CSR index: " << t2 - t1 << " s" << endl;
 

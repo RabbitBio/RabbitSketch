@@ -157,6 +157,12 @@ if (CXXAPI)
 		add_test(NAME bindash_index_thread_limit COMMAND bindash_index_test)
 		set_tests_properties(bindash_index_thread_limit PROPERTIES
 			ENVIRONMENT "OMP_THREAD_LIMIT=1")
+		add_executable(inverted_index_test tests/inverted_index_test.cpp)
+		target_link_libraries(inverted_index_test rabbitsketch_static)
+		add_test(NAME inverted_index COMMAND inverted_index_test)
+		add_test(NAME inverted_index_thread_limit COMMAND inverted_index_test)
+		set_tests_properties(inverted_index_thread_limit PROPERTIES
+			ENVIRONMENT "OMP_THREAD_LIMIT=1")
 		add_executable(setsketch_test tests/setsketch_test.cpp)
 		target_link_libraries(setsketch_test rabbitsketch_static)
 		add_test(NAME setsketch COMMAND setsketch_test)

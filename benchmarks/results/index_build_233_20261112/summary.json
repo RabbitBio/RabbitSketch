@@ -1,0 +1,20 @@
+{
+  "fastkmv": {
+    "index_speedup": 2.551903983322793,
+    "index_peak_memory_reduction_percent": 45.899460409057845,
+    "query_time_change_percent": 22.217538563091722,
+    "index_query_time_change_percent": 6.289699297703533,
+    "original_sketch_seconds": 76.953603151,
+    "output_rows": 400999208,
+    "matches_previous_full_output": true
+  },
+  "probminhash": {
+    "index_speedup": 3.0280686115189397,
+    "index_peak_memory_reduction_percent": 59.04787941107441,
+    "query_time_change_percent": 16.814018583657386,
+    "index_query_time_change_percent": -7.5118776601285635,
+    "original_sketch_seconds": 207.194832873,
+    "output_rows": 403584861,
+    "matches_previous_full_output": true
+  }
+}

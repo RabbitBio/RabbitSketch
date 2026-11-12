@@ -1,0 +1,11 @@
+{
+  "files": 208753,
+  "keys": 213763072,
+  "empty_sketches": 0,
+  "sketch_seconds": 76.953603151,
+  "snapshot_write_seconds": 1.218135633,
+  "peak_rss_kib": 2263152,
+  "process_seconds": 78.33516473695636,
+  "snapshot_sha256": "e00465742c20267bcb5a3ddffff598b38505d30b7cba376639f0301554339ada",
+  "snapshot_bytes": 1710939624
+}

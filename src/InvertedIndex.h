@@ -2,11 +2,12 @@
  * InvertedIndex.h – generic inverted-index module for sketch-based all-to-all
  * distance computation.
  *
- * Header-only, templated on key type (uint32_t or uint64_t).
+ * Header-only, templated on integer or exact composite keys.
  *
  * Workflow:
- *   1. Caller builds per-thread local inverted indices during sketch construction.
- *   2. buildCSRIndex()  – 64-shard parallel merge + singleton removal + CSR flatten.
+ *   1. Caller extracts each sketch's native index keys.
+ *   2. buildCSRIndexFromKeys() – parallel bucket scatter/sort, singleton removal,
+ *      and CSR flattening. Mixing selects buckets without changing stored keys.
  *   3. computeDistances() – posting-list traversal with stamp/epoch counting,
  *      caller-provided Jaccard lambda, minCommon pruning, and Mash distance output.
  */
@@ -48,7 +49,7 @@ struct InvertedIndex {
 // ─────────────────────────────────────────────────────────────────────────────
 // buildCSRIndexFromKeys – fast path bypassing per-thread phmap inserts.
 //
-//   1. Per-thread per-bucket counts of (key, sid) pairs (1024 high-bit buckets)
+//   1. Per-partition per-bucket counts of (key, sid) pairs (1024 buckets)
 //   2. Compute per-thread per-bucket write offsets (parallel-safe scatter)
 //   3. Scatter pairs into bucket-grouped flat array
 //   4. Sort each bucket by key (parallel across buckets)
@@ -224,20 +225,30 @@ InvertedIndex<KeyT> buildCSRIndexFromKeys(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Integer-key callers retain their high-bit radix partitioning. A custom
-// bucket function returns [0,1024), supporting exact composite keys as well.
+// A bottom-k or threshold sketch's raw high bits are mostly zero. Mix only
+// for bucket selection so these keys can use all sorting tasks while the
+// original values remain intact for lookup and native sketch verification.
 // ─────────────────────────────────────────────────────────────────────────────
+struct MixedIndexBucket {
+    size_t operator()(uint64_t key) const {
+        key += UINT64_C(0x9e3779b97f4a7c15);
+        key = (key ^ (key >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+        key = (key ^ (key >> 27)) * UINT64_C(0x94d049bb133111eb);
+        return static_cast<size_t>((key ^ (key >> 31)) >> 54);
+    }
+};
+
+// Custom bucket functions also return [0,1024), e.g. for composite keys.
 template<typename KeyT>
 InvertedIndex<KeyT> buildCSRIndexFromKeys(
     const std::vector<std::vector<KeyT>>& skKeys, int N, int nThreads)
 {
-    constexpr int shift = static_cast<int>(sizeof(KeyT) * 8) - 10;
-    return buildCSRIndexFromKeys<KeyT>(skKeys, N, nThreads,
-        [](KeyT key) { return static_cast<size_t>(key) >> shift; });
+    return buildCSRIndexFromKeys<KeyT>(skKeys, N, nThreads, MixedIndexBucket{});
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Phase 2: merge thread-local maps → singleton removal → CSR flatten
+// Compatibility path for callers that already own thread-local maps.
+// New key-array callers use buildCSRIndexFromKeys() above.
 // ─────────────────────────────────────────────────────────────────────────────
 template<typename KeyT>
 InvertedIndex<KeyT> buildCSRIndex(

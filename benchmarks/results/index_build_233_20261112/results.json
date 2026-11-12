@@ -1,0 +1,94 @@
+[
+  {
+    "files": 208753,
+    "load_seconds": 0.943629478,
+    "restore_seconds": 1.008555693,
+    "index_seconds": 8.37526046,
+    "index_peak_rss_kib": 14677044,
+    "index_keys": 9589365,
+    "postings": 201387197,
+    "query_seconds": 35.284596427,
+    "index_query_seconds": 43.659856887,
+    "internal_total_seconds": 45.612185741,
+    "algorithm": "fastkmv",
+    "mode": "map",
+    "process_seconds": 46.53824329376221,
+    "process_peak_rss_kib": 14677044,
+    "output_digest": {
+      "rows": 400999208,
+      "bytes": 39639821785,
+      "canonical_xxh3_128_sum": "c5c9bad853aaf2826e08a3a5c381abaa",
+      "canonical_xxh3_128_xor": "9a0ae08935c2ec8dc265ea3956999856"
+    },
+    "matches_historical_full_output": true
+  },
+  {
+    "files": 208753,
+    "load_seconds": 0.911804157,
+    "restore_seconds": 0.989945472,
+    "index_seconds": 3.281965354,
+    "index_peak_rss_kib": 7940360,
+    "index_keys": 9589365,
+    "postings": 201387197,
+    "query_seconds": 43.123965245,
+    "index_query_seconds": 46.405930599,
+    "internal_total_seconds": 48.3078108,
+    "algorithm": "fastkmv",
+    "mode": "bucket",
+    "process_seconds": 48.78165372181684,
+    "process_peak_rss_kib": 7940360,
+    "output_digest": {
+      "rows": 400999208,
+      "bytes": 39639821785,
+      "canonical_xxh3_128_sum": "c5c9bad853aaf2826e08a3a5c381abaa",
+      "canonical_xxh3_128_xor": "9a0ae08935c2ec8dc265ea3956999856"
+    },
+    "matches_historical_full_output": true
+  },
+  {
+    "files": 208753,
+    "load_seconds": 0.936092865,
+    "restore_seconds": 4e-08,
+    "index_seconds": 9.002061116,
+    "index_peak_rss_kib": 15202192,
+    "index_keys": 10916376,
+    "postings": 197777136,
+    "query_seconds": 22.005212077,
+    "index_query_seconds": 31.007273193,
+    "internal_total_seconds": 31.94348885,
+    "algorithm": "probminhash",
+    "mode": "map",
+    "process_seconds": 32.479705282486975,
+    "process_peak_rss_kib": 15202192,
+    "output_digest": {
+      "rows": 403584861,
+      "bytes": 39894580260,
+      "canonical_xxh3_128_sum": "ce2432bd0e832e1504391e1decfdb5ad",
+      "canonical_xxh3_128_xor": "c88c265c261e2c2ebf7cba834c18de71"
+    },
+    "matches_historical_full_output": true
+  },
+  {
+    "files": 208753,
+    "load_seconds": 0.920027231,
+    "restore_seconds": 4.4e-08,
+    "index_seconds": 2.97287224,
+    "index_peak_rss_kib": 6225620,
+    "index_keys": 10916376,
+    "postings": 197777136,
+    "query_seconds": 25.705172525,
+    "index_query_seconds": 28.678044765,
+    "internal_total_seconds": 29.598201678,
+    "algorithm": "probminhash",
+    "mode": "bucket",
+    "process_seconds": 29.880294239148498,
+    "process_peak_rss_kib": 6225620,
+    "output_digest": {
+      "rows": 403584861,
+      "bytes": 39894580260,
+      "canonical_xxh3_128_sum": "ce2432bd0e832e1504391e1decfdb5ad",
+      "canonical_xxh3_128_xor": "c88c265c261e2c2ebf7cba834c18de71"
+    },
+    "matches_historical_full_output": true
+  }
+]
