@@ -12,13 +12,17 @@
 | FastKMV | supported | `min(K)` projection | k、seed、hash profile 相同 |
 | FracMinHash | supported | `max(scaled)` projection | k、seed、hash profile 相同 |
 | HyperLogLog | supported | `min(p)` folding | k、seed、hash profile 相同 |
-| SetSketch | supported | same precision only | `a/base`、rank orientation 相同 |
+| SetSketch | supported | 显式 project 到相同 p；需要保留完整分区最大哈希值 | `a/base`、rank orientation 相同 |
 | KSSD | supported | `max(drlevel)` projection | shuffle 与 reduction 参数相同 |
-| ProbMinHash | supported | same register count only | seed、Top-L、weight semantics 相同 |
-| BinDash | supported | same bin count only | seed、b-bit 参数相同 |
+| ProbMinHash | supported | 显式前缀 project 到相同寄存器数，必须来自相同原始采样族 | seed、原始寄存器数、Top-L、weight semantics 相同 |
+| BinDash | supported | 显式 project 到整除源规模的相同槽位数，需要完整桶最小值 | seed、b-bit 参数相同 |
 | OrderMinHash | supported | shorter sample prefix | k、l、seed、orientation 相同 |
 
 ## 状态含义
+
+2026-11-15 新增的显式投影入口和状态要求见[统一操作 API](rabbitsketch2_api_interfaces.md)。
+SetSketch、ProbMinHash 和 BinDash 的成对查询仍要求输入具有兼容的相同分辨率；
+查询规划器不会自动执行上述新投影。
 
 - `Supported`：可以执行请求的 metric；
 - `Unsupported`：算法或 payload 没有该估计器，或 pair 是不同 backend；

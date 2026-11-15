@@ -4,6 +4,10 @@
 
 本文描述当前高层生产接口：统一配置、一次 FASTX 读取、多算法内存构建和统一查询。
 
+2026-11-15 新增七种算法的统一 `merge`、`project`、`store_hashes`、`index_dict`。
+具体操作语义、辅助状态开销及示例见[统一操作 API](rabbitsketch2_api_interfaces.md)。
+统一 `cardinality` 扩展限于 HLL、SetSketch。
+
 ## 1. 数据流
 
 ```text

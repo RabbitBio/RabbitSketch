@@ -114,6 +114,10 @@ public:
 
     /** Merge at min(K1,K2); incompatible rank spaces raise invalid_argument. */
     FastKMV merge(const FastKMV& other) const;
+    std::vector<uint64_t> storeHashes() const {
+        const uint64_t* values = getRegisters();
+        return std::vector<uint64_t>(values, values + size_);
+    }
 
     /** Sorted view, cached until a subsequent accepted update. */
     const uint64_t* getRegisters() const { ensureSorted(); return vals_.get(); }

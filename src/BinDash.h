@@ -12,7 +12,7 @@
  * Interface mirrors HyperLogLog / ProbMinHash4 / FastKMV in this library:
  *   update(seq, length) – ingest a DNA/RNA sequence (canonical k-mers)
  *   jaccard(other)      – estimated Jaccard similarity [0, 1]
- *   distance(other)     – 1 - jaccard
+ *   distance(other)     – Mash distance
  */
 
 #ifndef _BINDASH_H_
@@ -36,7 +36,8 @@ public:
     explicit BinDash(uint32_t sketchsize64 = 32,
                      int      kmer_size    = 21,
                      uint32_t bbits        = 16,
-                     uint64_t seed         = 42);
+                     uint64_t seed         = 42,
+                     bool retain_operations = true);
 
     static BinDash fromPacked(uint32_t sketchsize64,
                               int kmer_size,
@@ -60,12 +61,21 @@ public:
     void update(const char* seq);
 
     /**
-     * Explicitly finalize (densify + bit-pack + free temporary signs_).
+     * Explicitly finalize (densify + bit-pack). By default an undensified
+     * copy is retained for merge/project. retain_operations=false releases
+     * all full minima and keeps only comparison-ready packed signatures.
      * Called automatically on first jaccard()/distance(), but should be
      * called explicitly before multi-threaded distance computation.
      */
     void finalize();
     bool isSealed() const noexcept { return finalized_; }
+    /** Exact union and divisor-bin projection need the uncompressed minima. */
+    BinDash merge(const BinDash& other) const;
+    BinDash project(uint32_t target_bins) const;
+    bool supportsOperations() const noexcept {
+        return !finalized_ || raw_signs_.size() == nbins_;
+    }
+    std::vector<uint64_t> storeHashes() const { return packedSignatures(); }
 
     /**
      * Estimated Jaccard similarity in [0, 1].
@@ -96,7 +106,9 @@ public:
     uint32_t getNumBins()     const { return nbins_; }
     uint32_t getBbits()       const { return bbits_; }
     int      getKmerSize()    const { return kmer_size_; }
-    size_t   memoryBytes()    const { return usigs_.size() * sizeof(uint64_t); }
+    size_t   memoryBytes()    const {
+        return (usigs_.size() + signs_.size() + raw_signs_.size()) * sizeof(uint64_t);
+    }
     uint32_t getRawNonempty() const { return raw_nonempty_; }
     uint64_t getSeed()        const { return seed_; }
     const std::vector<uint64_t>& packedSignatures() const {
@@ -136,6 +148,8 @@ private:
 
     std::vector<uint64_t> signs_;   // [nbins_] per-bin minimum hash (temporary)
     std::vector<uint64_t> usigs_;   // [sketchsize64_*bbits_] bit-packed (final)
+    std::vector<uint64_t> raw_signs_; // undensified minima for merge/project
+    bool retain_operations_;
     mutable bool finalized_;
     uint32_t raw_nonempty_;
 
@@ -143,6 +157,7 @@ private:
     void densify();
     void packBits();
     double cardinalityEstimate() const;
+    const std::vector<uint64_t>& operationMinima() const;
 };
 
 } // namespace Sketch

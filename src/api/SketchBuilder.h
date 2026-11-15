@@ -24,6 +24,24 @@ class SetSketch;
 
 namespace API {
 
+class SketchIndex;
+
+/** Exact composite index key; position is significant for register signatures. */
+struct IndexKey {
+    uint64_t value = 0;
+    uint32_t position = 0;
+    bool operator==(const IndexKey& other) const noexcept {
+        return value == other.value && position == other.position;
+    }
+    bool operator<(const IndexKey& other) const noexcept {
+        return position < other.position ||
+            (position == other.position && value < other.value);
+    }
+    friend size_t hash_value(const IndexKey& key) noexcept {
+        return static_cast<size_t>(Rank::RankStream::fmix64(key.value, key.position));
+    }
+};
+
 /** Immutable type-erased sketch returned by the unified FASTX builder. */
 class BuiltSketch {
 public:
@@ -43,6 +61,15 @@ public:
     Query::Result query(
         const BuiltSketch& other,
         const Query::Request& request = Query::Request()) const;
+    BuiltSketch merge(const BuiltSketch& other) const;
+    BuiltSketch project(uint32_t target_resolution) const;
+    /** Native payload export, not a complete serialization or input k-mer list. */
+    std::vector<uint64_t> storeHashes() const;
+    std::vector<IndexKey> indexKeys() const;
+    /** Public cardinality extension is intentionally limited to HLL/SetSketch. */
+    double cardinality() const;
+    static SketchIndex indexDict(const std::vector<BuiltSketch>& sketches,
+                                 int num_threads = 1);
 
 private:
     struct Impl;

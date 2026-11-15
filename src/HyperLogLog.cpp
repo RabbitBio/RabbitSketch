@@ -28,7 +28,7 @@ static void validate_hll_kmer_size(int kmer_size) {
 } // namespace
 
 HyperLogLog::HyperLogLog(int np, int kmerlen)
-	: HyperLogLog(np, kmerlen, 42, false) {}
+	: HyperLogLog(np, kmerlen, 42, true) {}
 
 HyperLogLog::HyperLogLog(int np, bool track_witnesses, int kmerlen)
 	: HyperLogLog(np, kmerlen, 42, track_witnesses) {}
@@ -372,7 +372,7 @@ HyperLogLog HyperLogLog::project(uint32_t target_precision) const {
 	}
 	if (target_precision == np_) return *this;
 
-	HyperLogLog ret(static_cast<int>(target_precision), kmerLen_, seed_, false);
+	HyperLogLog ret(static_cast<int>(target_precision), kmerLen_, seed_, track_witnesses_);
 	const uint32_t delta = np_ - target_precision;
 	const uint32_t suffix_mask = (uint32_t(1) << delta) - 1;
 
@@ -396,6 +396,8 @@ HyperLogLog HyperLogLog::project(uint32_t target_precision) const {
 #endif
 			candidate = static_cast<uint8_t>(leading + 1);
 		}
+		if (track_witnesses_ && candidate > ret.core_[low_index])
+			ret.witnesses_[low_index] = witnesses_[high_index];
 		ret.core_[low_index] = std::max(ret.core_[low_index], candidate);
 	}
 	ret.is_calculated_ = 0;

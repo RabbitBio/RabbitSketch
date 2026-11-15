@@ -734,6 +734,30 @@ namespace Sketch{
 		return projected;
 	}
 
+    Kssd Kssd::merge(const Kssd& other) const {
+        metadata().requireSameFamily(other.metadata(), "Kssd::merge", true);
+        const int common = std::max(drlevel_, other.drlevel_);
+        Kssd result = project(common);
+        Kssd right = other.project(common);
+        if (result.use64) {
+            std::vector<uint64_t> merged;
+            merged.reserve(result.hashList64.size() + right.hashList64.size());
+            std::set_union(result.hashList64.begin(), result.hashList64.end(),
+                           right.hashList64.begin(), right.hashList64.end(),
+                           std::back_inserter(merged));
+            result.hashList64 = std::move(merged);
+        } else {
+            std::vector<uint32_t> merged;
+            merged.reserve(result.hashList.size() + right.hashList.size());
+            std::set_union(result.hashList.begin(), result.hashList.end(),
+                           right.hashList.begin(), right.hashList.end(),
+                           std::back_inserter(merged));
+            result.hashList = std::move(merged);
+        }
+        result.finalize();
+        return result;
+    }
+
 	vector<uint32_t> Kssd::storeHashes(){
 		return getHashes();
 	}

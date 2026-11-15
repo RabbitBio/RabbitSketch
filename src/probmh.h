@@ -231,6 +231,13 @@ public:
      * Both sketches must have the same parameters.
      */
     ProbMinHash4 merge(const ProbMinHash4& other) const;
+    /** Sealed prefix view of the original race; preserves its source size.
+     * Only projections from the same source race are mutually compatible. */
+    ProbMinHash4 project(uint32_t target_registers) const;
+    uint32_t getSourceM() const noexcept { return source_m_; }
+    std::vector<uint64_t> storeHashes() const {
+        return std::vector<uint64_t>(winners_.get(), winners_.get() + m_);
+    }
 
     /**
      * Return pointer to the m raw register values (for serialization / LSH).
@@ -306,6 +313,7 @@ private:
     getOrBuildTedParams(uint32_t m, double& out_firstBoundaryInv);
 
     uint32_t           m_;
+    uint32_t           source_m_; // original race size, retained by projection
     int                kmer_size_;
     uint64_t           seed_;
     uint32_t           max_L_;    // Route C: max updates per element (m_ = unlimited)

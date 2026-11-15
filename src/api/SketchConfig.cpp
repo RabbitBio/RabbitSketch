@@ -144,6 +144,7 @@ uint64_t SketchConfig::fingerprint() const noexcept {
     hashInteger(hash, canonical ? 1 : 0, 1);
     hashInteger(hash, track_abundance ? 1 : 0, 1);
     hashInteger(hash, homopolymer_compressed ? 1 : 0, 1);
+    hashInteger(hash, retain_operation_state ? 1 : 0, 1);
     hashInteger(hash, min_abundance, 4);
     hashInteger(hash, max_abundance, 4);
     hashInteger(hash, static_cast<uint16_t>(minimum_base_quality), 2);
@@ -255,6 +256,16 @@ Capabilities capabilitiesFor(Algorithm algorithm) noexcept {
             flags = addFlag(flags, Capability::OrderDistance);
             flags = addFlag(flags, Capability::SearchKeys);
             break;
+    }
+    // The unified public cardinality extension belongs to HLL/SetSketch.
+    // Other native estimators retain internal cardinality helpers for queries.
+    if (algorithm != Algorithm::HyperLogLog && algorithm != Algorithm::SetSketch)
+        flags &= ~static_cast<uint64_t>(Capability::Cardinality);
+    if (algorithm != Algorithm::LegacyMinHash && algorithm != Algorithm::OrderMinHash) {
+        flags = addFlag(flags, Capability::Merge);
+        flags = addFlag(flags, Capability::Project);
+        flags = addFlag(flags, Capability::StoreHashes);
+        flags = addFlag(flags, Capability::IndexDict);
     }
     result.flags = flags;
     return result;

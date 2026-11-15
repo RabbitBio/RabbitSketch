@@ -540,6 +540,7 @@ namespace Sketch{
        * for filtering/remapping.  A denser state cannot be reconstructed.
        */
       Kssd project(int target_drlevel) const;
+      Kssd merge(const Kssd& other) const;
       // Materialize sorted hashes once, compact storage and release the build set.
       // Single-threaded; call once per sketch before pairwise distance loop.
       void finalize();
@@ -1008,11 +1009,14 @@ namespace Sketch{
        * responsible for following the contract reported by metadata().
        */
       void addFingerprint(uint64_t fingerprint);
-      /// Exact HLL precision down-projection. Projected lower-precision states
-      /// intentionally drop witnesses because native high-p winners do not
-      /// contain enough information to reconstruct low-p winner identities.
+      /// Exact HLL precision down-projection. If available, retain an input
+      /// witness supporting each folded register (ties need not match a
+      /// directly built sketch's witness identity).
       HyperLogLog project(uint32_t target_precision) const;
       HyperLogLog merge(const HyperLogLog &other) const;
+      std::vector<uint64_t> storeHashes() const {
+          return std::vector<uint64_t>(core_.begin(), core_.end());
+      }
       void printSketch();
       double distance(const HyperLogLog &h2) const {return 1.0 - jaccard_index(h2);}
       //double jaccard_index(HyperLogLog &h2); 

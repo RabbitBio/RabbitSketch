@@ -35,6 +35,7 @@ public:
 
     FracMinHash project(uint32_t target_scaled) const;
     FracMinHash merge(const FracMinHash& other) const;
+    std::vector<uint64_t> storeHashes() const { return hashes(); }
 
     double jaccard(const FracMinHash& other) const;
     double containment(const FracMinHash& other) const;

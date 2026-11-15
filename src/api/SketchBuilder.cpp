@@ -11,6 +11,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <cstring>
 #include <iomanip>
 #include <iterator>
 #include <limits>
@@ -57,23 +59,27 @@ BuiltSketch BuiltSketch::fromLegacyMinHash(
 }
 
 BuiltSketch BuiltSketch::fromFastKMV(FastKMV sketch) {
+    sketch.finalize();
     return BuiltSketch(std::make_shared<Impl>(
         Algorithm::FastKMV, std::make_shared<FastKMV>(std::move(sketch))));
 }
 
 BuiltSketch BuiltSketch::fromFracMinHash(FracMinHash sketch) {
+    sketch.finalize();
     return BuiltSketch(std::make_shared<Impl>(
         Algorithm::FracMinHash,
         std::make_shared<FracMinHash>(std::move(sketch))));
 }
 
 BuiltSketch BuiltSketch::fromHyperLogLog(HyperLogLog sketch) {
+    (void)sketch.cardinality();
     return BuiltSketch(std::make_shared<Impl>(
         Algorithm::HyperLogLog,
         std::make_shared<HyperLogLog>(std::move(sketch))));
 }
 
 BuiltSketch BuiltSketch::fromSetSketch(SetSketch sketch) {
+    (void)sketch.cardinality();
     return BuiltSketch(std::make_shared<Impl>(
         Algorithm::SetSketch,
         std::make_shared<SetSketch>(std::move(sketch))));
@@ -81,18 +87,21 @@ BuiltSketch BuiltSketch::fromSetSketch(SetSketch sketch) {
 
 BuiltSketch BuiltSketch::fromKssd(std::unique_ptr<Kssd> sketch) {
     if (!sketch) throw std::invalid_argument("KSSD sketch must not be null");
+    sketch->finalize();
     std::shared_ptr<Kssd> shared(std::move(sketch));
     return BuiltSketch(std::make_shared<Impl>(
         Algorithm::KSSD, std::move(shared)));
 }
 
 BuiltSketch BuiltSketch::fromProbMinHash(ProbMinHash4 sketch) {
+    sketch.finalize();
     return BuiltSketch(std::make_shared<Impl>(
         Algorithm::ProbMinHash,
         std::make_shared<ProbMinHash4>(std::move(sketch))));
 }
 
 BuiltSketch BuiltSketch::fromBinDash(BinDash sketch) {
+    sketch.finalize();
     return BuiltSketch(std::make_shared<Impl>(
         Algorithm::BinDash, std::make_shared<BinDash>(std::move(sketch))));
 }
@@ -137,6 +146,107 @@ Query::Result BuiltSketch::query(
                     return rejected();
                 }, other.impl_->state);
         }, impl_->state);
+}
+
+BuiltSketch BuiltSketch::merge(const BuiltSketch& other) const {
+    if (algorithm() != other.algorithm())
+        throw std::invalid_argument("merge requires the same sketch algorithm");
+    return std::visit([&](const auto& left) -> BuiltSketch {
+        using T = typename std::decay_t<decltype(left)>::element_type;
+        const auto& right = std::get<std::shared_ptr<T>>(other.impl_->state);
+        if constexpr (std::is_same_v<T, FastKMV>)
+            return fromFastKMV(left->merge(*right));
+        else if constexpr (std::is_same_v<T, FracMinHash>)
+            return fromFracMinHash(left->merge(*right));
+        else if constexpr (std::is_same_v<T, HyperLogLog>)
+            return fromHyperLogLog(left->merge(*right));
+        else if constexpr (std::is_same_v<T, SetSketch>)
+            return fromSetSketch(left->merge(*right));
+        else if constexpr (std::is_same_v<T, Kssd>)
+            return fromKssd(std::make_unique<Kssd>(left->merge(*right)));
+        else if constexpr (std::is_same_v<T, ProbMinHash4>)
+            return fromProbMinHash(left->merge(*right));
+        else if constexpr (std::is_same_v<T, BinDash>)
+            return fromBinDash(left->merge(*right));
+        else throw std::logic_error("merge is not exposed for this legacy backend");
+    }, impl_->state);
+}
+
+BuiltSketch BuiltSketch::project(uint32_t target) const {
+    return std::visit([&](const auto& state) -> BuiltSketch {
+        using T = typename std::decay_t<decltype(state)>::element_type;
+        if constexpr (std::is_same_v<T, FastKMV>) return fromFastKMV(state->project(target));
+        else if constexpr (std::is_same_v<T, FracMinHash>) return fromFracMinHash(state->project(target));
+        else if constexpr (std::is_same_v<T, HyperLogLog>) return fromHyperLogLog(state->project(target));
+        else if constexpr (std::is_same_v<T, SetSketch>) return fromSetSketch(state->project(target));
+        else if constexpr (std::is_same_v<T, Kssd>) {
+            if (target > static_cast<uint32_t>(std::numeric_limits<int>::max()))
+                throw std::invalid_argument("KSSD target drlevel exceeds integer range");
+            return fromKssd(std::make_unique<Kssd>(state->project(static_cast<int>(target))));
+        } else if constexpr (std::is_same_v<T, ProbMinHash4>) return fromProbMinHash(state->project(target));
+        else if constexpr (std::is_same_v<T, BinDash>) return fromBinDash(state->project(target));
+        else throw std::logic_error("project is not exposed for this legacy backend");
+    }, impl_->state);
+}
+
+std::vector<uint64_t> BuiltSketch::storeHashes() const {
+    return std::visit([](const auto& state) -> std::vector<uint64_t> {
+        using T = typename std::decay_t<decltype(state)>::element_type;
+        if constexpr (std::is_same_v<T, MinHash> || std::is_same_v<T, OrderMinHash>)
+            throw std::logic_error("store_hashes is not exposed for this legacy backend");
+        else if constexpr (std::is_same_v<T, Kssd>) {
+            if (!state->getHashes64().empty()) return state->getHashes64();
+            const auto& values = state->getHashes();
+            return std::vector<uint64_t>(values.begin(), values.end());
+        } else return state->storeHashes();
+    }, impl_->state);
+}
+
+double BuiltSketch::cardinality() const {
+    return std::visit([](const auto& state) -> double {
+        using T = typename std::decay_t<decltype(state)>::element_type;
+        if constexpr (std::is_same_v<T, HyperLogLog> || std::is_same_v<T, SetSketch>)
+            return state->cardinality();
+        else throw std::logic_error("cardinality is an HLL/SetSketch extension");
+    }, impl_->state);
+}
+
+std::vector<IndexKey> BuiltSketch::indexKeys() const {
+    std::vector<IndexKey> keys;
+    std::visit([&](const auto& state) {
+        using T = typename std::decay_t<decltype(state)>::element_type;
+        if constexpr (std::is_same_v<T, HyperLogLog> || std::is_same_v<T, SetSketch>) {
+            if (!state->tracksWitnesses())
+                throw std::logic_error("index_dict requires retained HLL/SetSketch witnesses");
+            const auto& witnesses = state->getWitnesses();
+            const auto& ranks = state->getCore();
+            for (size_t i = 0; i < witnesses.size(); ++i)
+                if (witnesses[i] != 0 || ranks[i] != 0)
+                    keys.push_back({witnesses[i], 0});
+        } else if constexpr (std::is_same_v<T, BinDash>) {
+            if (state->getRawNonempty() != 0)
+                for (uint32_t i = 0; i < state->getNumBins(); ++i)
+                    keys.push_back({state->getBinValue(i), i});
+        } else if constexpr (std::is_same_v<T, ProbMinHash4>) {
+            for (uint32_t i = 0; i < state->getM(); ++i) {
+                const double value = state->getRegisters()[i];
+                if (!std::isfinite(value)) continue;
+                uint64_t identity = state->getWinners()[i];
+                if (state->weightSemantics() == Rank::WeightSemantics::UnweightedSet) {
+                    // Native unweighted Jaccard compares race values.
+                    const double normalized = value == 0.0 ? 0.0 : value;
+                    std::memcpy(&identity, &normalized, sizeof(identity));
+                }
+                keys.push_back({identity, i});
+            }
+        } else {
+            for (const uint64_t value : storeHashes()) keys.push_back({value, 0});
+        }
+    }, impl_->state);
+    if (keys.empty()) keys.push_back({0, std::numeric_limits<uint32_t>::max()});
+    std::sort(keys.begin(), keys.end());
+    keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
+    return keys;
 }
 
 namespace {
@@ -236,7 +346,7 @@ class HllLane final : public Lane {
 public:
     explicit HllLane(const SketchConfig& config)
         : Lane(config), sketch_(config.resolution, config.kmer_size,
-                                config.seed, false) {}
+                                config.seed, config.retain_operation_state) {}
     void updateSegment(const std::string& sequence) override {
         std::string mutable_sequence = sequence;
         sketch_.update(mutable_sequence.data());
@@ -253,7 +363,7 @@ public:
     explicit SetSketchLane(const SketchConfig& config)
         : Lane(config), sketch_(
               config.resolution, config.setsketch_base, config.setsketch_a,
-              config.kmer_size, false, config.seed) {}
+              config.kmer_size, config.retain_operation_state, config.seed) {}
     void updateSegment(const std::string& sequence) override {
         std::string mutable_sequence = sequence;
         sketch_.update(mutable_sequence.data(), mutable_sequence.size());
@@ -331,7 +441,8 @@ class BinDashLane final : public Lane {
 public:
     explicit BinDashLane(const SketchConfig& config)
         : Lane(config), sketch_(config.resolution / 64,
-              config.kmer_size, config.bindash_bits, config.seed) {}
+              config.kmer_size, config.bindash_bits, config.seed,
+              config.retain_operation_state) {}
     void updateSegment(const std::string& sequence) override {
         sketch_.update(sequence.data(), sequence.size());
     }

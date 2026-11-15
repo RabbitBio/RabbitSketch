@@ -57,7 +57,7 @@ static const uint8_t BD_ENC_LUT[256] = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 BinDash::BinDash(uint32_t sketchsize64, int kmer_size,
-                 uint32_t bbits, uint64_t seed)
+                 uint32_t bbits, uint64_t seed, bool retain_operations)
     : sketchsize64_(sketchsize64),
       kmer_size_(kmer_size),
       bbits_(bbits),
@@ -65,6 +65,7 @@ BinDash::BinDash(uint32_t sketchsize64, int kmer_size,
       nbins_(sketchsize64 * 64),
       signs_(sketchsize64 * 64, UINT64_MAX),
       usigs_(),
+      retain_operations_(retain_operations),
       finalized_(false),
       raw_nonempty_(0)
 {
@@ -82,7 +83,7 @@ BinDash BinDash::fromPacked(uint32_t sketchsize64,
                             uint64_t seed,
                             uint32_t raw_nonempty,
                             const std::vector<uint64_t>& signatures) {
-    BinDash result(sketchsize64, kmer_size, bbits, seed);
+    BinDash result(sketchsize64, kmer_size, bbits, seed, false);
     const size_t expected = static_cast<size_t>(sketchsize64) * bbits;
     if (signatures.size() != expected)
         throw std::invalid_argument(
@@ -247,10 +248,54 @@ void BinDash::packBits() {
 
 void BinDash::finalize() {
     if (finalized_) return;
+    if (retain_operations_) raw_signs_ = signs_;
     densify();
     packBits();
     { std::vector<uint64_t>().swap(signs_); }
     finalized_ = true;
+}
+
+const std::vector<uint64_t>& BinDash::operationMinima() const {
+    if (!finalized_) return signs_;
+    if (raw_signs_.size() != nbins_)
+        throw std::logic_error(
+            "BinDash merge/project requires retained undensified minima; "
+            "packed signatures alone cannot reconstruct them");
+    return raw_signs_;
+}
+
+BinDash BinDash::merge(const BinDash& other) const {
+    metadata().requireSameFamily(other.metadata(), "BinDash::merge");
+    const auto& left = operationMinima();
+    const auto& right = other.operationMinima();
+    BinDash result(sketchsize64_, kmer_size_, bbits_, seed_);
+    for (uint32_t i = 0; i < nbins_; ++i) {
+        result.signs_[i] = std::min(left[i], right[i]);
+        result.raw_nonempty_ += result.signs_[i] != UINT64_MAX;
+    }
+    result.finalize();
+    return result;
+}
+
+BinDash BinDash::project(uint32_t target_bins) const {
+    if (target_bins == 0 || target_bins % 64 != 0 ||
+        target_bins > nbins_ || nbins_ % target_bins != 0)
+        throw std::invalid_argument(
+            "BinDash::project target bins must be a multiple of 64 dividing source bins");
+    if (target_bins == nbins_) {
+        BinDash result(*this);
+        result.finalize();
+        return result;
+    }
+    const auto& source = operationMinima();
+    BinDash result(target_bins / 64, kmer_size_, bbits_, seed_);
+    for (uint32_t i = 0; i < nbins_; ++i)
+        result.signs_[i % target_bins] =
+            std::min(result.signs_[i % target_bins], source[i]);
+    for (const uint64_t value : result.signs_)
+        result.raw_nonempty_ += value != UINT64_MAX;
+    result.finalize();
+    return result;
 }
 
 void BinDash::ensureFinalized() const {

@@ -566,7 +566,7 @@ ProbMinHash4::getOrBuildTedParams(uint32_t m, double& out_firstBoundaryInv) {
 ProbMinHash4::ProbMinHash4(uint32_t m, int kmer_size, uint64_t seed,
                            uint32_t max_L,
                            Rank::WeightSemantics weight_semantics)
-    : m_(m), kmer_size_(kmer_size), seed_(seed),
+    : m_(m), source_m_(m), kmer_size_(kmer_size), seed_(seed),
       max_L_((max_L == 0) ? m : std::min(max_L, m)),
       total_weight_(0.0),
       weight_semantics_(weight_semantics),
@@ -590,7 +590,7 @@ ProbMinHash4::ProbMinHash4(uint32_t m, int kmer_size, uint64_t seed,
 }
 
 ProbMinHash4::ProbMinHash4(const ProbMinHash4& o)
-    : m_(o.m_), kmer_size_(o.kmer_size_), seed_(o.seed_),
+    : m_(o.m_), source_m_(o.source_m_), kmer_size_(o.kmer_size_), seed_(o.seed_),
       max_L_(o.max_L_),
       total_weight_(o.total_weight_),
       weight_semantics_(o.weight_semantics_),
@@ -606,10 +606,12 @@ ProbMinHash4::ProbMinHash4(const ProbMinHash4& o)
     tracker_.build_from_leaves();
     winners_.reset(new uint64_t[m_]);
     std::copy(o.winners_.get(), o.winners_.get() + m_, winners_.get());
+    if (sealed_) perm_.clear();
 }
 
 ProbMinHash4& ProbMinHash4::operator=(ProbMinHash4 other) {
     std::swap(m_,                other.m_);
+    std::swap(source_m_,         other.source_m_);
     std::swap(kmer_size_,        other.kmer_size_);
     std::swap(seed_,             other.seed_);
     std::swap(max_L_,            other.max_L_);
@@ -665,6 +667,9 @@ Rank::RankMetadata ProbMinHash4::metadata() const {
     meta.seed = seed_;
     meta.parameter_fingerprint = Rank::RankStream::fmix64(
         max_L_, UINT64_C(0x70726f626d682d34));
+    if (source_m_ != m_)
+        meta.parameter_fingerprint = Rank::RankStream::fmix64(
+            meta.parameter_fingerprint, source_m_);
     return meta;
 }
 
@@ -1483,6 +1488,8 @@ double ProbMinHash4::ani(const ProbMinHash4& other) const {
 ProbMinHash4 ProbMinHash4::merge(const ProbMinHash4& other) const {
     metadata().requireSameFamily(other.metadata(), "ProbMinHash4::merge");
     ProbMinHash4 ret(m_, kmer_size_, seed_, max_L_, weight_semantics_);
+    ret.source_m_ = source_m_;
+    ret.max_L_ = max_L_;
     ret.total_weight_ = total_weight_ + other.total_weight_;
 
     const double* __restrict__ a = tracker_.leaves();
@@ -1513,7 +1520,24 @@ ProbMinHash4 ProbMinHash4::merge(const ProbMinHash4& other) const {
 
     // Single O(m) sweep to build the tournament-tree internal nodes.
     ret.tracker_.build_from_leaves();
+    // A projected race must never be updated using target-size parameters.
+    if (source_m_ != m_) ret.finalize();
     return ret;
+}
+
+ProbMinHash4 ProbMinHash4::project(uint32_t target_registers) const {
+    if (target_registers < 2 || target_registers > m_)
+        throw std::invalid_argument(
+            "ProbMinHash::project target register count must be in [2, source count]");
+    ProbMinHash4 result(target_registers, kmer_size_, seed_, max_L_, weight_semantics_);
+    result.source_m_ = source_m_;
+    result.max_L_ = max_L_;
+    result.total_weight_ = total_weight_;
+    std::copy_n(tracker_.leaves(), target_registers, result.tracker_.leaves());
+    std::copy_n(winners_.get(), target_registers, result.winners_.get());
+    result.tracker_.build_from_leaves();
+    result.finalize();
+    return result;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

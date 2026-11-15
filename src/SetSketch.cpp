@@ -272,6 +272,10 @@ void SetSketch::recompute_min() {
 
 // ── add_slow: fallback used by remainder loop (not hot path) ──────────────────
 void SetSketch::add_slow(uint64_t hashval) {
+  if (track_witnesses_) {
+    auto& maximum = witnesses_[hashval >> shift_];
+    maximum = std::max(maximum, hashval);
+  }
   const uint64_t rest = hashval & mask_u_;
   if (rest < global_thresh_) return;
 
@@ -282,7 +286,6 @@ void SetSketch::add_slow(uint64_t hashval) {
   uint8_t k = cur + 1;
   while (k <= q_ && rest >= thresholds_[k]) ++k;
   core_[index] = k;
-  if (track_witnesses_) witnesses_[index] = hashval;
   is_calculated_ = 0;
 
   if (cur == min_reg_) {
@@ -535,9 +538,14 @@ SetSketch SetSketch::project(uint32_t target_precision) const {
     throw std::invalid_argument(
         "SetSketch::project target precision must be in [4, source precision]");
   }
-  throw std::logic_error(
-      "SetSketch native precision folding is not distribution-proven; "
-      "store explicit refinement layers before requesting a lower precision");
+  if (!track_witnesses_)
+    throw std::logic_error(
+        "SetSketch::project needs retained full partition maxima; "
+        "register-only states cannot be folded exactly");
+  SetSketch result(target_precision, base_, a_, kmerLen_, true, seed_);
+  for (const uint64_t fingerprint : witnesses_)
+    if (fingerprint != 0) result.addFingerprint(fingerprint);
+  return result;
 }
 
 SetSketch SetSketch::merge(const SetSketch& other) const {
@@ -703,6 +711,15 @@ void SetSketch::update(char* seq, size_t len) {
       hashvalv[j] = Rank::RankStream::fmix64(resv[j], seed_);
 #endif
 
+    // Retain exact partition maxima before rank/global filtering. Hashes
+    // below the current quantized threshold still matter at lower precision.
+    if (wit) {
+      for (int j = 0; j < lanes; ++j) {
+        if (!lane_valid[j]) continue;
+        auto& maximum = wit[hashvalv[j] >> shift];
+        maximum = std::max(maximum, hashvalv[j]);
+      }
+    }
     // ── SIMD index/rest extraction + global filter ────────────────────────
 #if defined(__AVX512F__)
     {
@@ -729,7 +746,6 @@ void SetSketch::update(char* seq, size_t len) {
           uint8_t k = cur + 1;
           while (k <= qmax && rest >= thresh[k]) ++k;
           core[idx] = k;
-          if (wit) wit[idx] = hashvalv[j];
           loc_is_calc = 0;
 
           if (cur == loc_min_reg) {
@@ -774,7 +790,6 @@ void SetSketch::update(char* seq, size_t len) {
           uint8_t k = cur + 1;
           while (k <= qmax && rest >= thresh[k]) ++k;
           core[idx] = k;
-          if (wit) wit[idx] = hashvalv[j];
           loc_is_calc = 0;
 
           if (cur == loc_min_reg) {
@@ -798,7 +813,6 @@ void SetSketch::update(char* seq, size_t len) {
       uint8_t k = cur + 1;
       while (k <= qmax && rest >= thresh[k]) ++k;
       core[idx] = k;
-      if (wit) wit[idx] = hashvalv[j];
       loc_is_calc = 0;
 
       if (cur == loc_min_reg) {
@@ -815,6 +829,7 @@ void SetSketch::update(char* seq, size_t len) {
       uint64_t res = (fwd_enc <= rev_enc) ? fwd_enc : rev_enc;
       uint64_t hashval = Rank::RankStream::fmix64(res, seed_);
       const uint32_t idx = (uint32_t)(hashval >> shift);
+      if (wit) wit[idx] = std::max(wit[idx], hashval);
       const uint64_t rest = hashval & mask;
       if (rest >= loc_global_thresh) {
         uint8_t cur = core[idx];
@@ -822,7 +837,6 @@ void SetSketch::update(char* seq, size_t len) {
           uint8_t k = cur + 1;
           while (k <= qmax && rest >= thresh[k]) ++k;
           core[idx] = k;
-          if (wit) wit[idx] = hashval;
           loc_is_calc = 0;
           if (cur == loc_min_reg) {
             if (!loc_min_dirty && loc_count_at_min > 0 && --loc_count_at_min == 0)

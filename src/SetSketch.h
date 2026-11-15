@@ -21,7 +21,7 @@ namespace Sketch {
 class SetSketch {
 public:
   SetSketch(int np = 14, double base = 2.0, double a = 5.0, int kmerlen = 32,
-            bool track_witnesses = false, uint64_t seed = 42);
+            bool track_witnesses = true, uint64_t seed = 42);
   /** Restore a validated native register state without original sequence. */
   static SetSketch fromRegisters(uint32_t precision,
                                  double base,
@@ -40,13 +40,15 @@ public:
    */
   void addFingerprint(uint64_t fingerprint) { add_slow(fingerprint); }
   /**
-   * Native SetSketch folding is intentionally not claimed yet: the current
-   * partitioned and quantized state does not retain enough information for a
-   * proven lower-precision projection. Same-precision projection is a copy;
-   * lower precision raises logic_error until a refinement-layer design lands.
+   * Exact folding replays the maximum full fingerprint in every source
+   * partition, including rank-zero partitions. Compact register-only states
+   * cannot reconstruct these refinement values and reject lower precision.
    */
   SetSketch project(uint32_t target_precision) const;
   SetSketch merge(const SetSketch& other) const;
+  std::vector<uint64_t> storeHashes() const {
+    return std::vector<uint64_t>(core_.begin(), core_.end());
+  }
   double cardinality() const;
 
   /// Conditional joint likelihood for this implementation's partitioned
@@ -169,7 +171,7 @@ private:
   void ensure_cardinality() const;
 
   std::vector<uint8_t> core_;
-  std::vector<uint64_t> witnesses_;  // hash that "won" each register
+  std::vector<uint64_t> witnesses_;  // maximum full hash in each partition
   bool track_witnesses_;
   uint32_t np_;
   uint32_t q_;                         // last finite threshold; q+1 is saturation

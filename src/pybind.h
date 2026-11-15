@@ -5,6 +5,7 @@
 #include <pybind11/stl.h>
 #include <limits>
 #include "api/SketchBuilder.h"
+#include "api/SketchOperations.h"
 #include "api/SketchConfig.h"
 #include "api/RuntimeInfo.h"
 #include "api/Version.h"
@@ -18,6 +19,17 @@
 #include "io/FastxReader.h"
 namespace py = pybind11;
 
+template<class T>
+Sketch::API::SketchIndex pythonIndexDict(const std::vector<const T*>& sketches,
+                                       int num_threads) {
+  std::vector<Sketch::API::BuiltSketch> snapshots;
+  snapshots.reserve(sketches.size());
+  for (const T* sketch : sketches) {
+    if (!sketch) throw std::invalid_argument("index_dict sketch must not be None");
+    snapshots.push_back(Sketch::API::toBuiltSketch(*sketch));
+  }
+  return Sketch::API::indexDict(snapshots, num_threads);
+}
 
 
 PYBIND11_MODULE(rabbitsketch, m) {
@@ -122,7 +134,9 @@ PYBIND11_MODULE(rabbitsketch, m) {
     .value("OrderDistance", Sketch::API::Capability::OrderDistance)
     .value("Merge", Sketch::API::Capability::Merge)
     .value("Project", Sketch::API::Capability::Project)
-    .value("SearchKeys", Sketch::API::Capability::SearchKeys);
+    .value("SearchKeys", Sketch::API::Capability::SearchKeys)
+    .value("StoreHashes", Sketch::API::Capability::StoreHashes)
+    .value("IndexDict", Sketch::API::Capability::IndexDict);
 
   py::class_<Sketch::API::SketchConfig>(m, "SketchConfig")
     .def(py::init<>())
@@ -139,6 +153,7 @@ PYBIND11_MODULE(rabbitsketch, m) {
     .def_readwrite("resolution", &Sketch::API::SketchConfig::resolution)
     .def_readwrite("scaled", &Sketch::API::SketchConfig::scaled)
     .def_readwrite("canonical", &Sketch::API::SketchConfig::canonical)
+    .def_readwrite("retain_operation_state", &Sketch::API::SketchConfig::retain_operation_state)
     .def_readwrite("track_abundance",
                    &Sketch::API::SketchConfig::track_abundance)
     .def_readwrite("homopolymer_compressed",
@@ -448,7 +463,7 @@ PYBIND11_MODULE(rabbitsketch, m) {
          py::arg("kmer_size") = 32)
     .def(py::init([](int precision, int kmer_size, uint64_t seed) {
              return Sketch::HyperLogLog(
-                 precision, kmer_size, seed, false);
+                 precision, kmer_size, seed, true);
          }),
          py::arg("precision"), py::arg("kmer_size"), py::arg("seed"))
     .def("jaccard", &Sketch::HyperLogLog::jaccard_index,
@@ -458,6 +473,10 @@ PYBIND11_MODULE(rabbitsketch, m) {
     .def("add_fingerprint", &Sketch::HyperLogLog::addFingerprint)
     .def("project", &Sketch::HyperLogLog::project)
     .def("merge", &Sketch::HyperLogLog::merge,
+         py::call_guard<py::gil_scoped_release>())
+    .def("store_hashes", &Sketch::HyperLogLog::storeHashes)
+    .def_static("index_dict", &pythonIndexDict<Sketch::HyperLogLog>,
+         py::arg("sketches"), py::arg("num_threads") = 1,
          py::call_guard<py::gil_scoped_release>())
     .def("distance", &Sketch::HyperLogLog::distance,
          py::call_guard<py::gil_scoped_release>())
@@ -489,7 +508,10 @@ PYBIND11_MODULE(rabbitsketch, m) {
          py::arg("other"),
          py::arg("max_distance") = std::numeric_limits<double>::infinity(),
          py::call_guard<py::gil_scoped_release>())
-    .def("cardinality", &Sketch::FastKMV::cardinality)
+    .def("store_hashes", &Sketch::FastKMV::storeHashes)
+    .def_static("index_dict", &pythonIndexDict<Sketch::FastKMV>,
+         py::arg("sketches"), py::arg("num_threads") = 1,
+         py::call_guard<py::gil_scoped_release>())
     .def("containment", &Sketch::FastKMV::containment)
     .def("ani", &Sketch::FastKMV::ani)
     .def("metadata", &Sketch::FastKMV::metadata)
@@ -499,9 +521,10 @@ PYBIND11_MODULE(rabbitsketch, m) {
     .def_property_readonly("sealed", &Sketch::FastKMV::isSealed);
 
   py::class_<Sketch::BinDash>(m, "BinDash")
-    .def(py::init<uint32_t, int, uint32_t, uint64_t>(),
+    .def(py::init<uint32_t, int, uint32_t, uint64_t, bool>(),
          py::arg("sketchsize64") = 32, py::arg("kmer_size") = 21,
-         py::arg("bbits") = 16, py::arg("seed") = 42)
+         py::arg("bbits") = 16, py::arg("seed") = 42,
+         py::arg("retain_operations") = true)
     .def("update", [](Sketch::BinDash& sketch,
                        const std::string& sequence) {
       sketch.update(sequence.data(), sequence.size());
@@ -511,7 +534,15 @@ PYBIND11_MODULE(rabbitsketch, m) {
     .def("jaccard", &Sketch::BinDash::jaccard,
          py::call_guard<py::gil_scoped_release>())
     .def("distance", &Sketch::BinDash::distance)
-    .def("cardinality", &Sketch::BinDash::cardinality)
+    .def("merge", &Sketch::BinDash::merge, py::arg("other"),
+         py::call_guard<py::gil_scoped_release>())
+    .def("project", &Sketch::BinDash::project, py::arg("target_bins"),
+         py::call_guard<py::gil_scoped_release>())
+    .def("store_hashes", &Sketch::BinDash::storeHashes)
+    .def_property_readonly("supports_operations", &Sketch::BinDash::supportsOperations)
+    .def_static("index_dict", &pythonIndexDict<Sketch::BinDash>,
+         py::arg("sketches"), py::arg("num_threads") = 1,
+         py::call_guard<py::gil_scoped_release>())
     .def("containment", &Sketch::BinDash::containment)
     .def("ani", &Sketch::BinDash::ani)
     .def("metadata", &Sketch::BinDash::metadata)
@@ -544,9 +575,14 @@ PYBIND11_MODULE(rabbitsketch, m) {
     .def("jaccard", &Sketch::FracMinHash::jaccard,
          py::call_guard<py::gil_scoped_release>())
     .def("distance", &Sketch::FracMinHash::distance)
-    .def("cardinality", &Sketch::FracMinHash::cardinality)
+    .def("store_hashes", &Sketch::FracMinHash::storeHashes)
+    // Keep the legacy scale-specific helper; the common cardinality extension
+    // is provided only by HLL and SetSketch.
     .def("cardinality_at", &Sketch::FracMinHash::cardinalityAt,
          py::arg("target_scaled"))
+    .def_static("index_dict", &pythonIndexDict<Sketch::FracMinHash>,
+         py::arg("sketches"), py::arg("num_threads") = 1,
+         py::call_guard<py::gil_scoped_release>())
     .def("containment", &Sketch::FracMinHash::containment)
     .def("ani", &Sketch::FracMinHash::ani)
     .def("metadata", &Sketch::FracMinHash::metadata)
@@ -595,6 +631,13 @@ PYBIND11_MODULE(rabbitsketch, m) {
     .def("ani", &Sketch::ProbMinHash4::ani)
     .def("merge", &Sketch::ProbMinHash4::merge,
          py::call_guard<py::gil_scoped_release>())
+    .def("project", &Sketch::ProbMinHash4::project, py::arg("target_registers"),
+         py::call_guard<py::gil_scoped_release>())
+    .def("store_hashes", &Sketch::ProbMinHash4::storeHashes)
+    .def_property_readonly("source_register_count", &Sketch::ProbMinHash4::getSourceM)
+    .def_static("index_dict", &pythonIndexDict<Sketch::ProbMinHash4>,
+         py::arg("sketches"), py::arg("num_threads") = 1,
+         py::call_guard<py::gil_scoped_release>())
     .def("metadata", &Sketch::ProbMinHash4::metadata)
     .def_property_readonly("register_count", &Sketch::ProbMinHash4::getM)
     .def_property_readonly("kmer_size", &Sketch::ProbMinHash4::getKmerSize)
@@ -619,7 +662,7 @@ PYBIND11_MODULE(rabbitsketch, m) {
     .def(py::init([](int precision, double base, double a,
                      int kmer_size, uint64_t seed) {
       return std::unique_ptr<Sketch::SetSketch>(new Sketch::SetSketch(
-          precision, base, a, kmer_size, false, seed));
+          precision, base, a, kmer_size, true, seed));
     }),
          py::arg("precision") = 14, py::arg("base") = 2.0,
          py::arg("a") = 5.0, py::arg("kmer_size") = 32,
@@ -631,6 +674,10 @@ PYBIND11_MODULE(rabbitsketch, m) {
     .def("add_fingerprint", &Sketch::SetSketch::addFingerprint)
     .def("project", &Sketch::SetSketch::project)
     .def("merge", &Sketch::SetSketch::merge,
+         py::call_guard<py::gil_scoped_release>())
+    .def("store_hashes", &Sketch::SetSketch::storeHashes)
+    .def_static("index_dict", &pythonIndexDict<Sketch::SetSketch>,
+         py::arg("sketches"), py::arg("num_threads") = 1,
          py::call_guard<py::gil_scoped_release>())
     .def("jaccard", &Sketch::SetSketch::jaccard_index,
          py::call_guard<py::gil_scoped_release>())
@@ -683,10 +730,19 @@ PYBIND11_MODULE(rabbitsketch, m) {
          py::call_guard<py::gil_scoped_release>())
     .def("project", &Sketch::Kssd::project,
          py::arg("target_drlevel"))
+    .def("merge", &Sketch::Kssd::merge, py::arg("other"),
+         py::call_guard<py::gil_scoped_release>())
+    .def_static("index_dict", &pythonIndexDict<Sketch::Kssd>,
+         py::arg("sketches"), py::arg("num_threads") = 1,
+         py::call_guard<py::gil_scoped_release>())
     .def("finalize", &Sketch::Kssd::finalize,
          py::call_guard<py::gil_scoped_release>())
     .def_property_readonly("sealed", &Sketch::Kssd::isSealed)
-    .def("store_hashes", &Sketch::Kssd::storeHashes)
+    .def("store_hashes", [](const Sketch::Kssd& sketch) {
+      if (!sketch.getHashes64().empty()) return sketch.getHashes64();
+      const auto& values = sketch.getHashes();
+      return std::vector<uint64_t>(values.begin(), values.end());
+    })
     .def("store_hashes64", &Sketch::Kssd::storeHashes64)
     .def("metadata", &Sketch::Kssd::metadata)
     .def_property_readonly("admission_probability",
@@ -832,6 +888,16 @@ PYBIND11_MODULE(rabbitsketch, m) {
     .def_readonly("warnings", &Sketch::Query::Result::warnings);
 
   py::class_<Sketch::API::BuiltSketch>(m, "BuiltSketch")
+    .def("merge", &Sketch::API::BuiltSketch::merge, py::arg("other"),
+         py::call_guard<py::gil_scoped_release>())
+    .def("project", &Sketch::API::BuiltSketch::project, py::arg("target_resolution"),
+         py::call_guard<py::gil_scoped_release>())
+    .def("store_hashes", &Sketch::API::BuiltSketch::storeHashes)
+    .def("cardinality", &Sketch::API::BuiltSketch::cardinality,
+         py::call_guard<py::gil_scoped_release>())
+    .def_static("index_dict", &Sketch::API::BuiltSketch::indexDict,
+         py::arg("sketches"), py::arg("num_threads") = 1,
+         py::call_guard<py::gil_scoped_release>())
     .def_property_readonly("algorithm",
                            &Sketch::API::BuiltSketch::algorithm)
     .def_property_readonly(
@@ -843,6 +909,54 @@ PYBIND11_MODULE(rabbitsketch, m) {
          py::arg("other"),
          py::arg("request") = Sketch::Query::Request(),
          py::call_guard<py::gil_scoped_release>());
+
+  py::class_<Sketch::API::IndexCandidate>(m, "IndexCandidate")
+    .def_readonly("sample", &Sketch::API::IndexCandidate::sample)
+    .def_readonly("shared_keys", &Sketch::API::IndexCandidate::shared_keys);
+  py::class_<Sketch::API::IndexMatch>(m, "IndexMatch")
+    .def_readonly("left", &Sketch::API::IndexMatch::left)
+    .def_readonly("right", &Sketch::API::IndexMatch::right)
+    .def_readonly("estimate", &Sketch::API::IndexMatch::estimate);
+  py::class_<Sketch::API::SketchIndex>(m, "SketchIndex")
+    .def("__len__", &Sketch::API::SketchIndex::size)
+    .def_property_readonly("key_count", &Sketch::API::SketchIndex::keyCount)
+    .def_property_readonly("posting_count", &Sketch::API::SketchIndex::postingCount)
+    .def_property_readonly("approximate_candidates", &Sketch::API::SketchIndex::approximateCandidates)
+    .def("postings", &Sketch::API::SketchIndex::postings,
+         py::arg("value"), py::arg("position") = 0,
+         py::call_guard<py::gil_scoped_release>())
+    .def("candidates", &Sketch::API::SketchIndex::candidates, py::arg("sample"),
+         py::call_guard<py::gil_scoped_release>())
+    .def("search", &Sketch::API::SketchIndex::search,
+         py::arg("sample"), py::arg("min_similarity") = 0.0,
+         py::call_guard<py::gil_scoped_release>())
+    .def("pairs", &Sketch::API::SketchIndex::pairs,
+         py::arg("min_similarity") = 0.0, py::arg("num_threads") = 1,
+         py::call_guard<py::gil_scoped_release>());
+  m.def("index_dict", &Sketch::API::BuiltSketch::indexDict,
+        py::arg("sketches"), py::arg("num_threads") = 1,
+        py::call_guard<py::gil_scoped_release>());
+  m.def("index_dict", &pythonIndexDict<Sketch::FastKMV>,
+        py::arg("sketches"), py::arg("num_threads") = 1,
+        py::call_guard<py::gil_scoped_release>());
+  m.def("index_dict", &pythonIndexDict<Sketch::FracMinHash>,
+        py::arg("sketches"), py::arg("num_threads") = 1,
+        py::call_guard<py::gil_scoped_release>());
+  m.def("index_dict", &pythonIndexDict<Sketch::HyperLogLog>,
+        py::arg("sketches"), py::arg("num_threads") = 1,
+        py::call_guard<py::gil_scoped_release>());
+  m.def("index_dict", &pythonIndexDict<Sketch::SetSketch>,
+        py::arg("sketches"), py::arg("num_threads") = 1,
+        py::call_guard<py::gil_scoped_release>());
+  m.def("index_dict", &pythonIndexDict<Sketch::ProbMinHash4>,
+        py::arg("sketches"), py::arg("num_threads") = 1,
+        py::call_guard<py::gil_scoped_release>());
+  m.def("index_dict", &pythonIndexDict<Sketch::BinDash>,
+        py::arg("sketches"), py::arg("num_threads") = 1,
+        py::call_guard<py::gil_scoped_release>());
+  m.def("index_dict", &pythonIndexDict<Sketch::Kssd>,
+        py::arg("sketches"), py::arg("num_threads") = 1,
+        py::call_guard<py::gil_scoped_release>());
 
   py::class_<Sketch::API::BuildResult>(m, "BuildResult")
     .def_readonly("sketch", &Sketch::API::BuildResult::sketch)

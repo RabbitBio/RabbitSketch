@@ -71,6 +71,7 @@ struct SketchConfig {
     bool canonical = true;
     bool track_abundance = false;
     bool homopolymer_compressed = false;
+    bool retain_operation_state = true; // witnesses/refinement and raw BinDash minima
     uint32_t min_abundance = 1;
     uint32_t max_abundance = 0;  // zero means unbounded
     int16_t minimum_base_quality = -1;  // negative means disabled
@@ -115,7 +116,9 @@ enum class Capability : uint64_t {
     Merge = UINT64_C(1) << 16,
     Project = UINT64_C(1) << 17,
     SearchKeys = UINT64_C(1) << 18,
-    OrderDistance = UINT64_C(1) << 19
+    OrderDistance = UINT64_C(1) << 19,
+    StoreHashes = UINT64_C(1) << 20,
+    IndexDict = UINT64_C(1) << 21
 };
 
 struct Capabilities {
