@@ -78,8 +78,10 @@ auto results = Sketch::API::buildFastxFiles({"a.fq.gz", "b.fq.gz"}, {config});
 auto identity = results.at(0).sketch.query(results.at(0).sketch);
 ```
 
-`MultiSketchBuilder` 是 move-only；一次 `finish()` 后 sealed，再次 update/finish 会抛出
+`MultiSketchBuilder` 是 move-only；使用 `finalize()` 完成构建并返回结果，旧的
+`finish()` 保留为兼容入口。完成后再次 update、finalize 或 finish 会抛出
 `logic_error`。它适用于调用方已经持有 `FastxRecord` 的流式管线。
+七种原生算法类均提供 `finalize()`；HLL 和 SetSketch 在该步骤预计算基数缓存并封存更新。
 
 ## 5. 查询和错误处理
 

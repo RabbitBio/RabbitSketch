@@ -72,14 +72,14 @@ BuiltSketch BuiltSketch::fromFracMinHash(FracMinHash sketch) {
 }
 
 BuiltSketch BuiltSketch::fromHyperLogLog(HyperLogLog sketch) {
-    (void)sketch.cardinality();
+    sketch.finalize();
     return BuiltSketch(std::make_shared<Impl>(
         Algorithm::HyperLogLog,
         std::make_shared<HyperLogLog>(std::move(sketch))));
 }
 
 BuiltSketch BuiltSketch::fromSetSketch(SetSketch sketch) {
-    (void)sketch.cardinality();
+    sketch.finalize();
     return BuiltSketch(std::make_shared<Impl>(
         Algorithm::SetSketch,
         std::make_shared<SetSketch>(std::move(sketch))));
@@ -278,7 +278,7 @@ public:
     explicit Lane(SketchConfig config) : config_(config) {}
     virtual ~Lane() = default;
     virtual void updateSegment(const std::string& sequence) = 0;
-    virtual BuiltSketch finish(BuildStats& stats) = 0;
+    virtual BuiltSketch finalize(BuildStats& stats) = 0;
     const SketchConfig& config() const noexcept { return config_; }
     BuildStats& stats() noexcept { return stats_; }
 protected:
@@ -297,7 +297,7 @@ public:
         mutable_sequence.push_back('\0');
         sketch_->update(mutable_sequence.data());
     }
-    BuiltSketch finish(BuildStats&) override {
+    BuiltSketch finalize(BuildStats&) override {
         sketch_->finalize();
         return BuiltSketch::fromLegacyMinHash(std::move(sketch_));
     }
@@ -318,7 +318,7 @@ public:
     void updateSegment(const std::string& sequence) override {
         sketch_.update(sequence.data(), sequence.size());
     }
-    BuiltSketch finish(BuildStats&) override {
+    BuiltSketch finalize(BuildStats&) override {
         sketch_.finalize();
         return BuiltSketch::fromFastKMV(std::move(sketch_));
     }
@@ -334,7 +334,7 @@ public:
     void updateSegment(const std::string& sequence) override {
         sketch_.update(sequence.data(), sequence.size());
     }
-    BuiltSketch finish(BuildStats&) override {
+    BuiltSketch finalize(BuildStats&) override {
         sketch_.finalize();
         return BuiltSketch::fromFracMinHash(std::move(sketch_));
     }
@@ -351,7 +351,7 @@ public:
         std::string mutable_sequence = sequence;
         sketch_.update(mutable_sequence.data());
     }
-    BuiltSketch finish(BuildStats&) override {
+    BuiltSketch finalize(BuildStats&) override {
         return BuiltSketch::fromHyperLogLog(std::move(sketch_));
     }
 private:
@@ -368,7 +368,7 @@ public:
         std::string mutable_sequence = sequence;
         sketch_.update(mutable_sequence.data(), mutable_sequence.size());
     }
-    BuiltSketch finish(BuildStats&) override {
+    BuiltSketch finalize(BuildStats&) override {
         return BuiltSketch::fromSetSketch(std::move(sketch_));
     }
 private:
@@ -385,7 +385,7 @@ public:
     void updateSegment(const std::string& sequence) override {
         sketch_.update(sequence.data(), sequence.size());
     }
-    BuiltSketch finish(BuildStats&) override {
+    BuiltSketch finalize(BuildStats&) override {
         sketch_.finalize();
         return BuiltSketch::fromKssd(
             std::unique_ptr<Kssd>(new Kssd(std::move(sketch_))));
@@ -413,7 +413,7 @@ public:
         while (iterator.next(canonical))
             ++abundance_[ranks.fingerprint(canonical)];
     }
-    BuiltSketch finish(BuildStats& stats) override {
+    BuiltSketch finalize(BuildStats& stats) override {
         if (config_.track_abundance) {
             stats.distinct_kmers = abundance_.size();
             for (const auto& element : abundance_) {
@@ -446,7 +446,7 @@ public:
     void updateSegment(const std::string& sequence) override {
         sketch_.update(sequence.data(), sequence.size());
     }
-    BuiltSketch finish(BuildStats&) override {
+    BuiltSketch finalize(BuildStats&) override {
         sketch_.finalize();
         return BuiltSketch::fromBinDash(std::move(sketch_));
     }
@@ -463,7 +463,7 @@ public:
                 "OrderMinHash received more than one sequence segment");
         sequence_ = sequence;
     }
-    BuiltSketch finish(BuildStats&) override {
+    BuiltSketch finalize(BuildStats&) override {
         if (sequence_.empty())
             throw std::invalid_argument(
                 "OrderMinHash record is shorter than its k-mer size");
@@ -654,17 +654,17 @@ MultiSketchBuilder& MultiSketchBuilder::operator=(
 
 void MultiSketchBuilder::update(const IO::FastxRecord& record) {
     if (!impl_ || impl_->finished)
-        throw std::logic_error("MultiSketchBuilder update called after finish");
+        throw std::logic_error("MultiSketchBuilder update called after finalize");
     for (std::unique_ptr<Lane>& lane : impl_->lanes)
         updateLane(*lane, record);
 }
 
-std::vector<BuildResult> MultiSketchBuilder::finish(
+std::vector<BuildResult> MultiSketchBuilder::finalize(
     const std::string& label_prefix,
     const std::string& source,
     const std::string& record_name) {
     if (!impl_ || impl_->finished)
-        throw std::logic_error("MultiSketchBuilder finish called more than once");
+        throw std::logic_error("MultiSketchBuilder finalize called more than once");
     impl_->finished = true;
     std::vector<BuildResult> result;
     result.reserve(impl_->lanes.size());
@@ -672,12 +672,19 @@ std::vector<BuildResult> MultiSketchBuilder::finish(
         BuildStats stats = lane->stats();
         const std::string label = cleanLabel(label_prefix) + ':' +
             configToken(lane->config());
-        BuiltSketch sketch = lane->finish(stats);
+        BuiltSketch sketch = lane->finalize(stats);
         stats.sealed = true;
         result.emplace_back(std::move(sketch), label, lane->config(), stats,
                             source, record_name);
     }
     return result;
+}
+
+std::vector<BuildResult> MultiSketchBuilder::finish(
+    const std::string& label_prefix,
+    const std::string& source,
+    const std::string& record_name) {
+    return finalize(label_prefix, source, record_name);
 }
 
 size_t MultiSketchBuilder::lanes() const noexcept {
@@ -725,7 +732,7 @@ std::vector<BuildResult> buildFastxFiles(
             if (!record_configs.empty()) {
                 MultiSketchBuilder per_record(record_configs);
                 per_record.update(record);
-                std::vector<BuildResult> built = per_record.finish(
+                std::vector<BuildResult> built = per_record.finalize(
                     baseName(path) + ':' +
                         cleanLabel(record.name.empty()
                             ? "record-" + std::to_string(record.index)
@@ -737,7 +744,7 @@ std::vector<BuildResult> buildFastxFiles(
             }
         }
         if (file) {
-            std::vector<BuildResult> built = file->finish(
+            std::vector<BuildResult> built = file->finalize(
                 baseName(path), path, std::string());
             result.insert(result.end(),
                 std::make_move_iterator(built.begin()),
@@ -748,7 +755,7 @@ std::vector<BuildResult> buildFastxFiles(
             std::make_move_iterator(record_results.end()));
     }
     if (collection) {
-        std::vector<BuildResult> built = collection->finish(
+        std::vector<BuildResult> built = collection->finalize(
             "collection", std::string(), std::string());
         result.insert(result.end(),
             std::make_move_iterator(built.begin()),

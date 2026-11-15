@@ -38,9 +38,13 @@ def main():
         union.update(a)
         union.update(b)
         for sketch in (left, right, union):
-            if hasattr(sketch, "finalize"):
-                sketch.finalize()
-        for method in ("merge", "project", "store_hashes", "index_dict"):
+            sketch.finalize()
+            sketch.finalize()
+            assert sketch.sealed
+            rejects(RuntimeError, lambda: sketch.update(a))
+        if algorithm in (rs.Algorithm.HyperLogLog, rs.Algorithm.SetSketch):
+            rejects(RuntimeError, lambda: left.add_fingerprint(123))
+        for method in ("finalize", "merge", "project", "store_hashes", "index_dict"):
             assert hasattr(left, method), (algorithm, method)
         assert hasattr(left, "cardinality") == (
             algorithm in (rs.Algorithm.HyperLogLog, rs.Algorithm.SetSketch)
@@ -112,6 +116,24 @@ def main():
     assert len(rs.index_dict([])) == 0
     rejects(ValueError, lambda: rs.index_dict([parent], 0))
     rejects(TypeError, lambda: rs.index_dict([parent, rs.FastKMV()]))
+
+    config = rs.SketchConfig()
+    record = rs.FastxRecord()
+    record.name = "record"
+    record.sequence = a
+    modern = rs.MultiSketchBuilder([config])
+    legacy = rs.MultiSketchBuilder([config])
+    modern.update(record)
+    legacy.update(record)
+    finalized = modern.finalize()
+    finished = legacy.finish("sketch")
+    assert modern.finished and legacy.finished
+    assert finalized[0].stats.sealed
+    assert finalized[0].label == finished[0].label
+    assert finalized[0].sketch.store_hashes() == finished[0].sketch.store_hashes()
+    rejects(RuntimeError, lambda: modern.update(record))
+    rejects(RuntimeError, lambda: modern.finish("again"))
+    rejects(RuntimeError, legacy.finalize)
     print("Python native and unified operations passed for all seven algorithms")
 
 

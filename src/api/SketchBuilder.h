@@ -108,6 +108,12 @@ public:
     MultiSketchBuilder& operator=(const MultiSketchBuilder&) = delete;
 
     void update(const IO::FastxRecord& record);
+    /** Complete construction once and return sealed sketches. */
+    std::vector<BuildResult> finalize(
+        const std::string& label_prefix = "sketch",
+        const std::string& source = std::string(),
+        const std::string& record_name = std::string());
+    /** Compatibility alias for finalize(). */
     std::vector<BuildResult> finish(
         const std::string& label_prefix,
         const std::string& source = std::string(),

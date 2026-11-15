@@ -10,6 +10,7 @@ BinDash、KSSD。Python 的历史 `MinHash` 类保持原义，不在这七种实
 
 | 操作 | Python | C++ | 契约 |
 |---|---|---|---|
+| 构建收尾 | `sketch.finalize()` | 七种原生类的 `finalize` | 完成构建并封存更新；重复调用不改变摘要 |
 | 合并 | `sketch.merge(other)` | 原生类或 `BuiltSketch::merge` | 返回新 Sketch，验证算法、种子、哈希与算法特定参数；不修改输入 |
 | 投影 | `sketch.project(target)` | 原生类或 `BuiltSketch::project` | 返回指定信息量的状态；只允许下表定义的方向 |
 | 导出 | `sketch.store_hashes()` | 原生 `storeHashes`，或 `BuiltSketch::storeHashes` | 返回原生摘要数据的副本，具体含义见下文 |
@@ -21,9 +22,17 @@ BinDash、KSSD。Python 的历史 `MinHash` 类保持原义，不在这七种实
 辅助计算仍用于相似度和 containment 推导；FracMinHash 的历史
 `cardinality_at` 保留兼容，不属于统一 `cardinality` 接口。
 
-高层配置与生命周期仍使用 `SketchConfig`、`MultiSketchBuilder.update/finish`、
+高层配置与生命周期使用 `SketchConfig`、`MultiSketchBuilder.update/finalize`、
 `build_fastx/build_fastx_files` 和 `BuiltSketch.query`。C++ 可包含
 `api/SketchOperations.h` 使用原生集合到统一索引的适配。
+
+HLL、SetSketch 的原生 `finalize()` 会预计算基数缓存并封存更新，保留寄存器及
+见证/精化数据。收尾后仍可查询、合并、投影和建立索引；`update`、
+`add_fingerprint` 会拒绝继续修改，`sealed` 属性报告封存状态。
+
+`MultiSketchBuilder.finalize(label_prefix="sketch", source="", record_name="")`
+返回构建结果，只能调用一次。旧的 `finish(...)` 保留为同一操作的兼容入口，
+两者共享封存状态，不能交替调用来重复取出结果。
 
 ## 2. 投影和合并语义
 

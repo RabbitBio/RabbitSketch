@@ -471,6 +471,9 @@ PYBIND11_MODULE(rabbitsketch, m) {
     .def("update", &Sketch::HyperLogLog::update,
          py::call_guard<py::gil_scoped_release>())
     .def("add_fingerprint", &Sketch::HyperLogLog::addFingerprint)
+    .def("finalize", &Sketch::HyperLogLog::finalize,
+         py::call_guard<py::gil_scoped_release>())
+    .def_property_readonly("sealed", &Sketch::HyperLogLog::isSealed)
     .def("project", &Sketch::HyperLogLog::project)
     .def("merge", &Sketch::HyperLogLog::merge,
          py::call_guard<py::gil_scoped_release>())
@@ -672,6 +675,9 @@ PYBIND11_MODULE(rabbitsketch, m) {
       sketch.update(mutable_sequence.data(), mutable_sequence.size());
     }, py::call_guard<py::gil_scoped_release>())
     .def("add_fingerprint", &Sketch::SetSketch::addFingerprint)
+    .def("finalize", &Sketch::SetSketch::finalize,
+         py::call_guard<py::gil_scoped_release>())
+    .def_property_readonly("sealed", &Sketch::SetSketch::isSealed)
     .def("project", &Sketch::SetSketch::project)
     .def("merge", &Sketch::SetSketch::merge,
          py::call_guard<py::gil_scoped_release>())
@@ -971,6 +977,10 @@ PYBIND11_MODULE(rabbitsketch, m) {
          py::arg("configs"))
     .def("update", &Sketch::API::MultiSketchBuilder::update,
          py::arg("record"), py::call_guard<py::gil_scoped_release>())
+    .def("finalize", &Sketch::API::MultiSketchBuilder::finalize,
+         py::arg("label_prefix") = "sketch", py::arg("source") = std::string(),
+         py::arg("record_name") = std::string(),
+         py::call_guard<py::gil_scoped_release>())
     .def("finish", &Sketch::API::MultiSketchBuilder::finish,
          py::arg("label_prefix"), py::arg("source") = std::string(),
          py::arg("record_name") = std::string(),

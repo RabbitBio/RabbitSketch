@@ -164,6 +164,8 @@ void HyperLogLog::compTwoSketch(const std::vector<uint8_t> &sketch1, const std::
 	#define VALID(e) (Rank::validBase((e)))
 
 	void HyperLogLog::update(char* seq) {
+	if (sealed_)
+		throw std::logic_error("HyperLogLog::update called after finalize");
 	if (seq == nullptr) {
 		throw std::invalid_argument("HyperLogLog::update sequence must not be null");
 	}
@@ -470,7 +472,15 @@ inline void HyperLogLog::add(uint64_t hashval) {
 }
 
 void HyperLogLog::addFingerprint(uint64_t fingerprint) {
+	if (sealed_)
+		throw std::logic_error("HyperLogLog::addFingerprint called after finalize");
 	add(fingerprint);
+}
+
+void HyperLogLog::finalize() {
+	if (sealed_) return;
+	csum();
+	sealed_ = true;
 }
 //Added by liumy to show sketch for testing. 
 void HyperLogLog::printSketch(){

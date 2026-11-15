@@ -33,12 +33,16 @@ public:
 
   void update(char* seq);
   void update(char* seq, size_t len);
+  /// Cache cardinality and seal further updates. Idempotent; retain the
+  /// registers and refinement values needed by queries and state operations.
+  void finalize();
+  bool isSealed() const noexcept { return sealed_; }
   /**
    * Add an already coordinated 64-bit RankStream fingerprint.
    * This bypasses sequence canonicalization and hashing; callers are
    * responsible for following the contract reported by metadata().
    */
-  void addFingerprint(uint64_t fingerprint) { add_slow(fingerprint); }
+  void addFingerprint(uint64_t fingerprint);
   /**
    * Exact folding replays the maximum full fingerprint in every source
    * partition, including rank-zero partitions. Compact register-only states
@@ -173,6 +177,7 @@ private:
   std::vector<uint8_t> core_;
   std::vector<uint64_t> witnesses_;  // maximum full hash in each partition
   bool track_witnesses_;
+  bool sealed_ = false;
   uint32_t np_;
   uint32_t q_;                         // last finite threshold; q+1 is saturation
   double base_;

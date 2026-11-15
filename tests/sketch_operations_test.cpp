@@ -33,7 +33,7 @@ BuiltSketch build(const SketchConfig& config, const std::vector<std::string>& re
         record.sequence = sequence;
         builder.update(record);
     }
-    return builder.finish("sample").front().sketch;
+    return builder.finalize("sample").front().sketch;
 }
 
 SketchConfig configuration(Algorithm algorithm) {
@@ -196,6 +196,66 @@ void testProbMinHashProjection() {
     rejects<std::invalid_argument>([&] { p.project(64); }, "ProbMinHash expanded missing registers");
 }
 
+template<class T>
+void testRegisterFinalize(T sketch, std::string sequence) {
+    check(!sketch.isSealed(), "register sketch starts sealed");
+    sketch.update(sequence.data());
+    const auto core = sketch.getCore();
+    const auto witnesses = sketch.getWitnesses();
+    const auto projected = sketch.project(6).getCore();
+    const double cardinality = sketch.cardinality();
+    sketch.finalize();
+    sketch.finalize();
+    check(sketch.isSealed() && sketch.getCore() == core &&
+          sketch.getWitnesses() == witnesses && sketch.cardinality() == cardinality,
+          "finalize changed register data or failed to seal");
+    rejects<std::logic_error>([&] { sketch.update(sequence.data()); },
+                             "register update accepted after finalize");
+    rejects<std::logic_error>([&] { sketch.addFingerprint(123); },
+                             "fingerprint update accepted after finalize");
+    T copy = sketch;
+    rejects<std::logic_error>([&] { copy.addFingerprint(123); },
+                             "copy lost the sealed state");
+    check(sketch.project(6).getCore() == projected, "finalize disabled exact projection");
+    check(sketch.merge(sketch).getCore() == core, "finalize disabled register merge");
+    auto index = indexDict(std::vector<T>{sketch, sketch});
+    check(index.size() == 2 && index.candidates(0).size() == 1,
+          "finalize discarded index witnesses");
+}
+
+void testFinalizeLifecycle() {
+    for (auto sequence : {std::string(), dna(2000, 101)}) {
+        testRegisterFinalize(HyperLogLog(8, 21, 42, true), sequence);
+        testRegisterFinalize(SetSketch(8, 2.0, 5.0, 21, true, 42), sequence);
+    }
+    SetSketch set(8);
+    set.finalize();
+    rejects<std::logic_error>([&] { set.update(nullptr, 0); },
+                             "length-aware update bypassed SetSketch sealing");
+
+    const auto config = configuration(Algorithm::FastKMV);
+    MultiSketchBuilder modern({config}), legacy({config}), no_label({config});
+    IO::FastxRecord record;
+    record.name = "record";
+    record.sequence = dna(2000, 102);
+    modern.update(record);
+    legacy.update(record);
+    no_label.update(record);
+    const auto a = modern.finalize("sample", "memory", record.name);
+    const auto b = legacy.finish("sample", "memory", record.name);
+    check(a.front().sketch.storeHashes() == b.front().sketch.storeHashes() &&
+          a.front().label == b.front().label && a.front().source == b.front().source &&
+          a.front().record_name == b.front().record_name,
+          "finish compatibility alias changed the result");
+    check(modern.finished() && legacy.finished() && a.front().stats.sealed,
+          "builder finalize did not complete the lifecycle");
+    check(no_label.finalize().front().label.find("sketch:") == 0,
+          "default finalize label is missing");
+    rejects<std::logic_error>([&] { modern.update(record); }, "builder updated after finalize");
+    rejects<std::logic_error>([&] { modern.finish("again"); }, "finish reopened a finalized builder");
+    rejects<std::logic_error>([&] { legacy.finalize(); }, "finalize reopened a finished builder");
+}
+
 void testEmptyAndInvalid() {
     const auto config = configuration(Algorithm::FastKMV);
     const auto empty = build(config, {});
@@ -219,6 +279,7 @@ int main() {
         testSetSketchRefinement();
         testBinDashState();
         testProbMinHashProjection();
+        testFinalizeLifecycle();
         testEmptyAndInvalid();
         std::cout << "sketch operations tests passed\n";
         return 0;

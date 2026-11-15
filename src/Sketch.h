@@ -1003,6 +1003,10 @@ namespace Sketch{
 
       ~HyperLogLog(){};
       void update(char* seq);
+      /// Cache the cardinality estimate and seal further updates. Idempotent;
+      /// retain registers and witnesses for query, merge, project and indexing.
+      void finalize();
+      bool isSealed() const noexcept { return sealed_; }
       /**
        * Add an already coordinated 64-bit RankStream fingerprint.
        * This bypasses sequence canonicalization and hashing; callers are
@@ -1079,6 +1083,7 @@ namespace Sketch{
       EstimationMethod                        estim_;
       JointEstimationMethod                  jestim_;
       bool                                   track_witnesses_;
+      bool                                   sealed_ = false;
       //HashStruct                                 hf_;
 
     private:

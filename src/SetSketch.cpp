@@ -352,6 +352,18 @@ double SetSketch::cardinality() const {
   return value_;
 }
 
+void SetSketch::finalize() {
+  if (sealed_) return;
+  ensure_cardinality();
+  sealed_ = true;
+}
+
+void SetSketch::addFingerprint(uint64_t fingerprint) {
+  if (sealed_)
+    throw std::logic_error("SetSketch::addFingerprint called after finalize");
+  add_slow(fingerprint);
+}
+
 // ── union_size: inline max + SIMD gather, no allocation ───────────────────────
 double SetSketch::union_size(const SetSketch& other) const {
   metadata().requireSameFamily(other.metadata(), "SetSketch::union_size");
@@ -599,12 +611,16 @@ void SetSketch::printSketch() {
 #define VALID(e) (Rank::validBase((e)))
 
 void SetSketch::update(char* seq) {
+  if (sealed_)
+    throw std::logic_error("SetSketch::update called after finalize");
   if (seq == nullptr)
     throw std::invalid_argument("SetSketch::update sequence must not be null");
   update(seq, strlen(seq));
 }
 
 void SetSketch::update(char* seq, size_t len) {
+  if (sealed_)
+    throw std::logic_error("SetSketch::update called after finalize");
   if (seq == nullptr && len != 0)
     throw std::invalid_argument("SetSketch::update sequence must not be null");
   const uint64_t LENGTH = static_cast<uint64_t>(len);
