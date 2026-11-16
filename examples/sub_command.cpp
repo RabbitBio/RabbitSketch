@@ -59,6 +59,7 @@
 #include <memory>
 #include <mutex>
 #include <numeric>
+#include <stdexcept>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -111,32 +112,34 @@ static inline void keys_from_witnesses_kmv(
 }
 
 // ── Frequency-weighted k-mer counting for PMH-norm ────────────────────────
-// Estimates J_P = Σ min(p_A,p_B) / Σ max(p_A,p_B)  (coverage-robust metric).
+// Estimates probability Jaccard from k-mer frequencies, not min/max Jaccard.
 //
 // Key design choices vs naïve phmap approach:
 //
 //  1. Vector+sort instead of hash map for counting:
 //     phmap::flat_hash_map grows by 2x with mmap(), causing hundreds of millions
 //     of minor page faults per run (observed: 693M faults, 5179 s system time
-//     for 208K files).  A std::vector<uint64_t> + std::sort uses one contiguous
-//     allocation, making page faults rare and avoiding kernel overhead entirely.
-//     Result is identical (addHash order does not affect the PMH sketch).
+//     for 208K files). A std::vector<uint64_t> + std::sort uses contiguous
+//     storage and avoids per-key hash-table insertion. The vector stores
+//     occurrences, so its memory grows with input length and coverage.
+//     Sorting/counting preserves all retained frequencies.
 //
 //  2. libdeflate for .gz decompression (2-3× faster than zlib):
 //     Reads the full compressed file into a raw buffer, decompresses in one
 //     shot, then parses FASTQ in-memory without zlib overhead.  Falls back
-//     to kseq (zlib) for non-gz files or if decompression fails.
+//     to kseq (zlib) for non-gz files, FASTA, wrapped FASTQ or a failed fast path.
 //
-//  3. 1/PMH_SDIV hash-sampling keeps per-thread memory constant (~10 MB):
-//     E[J_P_sampled] = J_P  (numerator and denominator both scale by 1/SDIV).
+//  3. Full frequencies are the default. Optional deterministic presampling
+//     retains about 1/sample_divisor of k-mer identities, with all occurrences
+//     of each retained identity. This changes the input weight support and
+//     introduces an additional approximation; it is not generally unbiased
+//     for the original probability Jaccard.
 // ──────────────────────────────────────────────────────────────────────────
 
 #include <libdeflate.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
-static constexpr uint64_t PMH_SDIV      = 8;
-static constexpr uint64_t PMH_STHRESH   = UINT64_MAX / PMH_SDIV;
 static constexpr uint64_t PMH_SMIX      = 0x9E3779B97F4A7C15ULL;
 
 static const uint8_t PMH_BASE2[256] = {
@@ -158,11 +161,12 @@ static const uint8_t PMH_BASE2[256] = {
     0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
 };
 
-// Process k-mers from a sequence buffer, accumulating sampled canonical k-mers
-// into `sampled` and counting all k-mer instances in `total`.
+// Retain every valid canonical k-mer occurrence by default. An explicit
+// threshold below UINT64_MAX enables the legacy identity-based presampling.
 static inline void pmh_kmers(const char* seq, int len, int k,
                               const uint64_t mask, const uint64_t hi_shift,
-                              std::vector<uint64_t>& sampled, uint64_t& total) {
+                              std::vector<uint64_t>& sampled, uint64_t& total,
+                              uint64_t sample_threshold) {
     uint64_t fwd = 0, rev = 0; int valid = 0;
     for (int i = 0; i < len; ++i) {
         const uint8_t b = PMH_BASE2[(uint8_t)seq[i]];
@@ -172,48 +176,56 @@ static inline void pmh_kmers(const char* seq, int len, int k,
         if (++valid >= k) {
             const uint64_t can = (fwd <= rev) ? fwd : rev;
             ++total;
-            if ((can * PMH_SMIX) <= PMH_STHRESH)
+            if (sample_threshold == UINT64_MAX || (can * PMH_SMIX) <= sample_threshold)
                 sampled.push_back(can);
         }
     }
 }
 
-// Fast in-memory FASTQ parser: only extracts sequence lines.
-// Assumes single-line sequences per record (standard short-read FASTQ).
-static void parse_fastq_mem(const char* buf, size_t len, int k,
+// Fast path for complete four-line FASTQ records. Other FASTX layouts fall
+// back to kseq so compressed FASTA or wrapped FASTQ never loses records.
+static bool parse_fastq_mem(const char* buf, size_t len, int k,
                              const uint64_t mask, const uint64_t hi_shift,
-                             std::vector<uint64_t>& sampled, uint64_t& total) {
+                             std::vector<uint64_t>& sampled, uint64_t& total,
+                             uint64_t sample_threshold) {
     const char* p   = buf;
     const char* end = buf + len;
+    auto line = [&](const char*& start, size_t& length) {
+        if (p == end) return false;
+        start = p;
+        const char* newline = static_cast<const char*>(std::memchr(p, '\n', end - p));
+        const char* stop = newline ? newline : end;
+        length = static_cast<size_t>(stop - start);
+        if (length && start[length - 1] == '\r') --length;
+        p = newline ? newline + 1 : end;
+        return true;
+    };
     while (p < end) {
-        if (*p != '@') { ++p; continue; }
-        // skip header line
-        while (p < end && *p != '\n') ++p;
-        if (p >= end) break; ++p;
-        // sequence line
-        const char* seq = p;
-        while (p < end && *p != '\n') ++p;
-        int slen = (int)(p - seq);
-        if (slen >= k) pmh_kmers(seq, slen, k, mask, hi_shift, sampled, total);
-        if (p >= end) break; ++p;
-        // '+' line
-        while (p < end && *p != '\n') ++p;
-        if (p >= end) break; ++p;
-        // quality line (skip)
-        while (p < end && *p != '\n') ++p;
-        if (p < end) ++p;
+        const char *header, *seq, *plus, *quality;
+        size_t header_len, seq_len, plus_len, quality_len;
+        if (!line(header, header_len) || !header_len || header[0] != '@' ||
+            !line(seq, seq_len) || !line(plus, plus_len) || !plus_len || plus[0] != '+' ||
+            !line(quality, quality_len) || quality_len != seq_len || seq_len > INT_MAX)
+            return false;
+        if (seq_len >= static_cast<size_t>(k))
+            pmh_kmers(seq, static_cast<int>(seq_len), k, mask, hi_shift,
+                      sampled, total, sample_threshold);
     }
+    return true;
 }
 
 // Build a PMH-norm sketch using libdeflate for .gz, kseq fallback otherwise.
-// Uses vector+sort for counting (no hash map = no mmap page-fault explosion).
+// Uses a contiguous occurrence vector and sort for frequency counting.
 static Sketch::ProbMinHash4*
 pmh_build_weighted(const std::string& path, uint32_t m, int k,
-                   uint64_t seed, uint32_t maxL) {
-    const uint64_t mask     = (1ULL << (2 * k)) - 1;
+                   uint64_t seed, uint32_t maxL, uint32_t sample_divisor) {
+    if (sample_divisor == 0 || k < 1 || k > 32)
+        throw std::invalid_argument("invalid ProbMinHash input configuration");
+    const uint64_t sample_threshold = UINT64_MAX / sample_divisor;
+    const uint64_t mask     = k == 32 ? UINT64_MAX : (1ULL << (2 * k)) - 1;
     const uint64_t hi_shift = 2ULL * (k - 1);
 
-    // Reserve for ~1M sampled k-mers; a single 8 MB contiguous allocation.
+    // Initial capacity only: full-frequency inputs may require more storage.
     std::vector<uint64_t> sampled;
     sampled.reserve(1 << 20);
     uint64_t total = 0;
@@ -261,25 +273,29 @@ pmh_build_weighted(const std::string& path, uint32_t m, int k,
                         // Handle multi-member gzip (rare but possible)
                         const char* p = ubuf.data();
                         size_t rem    = actual;
-                        parse_fastq_mem(p, rem, k, mask, hi_shift, sampled, total);
+                        used_libdeflate = parse_fastq_mem(
+                            p, rem, k, mask, hi_shift, sampled, total, sample_threshold);
                         // If there are more gzip members in `cmp`, process them
-                        while (in_used < cmp.size()) {
+                        while (used_libdeflate && in_used < cmp.size()) {
                             size_t out2 = out_cap;
                             std::vector<char> ubuf2(out2);
                             size_t act2 = 0, in2 = 0;
+                            bool member_ok = false;
                             dc = libdeflate_alloc_decompressor();
                             for (int attempt = 0; attempt < 4; ++attempt) {
                                 auto rc = libdeflate_gzip_decompress_ex(
                                     dc, cmp.data() + in_used, cmp.size() - in_used,
                                     ubuf2.data(), out2, &in2, &act2);
-                                if (rc == LIBDEFLATE_SUCCESS) break;
+                                if (rc == LIBDEFLATE_SUCCESS) { member_ok = true; break; }
                                 if (rc == LIBDEFLATE_INSUFFICIENT_SPACE) {
                                     out2 *= 2; ubuf2.resize(out2);
                                 } else { act2 = 0; break; }
                             }
                             libdeflate_free_decompressor(dc);
-                            if (act2 == 0) break;
-                            parse_fastq_mem(ubuf2.data(), act2, k, mask, hi_shift, sampled, total);
+                            if (!member_ok || in2 == 0) { used_libdeflate = false; break; }
+                            used_libdeflate = parse_fastq_mem(
+                                ubuf2.data(), act2, k, mask, hi_shift,
+                                sampled, total, sample_threshold);
                             in_used += in2;
                         }
                     }
@@ -290,6 +306,10 @@ pmh_build_weighted(const std::string& path, uint32_t m, int k,
 
     // ── kseq / zlib fallback ─────────────────────────────────────────────
     if (!used_libdeflate) {
+        // A fast-parser failure may follow some complete records or gzip
+        // members. Restart the count, rather than counting that prefix twice.
+        sampled.clear();
+        total = 0;
         gzFile fp = gzopen(path.c_str(), "r");
         if (fp) {
             kseq_t* ks = kseq_init(fp);
@@ -297,7 +317,7 @@ pmh_build_weighted(const std::string& path, uint32_t m, int k,
                 const char* seq = ks->seq.s;
                 const int   len = (int)ks->seq.l;
                 if (len >= k)
-                    pmh_kmers(seq, len, k, mask, hi_shift, sampled, total);
+                    pmh_kmers(seq, len, k, mask, hi_shift, sampled, total, sample_threshold);
             }
             kseq_destroy(ks);
             gzclose(fp);
@@ -307,8 +327,7 @@ pmh_build_weighted(const std::string& path, uint32_t m, int k,
     }
 
     // ── sort + run-length count → PMH sketch ─────────────────────────────
-    // Sorting gives identical results to hash-map counting (addHash is
-    // order-independent) while using contiguous memory and zero mmap resizes.
+    // Sort and count occurrences without discarding singleton k-mers.
     std::sort(sampled.begin(), sampled.end());
 
     auto* sk = new Sketch::ProbMinHash4(m, k, seed, maxL);
@@ -318,10 +337,9 @@ pmh_build_weighted(const std::string& path, uint32_t m, int k,
         while (i < sampled.size()) {
             size_t j = i + 1;
             while (j < sampled.size() && sampled[j] == sampled[i]) ++j;
-            const uint32_t cnt = static_cast<uint32_t>(j - i);
-            // No singleton filter: assembly sequences have all counts=1 and
-            // filtering would empty the sketch. For reads, low-count error
-            // k-mers carry negligible weight (cnt/total ≈ 1/N) anyway.
+            const uint64_t cnt = static_cast<uint64_t>(j - i);
+            // Keep singleton identities too: dropping them would change the
+            // frequency profile supplied to the weighted estimator.
             sk->addHash(sampled[i], static_cast<double>(cnt) * inv);
             i = j;
         }
@@ -409,10 +427,10 @@ static Sketch::Kssd* build_kssd(const std::string& path, const Args& a) {
 }
 
 static Sketch::ProbMinHash4* build_probminhash(const std::string& path, const Args& a) {
-    // Frequency-weighted PMH-norm: estimates J_P = Σ min(p_A,p_B)/Σ max(p_A,p_B).
-    // J_P is robust to coverage variation (relative k-mer frequencies are
-    // preserved under uniform subsampling), unlike Binary Jaccard.
-    return pmh_build_weighted(path, a.pmhM, a.kmerSize, a.seed, a.pmhMaxL);
+    // Global weight normalization preserves probability Jaccard. Dropping
+    // k-mer identities does not; presampling therefore requires an opt-in.
+    return pmh_build_weighted(path, a.pmhM, a.kmerSize, a.seed, a.pmhMaxL,
+                              a.pmhSampleDivisor);
 }
 
 static Sketch::BinDash* build_bindash(const std::string& path, const Args& a) {
@@ -791,7 +809,7 @@ static void run_index_fracminhash(const Args& a, const std::vector<std::string>&
 //  §6  ProbMinHash --index  (frequency-weighted J_P mode)
 //
 //  Two-pass frequency-weighted pipeline:
-//    Pass-1: count k-mer occurrences (1/PMH_SDIV hash-sampling for memory).
+//    Pass-1: count all valid k-mer occurrences (presampling is opt-in).
 //    Pass-2: insert each unique k-mer once with weight = count/total_kmers.
 //  Same-register winner matches estimate the native probability Jaccard.
 //  Index key = winners_[k] XOR (k × golden-ratio) via getWinnerIndexKeys().
@@ -810,7 +828,8 @@ static void run_index_probmh(const Args& a, const std::vector<std::string>& file
     #pragma omp parallel for num_threads(actualThreads) schedule(dynamic)
     for (int t = 0; t < N; ++t) {
         std::unique_ptr<Sketch::ProbMinHash4> sk(
-            pmh_build_weighted(files[t], a.pmhM, a.kmerSize, a.seed, a.pmhMaxL));
+            pmh_build_weighted(files[t], a.pmhM, a.kmerSize, a.seed, a.pmhMaxL,
+                               a.pmhSampleDivisor));
         sk->getWinnerIndexKeys(skKeys[t]);
     }
 
@@ -2289,6 +2308,15 @@ static void run_index_hll(const Args& a, const std::vector<std::string>& files_i
 //  §10  CLI dispatch
 // ═══════════════════════════════════════════════════════════════════════════
 int run_cli(const Args& a) {
+    if (a.algo == Algo::PROBMINHASH) {
+        if (a.pmhSampleDivisor == 0) {
+            std::cerr << "ERROR: ProbMinHash sampling divisor must be positive\n";
+            return 1;
+        }
+        std::cerr << "ProbMinHash frequency input: "
+                  << (a.pmhSampleDivisor == 1 ? "full" : "presampled")
+                  << " (sample divisor=" << a.pmhSampleDivisor << ")\n";
+    }
     if (!a.listMode) return run_pair(a);
     if (std::isnan(a.maxDist) || a.maxDist < 0.0) {
         std::cerr << "ERROR: -d must be nonnegative or +infinity\n";

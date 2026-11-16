@@ -1442,7 +1442,7 @@ double ProbMinHash4::jaccard_weighted(const ProbMinHash4& other) const {
     // Count registers where the SAME element (same rng) won in both sketches.
     // This is correct even when the element has different weights in A vs B:
     // same h → same rng (murmur3_fmix(h, seed_)) → same winners_ entry.
-    // P(collision in register k) = WJ = Σmin(wA,wB)/Σmax(wA,wB).
+    // P(collision in register k) = probability Jaccard J_P, not min/max Jaccard.
     const size_t count = Runtime::countEqualNonZeroU64(a, b, m_);
     return static_cast<double>(count) / static_cast<double>(m_);
 }

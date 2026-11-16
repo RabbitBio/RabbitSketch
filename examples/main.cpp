@@ -37,6 +37,7 @@
  *   --hll           -b   <int>     log2(register count)            (default 13)
  *   --probminhash   -m   <int>     registers                       (default 1024)
  *                   -L   <int>     max-L truncation (0 = full)     (default 0)
+ *                   --pmh-sample-divisor <int>                   (default 1: no presampling)
  *   --bindash       --bbits <int>  bits per bin                    (default 16)
  *                   --sketch64 <int> 64-bin groups                 (default 16; NBINS = sketch64 * 64)
  *   --setsketch     -b   <int>     log2(register count)            (default 13)
@@ -57,6 +58,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -83,7 +85,8 @@ static void print_usage(const char* prog) {
 "  --kssd         --drlevel <int>      (3; list mode uses the optimized index by default)\n"
 "  --hll          -b <int>             log2(registers)  (13)\n"
 "  --probminhash  -m <int> -L <int>   sketch size / max-L (1024, 0)\n"
-"                  freq-weighted PMH-norm (J_P estimator, coverage-robust)\n"
+"                  probability Jaccard from full k-mer frequencies\n"
+"                  --pmh-sample-divisor <int> (1: full input; 8: legacy 1/8 presampling)\n"
 "  --bindash      --bbits <int> --sketch64 <int>  (16, 16)\n"
 "  --setsketch    -b <int> -a <float> -B <float>  (13, 5.0, 2.0)\n"
 "  --fastkmv      -K <int>             sketch size      (1024)\n"
@@ -95,6 +98,7 @@ static void print_usage(const char* prog) {
 //  sub_command.h) and validates mutual exclusion / required flags.
 // ─────────────────────────────────────────────────────────────────────────────
 static int parse_args(int argc, char* argv[], Args& a) {
+    bool pmhSamplingSpecified = false;
     auto need = [&](int i, const char* opt) {
         if (i + 1 >= argc) {
             std::cerr << "ERROR: option " << opt << " requires an argument\n";
@@ -142,6 +146,23 @@ static int parse_args(int argc, char* argv[], Args& a) {
         else if (s == "-b")             { need(i, "-b"); a.hllBits = a.ssBits = std::stoi(argv[++i]); }
         else if (s == "-m")             { need(i, "-m"); a.pmhM = static_cast<uint32_t>(std::stoul(argv[++i])); }
         else if (s == "-L")             { need(i, "-L"); a.pmhMaxL = static_cast<uint32_t>(std::stoul(argv[++i])); }
+        else if (s == "--pmh-sample-divisor") {
+            need(i, "--pmh-sample-divisor");
+            const std::string value = argv[++i];
+            try {
+                if (value.empty() || value.find_first_not_of("0123456789") != std::string::npos)
+                    throw std::invalid_argument("invalid sampling divisor");
+                const auto divisor = std::stoull(value);
+                if (divisor == 0 || divisor > UINT32_MAX)
+                    throw std::out_of_range("invalid sampling divisor");
+                a.pmhSampleDivisor = static_cast<uint32_t>(divisor);
+                pmhSamplingSpecified = true;
+            } catch (const std::exception&) {
+                std::cerr << "ERROR: --pmh-sample-divisor must be an integer between 1 and "
+                          << UINT32_MAX << "\n";
+                return 1;
+            }
+        }
         else if (s == "--bbits")        { need(i, "--bbits");    a.bdBbits    = static_cast<uint32_t>(std::stoul(argv[++i])); }
         else if (s == "--sketch64")     { need(i, "--sketch64"); a.bdSketch64 = static_cast<uint32_t>(std::stoul(argv[++i])); }
         else if (s == "-a")             { need(i, "-a"); a.ssA    = std::stod(argv[++i]); }
@@ -167,6 +188,14 @@ static int parse_args(int argc, char* argv[], Args& a) {
     if (a.algo == Algo::NONE) {
         std::cerr << "ERROR: no --<algo> selected\n";
         print_usage(argv[0]);
+        return 1;
+    }
+    if (pmhSamplingSpecified && a.algo != Algo::PROBMINHASH) {
+        std::cerr << "ERROR: --pmh-sample-divisor requires --probminhash\n";
+        return 1;
+    }
+    if (a.algo == Algo::PROBMINHASH && (a.kmerSize < 1 || a.kmerSize > 32)) {
+        std::cerr << "ERROR: ProbMinHash k-mer size must be between 1 and 32\n";
         return 1;
     }
     if (a.inputs.empty()) {

@@ -3,7 +3,7 @@
  * Evaluate frequency-weighted ProbMinHash4 (PMH-freq) on bench_data .fa files.
  *
  * For each pair{id}_A.fa / pair{id}_B.fa:
- *   1. Count k-mer frequencies via sort (1/8 hash-sampling for memory)
+ *   1. Count full k-mer frequencies via sort (no presampling)
  *   2. Build ProbMinHash4 sketch with weight = count/total (PMH-freq)
  *   3. Estimate Jaccard via jaccard_weighted()
  *   4. Compare against exact_j_k21 ground truth
@@ -38,13 +38,10 @@ static double get_sec() {
 
 KSEQ_INIT(gzFile, gzread)
 
-// ── Exact copy of constants from sub_command.cpp ────────────────────────────
+// ── Same full-frequency default as the CLI ─────────────────────────────────
 static constexpr int      KSIZE      = 21;
 static constexpr uint32_t M          = 1024;
 static constexpr uint64_t SEED       = 42;
-static constexpr uint64_t PMH_SDIV   = 8;
-static constexpr uint64_t PMH_STHRESH = UINT64_MAX / PMH_SDIV;
-static constexpr uint64_t PMH_SMIX   = 0x9E3779B97F4A7C15ULL;
 
 static const uint8_t PMH_BASE2[256] = {
     0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
@@ -78,15 +75,13 @@ static inline void pmh_kmers(const char* seq, int len,
         if (++valid >= KSIZE) {
             const uint64_t can = (fwd <= rev) ? fwd : rev;
             ++total;
-            if ((can * PMH_SMIX) <= PMH_STHRESH)
-                sampled.push_back(can);
+            sampled.push_back(can);
         }
     }
 }
 
 // ── Build frequency-weighted PMH sketch from a FASTA(.gz) file ──────────────
-// Mirrors pmh_build_weighted in sub_command.cpp but WITHOUT singleton filter
-// (assembly sequences: every k-mer appears exactly once, no true singletons).
+// Mirrors the full-frequency CLI input and retains singleton k-mers as well.
 static Sketch::ProbMinHash4* build_freq_pmh(const std::string& path) {
     const uint64_t mask     = (1ULL << (2 * KSIZE)) - 1;
     const uint64_t hi_shift = 2 * (KSIZE - 1);
@@ -114,7 +109,7 @@ static Sketch::ProbMinHash4* build_freq_pmh(const std::string& path) {
         while (i < sampled.size()) {
             size_t j = i + 1;
             while (j < sampled.size() && sampled[j] == sampled[i]) ++j;
-            const uint32_t cnt = (uint32_t)(j - i);
+            const uint64_t cnt = static_cast<uint64_t>(j - i);
             // No singleton filter: assembly has no error k-mers, every unique
             // k-mer is genuine regardless of count
             sk->addHash(sampled[i], (double)cnt * inv);

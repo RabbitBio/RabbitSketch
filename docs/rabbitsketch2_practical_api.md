@@ -114,3 +114,39 @@ AVX-512BW，其他架构使用 scalar。Python 的 `runtime_info()` 可查看选
 CMake 安装后使用 `find_package(RabbitSketch 2 CONFIG REQUIRED)` 和
 `RabbitSketch::rabbitsketch`，也可使用 `rabbitsketch.pc`。Python 包采用 PEP 517 构建，
 没有额外 Python runtime dependency。
+
+## 7. ProbMinHash 命令行的频次输入
+
+2026-11-16 起，`examples/rabbitsketch --probminhash` 默认统计全部有效 canonical
+k-mer 的出现次数，保留单例，以 `count / total_valid_kmers` 为权重构建 Sketch。
+成对模式、列表直接比较及 `--index` 共用这一默认值。归一化是每个样本的统一
+权重缩放，不改变目标 probability Jaccard；该指标不是 min/max weighted Jaccard。
+
+```bash
+# 默认全量频次；寄存器数仍由 -m 决定。
+examples/rabbitsketch --probminhash -i a.fa b.fa -m 1024 -o pair.tsv
+
+# 显式恢复旧的约 1/8 确定性预采样，仅用于需要该近似的运行或对照。
+examples/rabbitsketch --probminhash --pmh-sample-divisor 8 \
+    -i genomes.list -l --index -t 64 -o pairs.tsv
+```
+
+`--pmh-sample-divisor` 默认是 `1`，只接受 `1..4294967295` 的整数，且仅用于
+`--probminhash`。大于 1 时，按 k-mer 身份进行确定性筛选，同一身份的全部出现
+记录共同保留或舍弃；这会改变输入权重的支持集，并引入额外的采样误差，不能
+将其视为对完整输入无损的读取优化。运行日志记录 full/presampled 及 divisor。
+
+默认构建仍使用连续数组排序计数，临时存储随有效 k-mer 出现总次数增长，包含
+重复项；关闭预采样不会增大固定寄存器数的最终 Sketch，但可能增加构建时间和
+峰值内存。FASTA、标准或多行 FASTQ 的 plain/gzip 输入均保留记录边界。
+
+历史实验的 1/8 预采样结果保持原记录，不能改标成全量频次结果。比较对象应统一
+采样配置，不能混用旧的预采样摘要和新默认摘要来估计完整输入的相似度；该 CLI
+预处理参数不编码在原生 ProbMinHash 元数据中。统一 FASTX builder 的丰度路径
+本来就没有这一步 1/8 预采样。`eval_freq_pmh.cpp` 的频次构建也采用全量默认值。
+
+命令行回归检查：
+
+```bash
+python tests/test_probminhash_cli.py examples/rabbitsketch
+```

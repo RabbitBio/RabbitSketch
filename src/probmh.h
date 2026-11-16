@@ -185,12 +185,13 @@ public:
     double jaccard(const ProbMinHash4& other) const;
 
     /**
-     * Frequency-weighted Jaccard estimator via winner-hash comparison.
+     * Probability Jaccard estimator via winner-hash comparison.
      *
      * Uses the winners_ array (set by addHash / addHashFromRng) to compare
      * WHICH element won each register, not the priority VALUE.  This gives
-     * a correct estimate of WJ = Σmin(wA,wB)/Σmax(wA,wB) even when the
-     * same k-mer has different counts (weights) in the two sketches.
+     * an estimate of the scale-invariant probability Jaccard J_P, including
+     * when the same k-mer has different weights. This is not the min/max
+     * weighted Jaccard sum(min(wA,wB))/sum(max(wA,wB)).
      *
      * Usage:
      *   for (auto& [h, cnt] : freq_A) pmh_A.addHash(h, cnt);
