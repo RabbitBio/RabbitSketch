@@ -205,9 +205,11 @@ std::vector<uint64_t> BuiltSketch::storeHashes() const {
 double BuiltSketch::cardinality() const {
     return std::visit([](const auto& state) -> double {
         using T = typename std::decay_t<decltype(state)>::element_type;
-        if constexpr (std::is_same_v<T, HyperLogLog> || std::is_same_v<T, SetSketch>)
-            return state->cardinality();
-        else throw std::logic_error("cardinality is an HLL/SetSketch extension");
+        if constexpr (std::is_same_v<T, MinHash> ||
+                      std::is_same_v<T, ProbMinHash4> ||
+                      std::is_same_v<T, OrderMinHash>)
+            throw std::logic_error("cardinality is not exposed for this backend");
+        else return state->cardinality();
     }, impl_->state);
 }
 

@@ -39,6 +39,9 @@ public:
 
     double jaccard(const FracMinHash& other) const;
     double containment(const FracMinHash& other) const;
+    /** Retained distinct hashes / samplingProbability(). An empty sample
+     * returns 0, which does not establish that the input set was empty.
+     * A first query finalizes the sketch if necessary. */
     double cardinality() const;
     double cardinalityAt(uint32_t target_scaled) const;
     double distance(const FracMinHash& other) const;

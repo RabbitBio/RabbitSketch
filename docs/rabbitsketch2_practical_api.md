@@ -6,7 +6,9 @@
 
 2026-11-15 新增七种算法的统一 `merge`、`project`、`store_hashes`、`index_dict`。
 具体操作语义、辅助状态开销及示例见[统一操作 API](rabbitsketch2_api_interfaces.md)。
-统一 `cardinality` 扩展限于 HLL、SetSketch。
+2026-11-17 起 FastKMV、FracMinHash、HLL、SetSketch、KSSD、BinDash 均提供统一
+`cardinality()`。ProbMinHash 不开放该接口，BinDash 饱和返回 infinity；详见
+[基数估计 API](rabbitsketch2_cardinality.md)。
 
 ## 1. 数据流
 

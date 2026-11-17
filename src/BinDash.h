@@ -98,6 +98,9 @@ public:
      * ANI = (2J / (1+J))^(1/k) where k is the sketch k-mer size.
      */
     double ani(const BinDash& other) const;
+    /** Occupancy estimate from bins before densification. Empty returns 0;
+     * all bins occupied returns +infinity (saturated/unavailable), not a
+     * finite estimate. Still available after compact finalization. */
     double cardinality() const { return cardinalityEstimate(); }
     Rank::RankMetadata metadata() const;
 

@@ -181,7 +181,8 @@ Capabilities capabilitiesFor(Algorithm algorithm) noexcept {
         case Algorithm::FastKMV:
         case Algorithm::FracMinHash:
             flags = addFlag(flags, Capability::HashUpdate);
-            flags = addFlag(flags, Capability::Cardinality);
+            if (algorithm != Algorithm::LegacyMinHash)
+                flags = addFlag(flags, Capability::Cardinality);
             flags = addFlag(flags, Capability::Jaccard);
             flags = addFlag(flags, Capability::JaccardDistance);
             flags = addFlag(flags, Capability::MashDistance);
@@ -221,6 +222,7 @@ Capabilities capabilitiesFor(Algorithm algorithm) noexcept {
             flags = addFlag(flags, Capability::SearchKeys);
             break;
         case Algorithm::KSSD:
+            flags = addFlag(flags, Capability::Cardinality);
             flags = addFlag(flags, Capability::Jaccard);
             flags = addFlag(flags, Capability::JaccardDistance);
             flags = addFlag(flags, Capability::MashDistance);
@@ -257,10 +259,6 @@ Capabilities capabilitiesFor(Algorithm algorithm) noexcept {
             flags = addFlag(flags, Capability::SearchKeys);
             break;
     }
-    // The unified public cardinality extension belongs to HLL/SetSketch.
-    // Other native estimators retain internal cardinality helpers for queries.
-    if (algorithm != Algorithm::HyperLogLog && algorithm != Algorithm::SetSketch)
-        flags &= ~static_cast<uint64_t>(Capability::Cardinality);
     if (algorithm != Algorithm::LegacyMinHash && algorithm != Algorithm::OrderMinHash) {
         flags = addFlag(flags, Capability::Merge);
         flags = addFlag(flags, Capability::Project);

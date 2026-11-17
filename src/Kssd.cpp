@@ -653,6 +653,12 @@ namespace Sketch{
         sealed_ = true;
     }
 
+    double Kssd::cardinality() const {
+        ensureSorted();
+        const size_t retained = use64 ? hashList64.size() : hashList.size();
+        return static_cast<double>(retained) / admissionProbability();
+    }
+
 	double Kssd::admissionProbability() const {
 		const double admitted = static_cast<double>(dim_end - dim_start);
 		const double dimensions = static_cast<double>(

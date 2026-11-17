@@ -75,10 +75,10 @@ void testSevenBackends() {
         for (auto capability : {Capability::Merge, Capability::Project,
                                 Capability::StoreHashes, Capability::IndexDict})
             check(caps.supports(capability), name + " common API capability missing");
-        const bool cardinality = algorithm == Algorithm::HyperLogLog || algorithm == Algorithm::SetSketch;
-        check(caps.supports(Capability::Cardinality) == cardinality, name + " cardinality contract mismatch");
+        const bool cardinality = algorithm != Algorithm::ProbMinHash;
+        check(caps.supports(Capability::Cardinality) == cardinality, name + " cardinality capability mismatch");
         if (cardinality) check(left.cardinality() > 1000, name + " cardinality estimate failed");
-        else rejects<std::logic_error>([&] { left.cardinality(); }, name + " exposed cardinality extension");
+        else rejects<std::logic_error>([&] { left.cardinality(); }, name + " exposed cardinality");
 
         uint32_t target = 64;
         if (algorithm == Algorithm::HyperLogLog || algorithm == Algorithm::SetSketch) target = 6;
@@ -104,7 +104,8 @@ void testSevenBackends() {
         const std::vector<BuiltSketch> sketches{left, right, build(config, {c}), left};
         const auto index = BuiltSketch::indexDict(sketches, 4);
         check(index.size() == 4 && index.keyCount() > 0, name + " index empty");
-        check(index.approximateCandidates() == cardinality, name + " wrong index recall contract");
+        const bool approximate = algorithm == Algorithm::HyperLogLog || algorithm == Algorithm::SetSketch;
+        check(index.approximateCandidates() == approximate, name + " wrong index recall contract");
         const auto matches = index.pairs(0.05, 4);
         std::set<std::pair<uint32_t, uint32_t>> found;
         for (const auto& match : matches) {

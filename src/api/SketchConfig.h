@@ -102,6 +102,7 @@ enum class Capability : uint64_t {
     HashUpdate = UINT64_C(1) << 2,
     WeightedUpdate = UINT64_C(1) << 3,
     Seal = UINT64_C(1) << 4,
+    // Unified cardinality entry point; individual states may saturate (BinDash).
     Cardinality = UINT64_C(1) << 5,
     Jaccard = UINT64_C(1) << 6,
     JaccardDistance = UINT64_C(1) << 7,

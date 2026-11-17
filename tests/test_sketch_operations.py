@@ -46,9 +46,10 @@ def main():
             rejects(RuntimeError, lambda: left.add_fingerprint(123))
         for method in ("finalize", "merge", "project", "store_hashes", "index_dict"):
             assert hasattr(left, method), (algorithm, method)
-        assert hasattr(left, "cardinality") == (
-            algorithm in (rs.Algorithm.HyperLogLog, rs.Algorithm.SetSketch)
-        )
+        cardinality = algorithm != rs.Algorithm.ProbMinHash
+        assert hasattr(left, "cardinality") == cardinality
+        if cardinality:
+            assert left.cardinality() > 1000
         assert left.merge(right).store_hashes() == union.store_hashes()
         projected = left.project(target)
         assert projected.merge(right.project(target)).store_hashes() == union.project(target).store_hashes()
@@ -97,7 +98,7 @@ def main():
             for capability in (rs.Capability.Merge, rs.Capability.Project,
                                rs.Capability.StoreHashes, rs.Capability.IndexDict):
                 assert caps.supports(capability)
-            cardinality = algorithm in (rs.Algorithm.HyperLogLog, rs.Algorithm.SetSketch)
+            cardinality = algorithm != rs.Algorithm.ProbMinHash
             assert caps.supports(rs.Capability.Cardinality) == cardinality
             if cardinality:
                 assert left.cardinality() > 1000

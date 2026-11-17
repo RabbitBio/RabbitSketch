@@ -34,9 +34,13 @@ SetSketch、ProbMinHash 和 BinDash 的成对查询仍要求输入具有兼容�
 ## Metric 语义
 
 - Legacy MinHash、FastKMV、FracMinHash、HLL、SetSketch 和 BinDash 面向普通集合；
-- KSSD 当前提供 Jaccard、distance 和 ANI；
+- KSSD 提供 Jaccard、distance、ANI，以及基于实际采样概率的基数估计；
 - unweighted ProbMinHash 面向普通集合，weighted ProbMinHash 面向明确的权重分布；
 - OrderMinHash 面向顺序相似性，不与集合 Jaccard 混用。
+
+独立的 `cardinality()` 入口不属于成对 `Query::Result` metric。统一入口支持
+FastKMV、FracMinHash、HLL、SetSketch、KSSD、BinDash；BinDash 饱和返回 infinity。
+ProbMinHash 不开放基数估计。具体返回值与异常语义见[基数估计 API](rabbitsketch2_cardinality.md)。
 
 ## 接入原则
 

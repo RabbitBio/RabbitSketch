@@ -527,6 +527,9 @@ namespace Sketch{
         return params_ptr_->shuffle_fingerprint;
       }
       double admissionProbability() const;
+      /// Retained distinct tuples / admissionProbability(). Empty samples
+      /// return 0, which does not establish that the input set was empty.
+      double cardinality() const;
       uint32_t admissionDimensionCount() const {
         return static_cast<uint32_t>(dim_end - dim_start);
       }

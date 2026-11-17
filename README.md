@@ -122,6 +122,13 @@ if (!result.estimate_available)
 Low-level algorithm classes remain available for applications that need direct
 updates, projections, merges, or native query methods.
 
+Native C++/Python sketches and `BuiltSketch` expose `cardinality()` for
+FastKMV, FracMinHash, HyperLogLog, SetSketch, KSSD and BinDash.
+BinDash returns infinity when its occupancy estimator saturates.
+ProbMinHash does not expose a cardinality estimator. See the
+[cardinality API contract](docs/rabbitsketch2_cardinality.md) for formulas,
+state requirements, empty-sample semantics and examples.
+
 ## Correctness and portability
 
 - A rejected query has `estimate_available == false`; inspect `plan.reason`.

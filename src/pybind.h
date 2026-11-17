@@ -516,6 +516,9 @@ PYBIND11_MODULE(rabbitsketch, m) {
          py::arg("sketches"), py::arg("num_threads") = 1,
          py::call_guard<py::gil_scoped_release>())
     .def("containment", &Sketch::FastKMV::containment)
+    .def("cardinality", &Sketch::FastKMV::cardinality,
+         "Estimate distinct k-mers from bottom-k hashes.",
+         py::call_guard<py::gil_scoped_release>())
     .def("ani", &Sketch::FastKMV::ani)
     .def("metadata", &Sketch::FastKMV::metadata)
     .def_property_readonly("size", &Sketch::FastKMV::getK)
@@ -547,6 +550,9 @@ PYBIND11_MODULE(rabbitsketch, m) {
          py::arg("sketches"), py::arg("num_threads") = 1,
          py::call_guard<py::gil_scoped_release>())
     .def("containment", &Sketch::BinDash::containment)
+    .def("cardinality", &Sketch::BinDash::cardinality,
+         "Occupancy estimate; infinity means all bins are occupied (unavailable).",
+         py::call_guard<py::gil_scoped_release>())
     .def("ani", &Sketch::BinDash::ani)
     .def("metadata", &Sketch::BinDash::metadata)
     .def_property_readonly("num_bins", &Sketch::BinDash::getNumBins)
@@ -579,8 +585,9 @@ PYBIND11_MODULE(rabbitsketch, m) {
          py::call_guard<py::gil_scoped_release>())
     .def("distance", &Sketch::FracMinHash::distance)
     .def("store_hashes", &Sketch::FracMinHash::storeHashes)
-    // Keep the legacy scale-specific helper; the common cardinality extension
-    // is provided only by HLL and SetSketch.
+    .def("cardinality", &Sketch::FracMinHash::cardinality,
+         "Retained hashes / sampling probability; finalizes on first query.",
+         py::call_guard<py::gil_scoped_release>())
     .def("cardinality_at", &Sketch::FracMinHash::cardinalityAt,
          py::arg("target_scaled"))
     .def_static("index_dict", &pythonIndexDict<Sketch::FracMinHash>,
@@ -750,6 +757,9 @@ PYBIND11_MODULE(rabbitsketch, m) {
       return std::vector<uint64_t>(values.begin(), values.end());
     })
     .def("store_hashes64", &Sketch::Kssd::storeHashes64)
+    .def("cardinality", &Sketch::Kssd::cardinality,
+         "Retained distinct tuples / admission probability; empty sample returns 0.",
+         py::call_guard<py::gil_scoped_release>())
     .def("metadata", &Sketch::Kssd::metadata)
     .def_property_readonly("admission_probability",
       &Sketch::Kssd::admissionProbability)

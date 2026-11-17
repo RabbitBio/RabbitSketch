@@ -66,7 +66,9 @@ public:
     /** Native payload export, not a complete serialization or input k-mer list. */
     std::vector<uint64_t> storeHashes() const;
     std::vector<IndexKey> indexKeys() const;
-    /** Public cardinality extension is intentionally limited to HLL/SetSketch. */
+    /** Native ordinary-set cardinality for FastKMV, FracMinHash, HLL,
+     * SetSketch, KSSD and BinDash. BinDash returns +infinity when saturated;
+     * other backends throw logic_error. */
     double cardinality() const;
     static SketchIndex indexDict(const std::vector<BuiltSketch>& sketches,
                                  int num_threads = 1);

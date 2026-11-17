@@ -1,6 +1,6 @@
 # RabbitSketch 统一操作 API
 
-更新日期：2026-11-15。
+更新日期：2026-11-17。
 
 七种算法已经接入 `merge`、`project`、`store_hashes` 和 `index_dict`：MinHash
 （源码及 Python 类名 `FastKMV`）、FracMinHash、HLL、SetSketch、ProbMinHash、
@@ -16,11 +16,12 @@ BinDash、KSSD。Python 的历史 `MinHash` 类保持原义，不在这七种实
 | 导出 | `sketch.store_hashes()` | 原生 `storeHashes`，或 `BuiltSketch::storeHashes` | 返回原生摘要数据的副本，具体含义见下文 |
 | 索引 | `index_dict(sketches, num_threads=1)` | `API::indexDict` | 返回 CSR `SketchIndex`，支持七种原生类集合及 `BuiltSketch` 集合 |
 | 类级索引入口 | `FastKMV.index_dict(...)` 等七个类及 `BuiltSketch.index_dict(...)` | `BuiltSketch::indexDict` 或泛型 `API::indexDict` | 与模块入口共用实现 |
-| 基数扩展 | `cardinality()` | `BuiltSketch::cardinality` | 统一 API 只对 HLL、SetSketch 开放；其他算法调用会明确报错 |
+| 基数估计 | `cardinality()` | 原生类或 `BuiltSketch::cardinality` | FastKMV、FracMinHash、HLL、SetSketch、KSSD、BinDash 开放；BinDash 饱和返回 infinity |
 
-原生 Python 类中的 `cardinality` 也仅由 HLL、SetSketch 提供。原有 C++ 基数
-辅助计算仍用于相似度和 containment 推导；FracMinHash 的历史
-`cardinality_at` 保留兼容，不属于统一 `cardinality` 接口。
+上述六种算法的原生 C++、Python 与 `BuiltSketch` 使用相同的基数估计器。
+历史 `MinHash` 保留原生估计器；FracMinHash 的 `cardinality_at` 保留兼容。
+算法公式、适用状态、饱和与空样本语义见[基数估计 API](rabbitsketch2_cardinality.md)。
+ProbMinHash、OrderMinHash 和历史 MinHash 不开放统一基数入口，调用会明确报错。
 
 高层配置与生命周期使用 `SketchConfig`、`MultiSketchBuilder.update/finalize`、
 `build_fastx/build_fastx_files` 和 `BuiltSketch.query`。C++ 可包含
