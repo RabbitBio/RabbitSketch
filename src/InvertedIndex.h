@@ -196,6 +196,7 @@ void computeDistances(
 
     #pragma omp parallel num_threads(nThreads)
     {
+        auto&& local = localIndex(idx);
         // Fixed-size callers keep compact 16-bit counters. Threshold sketches
         // can exceed 65535 retained hashes and explicitly select uint32_t.
         std::vector<CounterT> isect(N, 0);
@@ -231,8 +232,8 @@ void computeDistances(
                     prefetchIndexKey(keys, ki + 1);
                 size_t offset;
                 uint32_t plSz;
-                if (__builtin_expect(!idx.findPostingRange(keys[ki], offset, plSz), 0)) continue;
-                idx.forEachPosting(offset, plSz, [&](uint32_t sid) {
+                if (__builtin_expect(!local.findPostingRange(keys[ki], offset, plSz), 0)) continue;
+                local.forEachPosting(offset, plSz, [&](uint32_t sid) {
                     int j = static_cast<int>(sid);
                     if (j <= i) return;
                     if (__builtin_expect(stamp[j] != ep, 1)) {
@@ -315,9 +316,10 @@ void computeDistances(
 // MinCommonFn:     int fn(int key_count_i) → minimum common keys to verify
 // ─────────────────────────────────────────────────────────────────────────────
 template<typename KeyT, typename ExactJaccardFn, typename MinCommonFn,
-         typename KeyRanges = std::vector<std::vector<KeyT>>>
+         typename KeyRanges = std::vector<std::vector<KeyT>>,
+         typename IndexT = InvertedIndex<KeyT>>
 void computeDistancesExact(
-    const InvertedIndex<KeyT>&              idx,
+    const IndexT&                          idx,
     const KeyRanges&                        skKeys,
     const std::vector<std::string>&         fileList,
     int                                     N,
@@ -350,6 +352,7 @@ void computeDistancesExact(
 
     #pragma omp parallel num_threads(nThreads)
     {
+        auto&& local = localIndex(idx);
         // uint16_t isect: same rationale as in computeDistances() —
         // SetSketch witnessesPerSketch defaults to 1024 (m/4 with ssBits=13),
         // safely fits in uint16_t and halves the per-thread footprint.
@@ -382,8 +385,8 @@ void computeDistancesExact(
                     prefetchIndexKey(keys, ki + 1);
                 size_t offset;
                 uint32_t count;
-                if (!idx.findPostingRange(keys[ki], offset, count)) continue;
-                idx.forEachPosting(offset, count, [&](uint32_t sid) {
+                if (!local.findPostingRange(keys[ki], offset, count)) continue;
+                local.forEachPosting(offset, count, [&](uint32_t sid) {
                     const int j = static_cast<int>(sid);
                     if (j <= i) return;
                     if (__builtin_expect(stamp[j] != ep, 1)) {

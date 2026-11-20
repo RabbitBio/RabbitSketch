@@ -2,6 +2,7 @@
 #define RABBITSKETCH_API_SKETCH_INDEX_H
 
 #include "api/SketchBuilder.h"
+#include "NumaMemory.h"
 
 namespace Sketch { namespace API {
 
@@ -22,10 +23,13 @@ struct IndexMatch {
  */
 class SketchIndex {
 public:
-    explicit SketchIndex(std::vector<BuiltSketch> sketches, int num_threads = 1);
+    explicit SketchIndex(std::vector<BuiltSketch> sketches, int num_threads = 1,
+                         NumaIndexOptions numa = {});
     size_t size() const noexcept;
     size_t keyCount() const noexcept;
     size_t postingCount() const noexcept;
+    size_t numaReplicaCount() const noexcept;
+    size_t numaReplicaBytes() const noexcept;
     bool approximateCandidates() const noexcept;
     std::vector<uint32_t> postings(uint64_t value, uint32_t position = 0) const;
     std::vector<IndexCandidate> candidates(uint32_t sample) const;
@@ -36,7 +40,8 @@ private:
     std::shared_ptr<const Impl> impl_;
 };
 
-SketchIndex indexDict(const std::vector<BuiltSketch>& sketches, int num_threads = 1);
+SketchIndex indexDict(const std::vector<BuiltSketch>& sketches, int num_threads = 1,
+                      NumaIndexOptions numa = {});
 
 }} // namespace Sketch::API
 #endif

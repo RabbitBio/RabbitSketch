@@ -611,7 +611,7 @@ static void run_index_minhash(const Args& a, const std::vector<std::string>& fil
     double t1 = get_sec();
     std::cerr << "sketch time: " << t1 - t0 << " s\n";
 
-    auto csrIdx = Sketch::buildCSRIndexFromKeys<uint64_t>(skKeys, N, actualThreads);
+    auto csrIdx = Sketch::makeNumaIndex(Sketch::buildCSRIndexFromKeys<uint64_t>(skKeys, N, actualThreads), a.threads, a.numaIndex);
     double t2 = get_sec();
     std::cerr << "build CSR index: " << t2 - t1 << " s\n";
 
@@ -772,7 +772,7 @@ static void run_index_fastkmv(const Args& a, const std::vector<std::string>& fil
     double t1 = get_sec();
     std::cerr << "sketch time: " << t1 - t0 << " s\n";
 
-    auto csrIdx = Sketch::buildCSRIndexFromSortedKeys<uint64_t>(skKeys, N, actualThreads);
+    auto csrIdx = Sketch::makeNumaIndex(Sketch::buildCSRIndexFromSortedKeys<uint64_t>(skKeys, N, actualThreads), a.threads, a.numaIndex);
     double t2 = get_sec();
     std::cerr << "build CSR index: " << t2 - t1 << " s\n";
 
@@ -819,7 +819,7 @@ static void run_index_fracminhash(const Args& a, const std::vector<std::string>&
     }
     const double t1 = get_sec();
     std::cerr << "sketch time: " << t1 - t0 << " s\n";
-    auto index = Sketch::buildCSRIndexFromKeys<uint64_t>(keys, N, a.threads);
+    auto index = Sketch::makeNumaIndex(Sketch::buildCSRIndexFromKeys<uint64_t>(keys, N, a.threads), a.threads, a.numaIndex);
     const double t2 = get_sec();
     std::cerr << "build CSR index: " << t2 - t1 << " s\n";
     const double minJac = 1.0 / (2.0 * std::exp(a.kmerSize * a.maxDist) - 1.0);
@@ -997,7 +997,7 @@ static void run_index_probmh(const Args& a, const std::vector<std::string>& file
     double t1 = get_sec();
     std::cerr << "sketch time: " << t1 - t0 << " s\n";
 
-    auto csrIdx = Sketch::buildCSRIndexFromSortedKeys<uint64_t>(skKeys, N, actualThreads);
+    auto csrIdx = Sketch::makeNumaIndex(Sketch::buildCSRIndexFromSortedKeys<uint64_t>(skKeys, N, actualThreads), a.threads, a.numaIndex);
     double t2 = get_sec();
     std::cerr << "build CSR index: " << t2 - t1 << " s\n";
 
@@ -1146,7 +1146,7 @@ static void run_index_setsketch(const Args& a, const std::vector<std::string>& f
         cerr << "mode: INVERTED INDEX (witness-KMV keys)\n";
 
         double ti0 = get_sec();
-        auto csrIdx = Sketch::buildCSRIndexFromKeys<uint64_t>(skKeys, N, a.threads);
+        auto csrIdx = Sketch::makeNumaIndex(Sketch::buildCSRIndexFromKeys<uint64_t>(skKeys, N, a.threads), a.threads, a.numaIndex);
         double ti2 = get_sec();
         cerr << "CSR build (partitioned): " << ti2 - ti0 << " s\n";
 
@@ -1593,14 +1593,17 @@ static void run_index_kssd(const Args& a, const std::vector<std::string>& files)
     const double t1 = get_sec();
     std::cerr << "sketch time: " << t1 - t0 << " s\n";
     const unsigned keyBits = 4 * (P.half_k - P.drlevel);
-    auto index = use64
+    auto sharedIndex = use64
         ? Sketch::KssdBuild::buildIndex<uint64_t>(N, actualThreads, keyBits,
             [&](int i) -> const std::vector<uint64_t>& { return sketches[i].h64; })
         : Sketch::KssdBuild::buildIndex<uint32_t>(N, actualThreads, keyBits,
             [&](int i) -> const std::vector<uint32_t>& { return sketches[i].h32; });
+    const auto unique_before = sharedIndex.unique_before;
+    const auto unique_after = sharedIndex.unique_after;
+    auto index = Sketch::makeNumaIndex(std::move(sharedIndex), a.threads, a.numaIndex);
     const double t2 = get_sec();
     std::cerr << "build CSR index: " << t2 - t1 << " s\n"
-              << "unique hashes: " << index.unique_before << " -> " << index.unique_after << "\n"
+              << "unique hashes: " << unique_before << " -> " << unique_after << "\n"
               << "total non-singleton postings: " << index.totalPostings << "\n"
               << "index offsets: sparse, delta-compressed postings\n";
 
@@ -1626,6 +1629,7 @@ static void run_index_kssd(const Args& a, const std::vector<std::string>& files)
 
     #pragma omp parallel num_threads(a.threads)
     {
+        auto local = index.local();
         // Kssd sketches can hold > 65535 unique k-mers per genome, so
         // intersection counts can exceed uint16_t.  Keep int here.
         std::vector<int> isect(N, 0);
@@ -1653,8 +1657,8 @@ static void run_index_kssd(const Args& a, const std::vector<std::string>& files)
                 const uint64_t hash = use64 ? sketches[i].h64[k] : sketches[i].h32[k];
                 size_t off;
                 uint32_t count;
-                if (!index.findPostingRange(hash, off, count)) continue;
-                index.forEachPosting(off, count, [&](uint32_t j) {
+                if (!local.findPostingRange(hash, off, count)) continue;
+                local.forEachPosting(off, count, [&](uint32_t j) {
                     if (static_cast<int>(j) <= i) return;
                     if (__builtin_expect(stamp[j] != ep, 1)) {
                         stamp[j] = ep;
@@ -1755,7 +1759,7 @@ static int run_index_bindash_typed(const Args& a, const std::vector<std::string>
     }
     const double t1 = get_sec();
     std::cerr << "sketch + index keys: " << t1 - t0 << " s\n";
-    auto index = BI::buildCompressedIndex<Key, Value>(keys, n, threads);
+    auto index = Sketch::makeNumaIndex(BI::buildCompressedIndex<Key, Value>(keys, n, threads), a.threads, a.numaIndex);
     const double t2 = get_sec();
     std::cerr << "build CSR index: " << t2 - t1 << " s\n";
     const int minimum = static_cast<int>(BI::minimumMatches(
@@ -2171,7 +2175,7 @@ static void run_index_hll(const Args& a, const std::vector<std::string>& files_i
         cerr << "mode: INVERTED INDEX (witness-KMV keys, HLL)\n";
 
         double ti0 = get_sec();
-        auto csrIdx = Sketch::buildCSRIndexFromKeys<uint64_t>(skKeys, N, a.threads);
+        auto csrIdx = Sketch::makeNumaIndex(Sketch::buildCSRIndexFromKeys<uint64_t>(skKeys, N, a.threads), a.threads, a.numaIndex);
         double ti2 = get_sec();
         cerr << "CSR build (partitioned): " << ti2 - ti0 << " s\n";
 

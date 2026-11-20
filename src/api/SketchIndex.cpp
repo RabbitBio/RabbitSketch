@@ -45,18 +45,19 @@ struct Bucket {
 struct SketchIndex::Impl {
     std::vector<BuiltSketch> sketches;
     std::vector<std::vector<IndexKey>> keys;
-    InvertedIndex<IndexKey> index;
+    using Index = NumaIndex<InvertedIndex<IndexKey>>;
+    std::unique_ptr<Index> index;
     Query::Request request;
     bool approximate = false;
 
-    void collect(uint32_t sample, Counter& counter, bool upper_only) const {
+    void collect(uint32_t sample, Counter& counter, bool upper_only, const Index::Local& local) const {
         if (sample >= sketches.size()) throw std::out_of_range("index sample id is out of range");
         counter.reset();
         for (const IndexKey& key : keys[sample]) {
-            const auto found = index.postIdx.find(key);
-            if (found == index.postIdx.end()) continue;
-            const auto range = found->second;
-            index.forEachPosting(range.off, range.cnt, [&](uint32_t other) {
+            size_t off;
+            uint32_t count;
+            if (!local.findPostingRange(key, off, count)) continue;
+            local.forEachPosting(off, count, [&](uint32_t other) {
                 if (other != sample && (!upper_only || other > sample)) counter.add(other);
             });
         }
@@ -77,7 +78,7 @@ struct SketchIndex::Impl {
     }
 };
 
-SketchIndex::SketchIndex(std::vector<BuiltSketch> sketches, int num_threads) {
+SketchIndex::SketchIndex(std::vector<BuiltSketch> sketches, int num_threads, NumaIndexOptions numa) {
     if (num_threads < 1) throw std::invalid_argument("index thread count must be positive");
     if (sketches.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
         throw std::invalid_argument("index collection exceeds supported sample count");
@@ -97,30 +98,34 @@ SketchIndex::SketchIndex(std::vector<BuiltSketch> sketches, int num_threads) {
             if (!plan.executable()) throw std::invalid_argument("index_dict: " + plan.reason);
             state->keys.push_back(sketch.indexKeys());
         }
-        state->index = buildCSRIndexFromKeys<IndexKey>(
-            state->keys, static_cast<int>(state->keys.size()), num_threads, Bucket{});
     }
+    state->index.reset(new Impl::Index(buildCSRIndexFromKeys<IndexKey>(
+        state->keys, static_cast<int>(state->keys.size()), num_threads, Bucket{}), num_threads, numa));
     impl_ = std::move(state);
 }
 
 size_t SketchIndex::size() const noexcept { return impl_->sketches.size(); }
-size_t SketchIndex::keyCount() const noexcept { return impl_->index.postIdx.size(); }
-size_t SketchIndex::postingCount() const noexcept { return impl_->index.totalPostings; }
+size_t SketchIndex::keyCount() const noexcept { return impl_->index->keyCount(); }
+size_t SketchIndex::postingCount() const noexcept { return impl_->index->totalPostings; }
+size_t SketchIndex::numaReplicaCount() const noexcept { return impl_->index->replicaCount(); }
+size_t SketchIndex::numaReplicaBytes() const noexcept { return impl_->index->replicaBytes(); }
 bool SketchIndex::approximateCandidates() const noexcept { return impl_->approximate; }
 
 std::vector<uint32_t> SketchIndex::postings(uint64_t value, uint32_t position) const {
-    const auto found = impl_->index.postIdx.find({value, position});
-    if (found == impl_->index.postIdx.end()) return {};
-    const auto range = found->second;
+    auto local = impl_->index->local();
+    size_t off;
+    uint32_t count;
+    if (!local.findPostingRange(IndexKey{value, position}, off, count)) return {};
     std::vector<uint32_t> result;
-    result.reserve(range.cnt);
-    impl_->index.forEachPosting(range.off, range.cnt, [&](uint32_t sid) { result.push_back(sid); });
+    result.reserve(count);
+    local.forEachPosting(off, count, [&](uint32_t sid) { result.push_back(sid); });
     return result;
 }
 
 std::vector<IndexCandidate> SketchIndex::candidates(uint32_t sample) const {
+    auto local = impl_->index->local();
     Counter counter(size());
-    impl_->collect(sample, counter, false);
+    impl_->collect(sample, counter, false, local);
     std::vector<IndexCandidate> result;
     result.reserve(counter.touched.size());
     for (const uint32_t other : counter.touched)
@@ -130,8 +135,9 @@ std::vector<IndexCandidate> SketchIndex::candidates(uint32_t sample) const {
 
 std::vector<IndexMatch> SketchIndex::search(uint32_t sample, double min_similarity) const {
     validateThreshold(min_similarity);
+    auto local = impl_->index->local();
     Counter counter(size());
-    impl_->collect(sample, counter, false);
+    impl_->collect(sample, counter, false, local);
     return impl_->verify(sample, counter, min_similarity);
 }
 
@@ -144,11 +150,12 @@ std::vector<IndexMatch> SketchIndex::pairs(double min_similarity, int num_thread
     std::exception_ptr error;
     #pragma omp parallel num_threads(workers)
     {
+        auto local = impl_->index->local();
         Counter counter(size());
         #pragma omp for schedule(dynamic, 1)
         for (size_t sample = 0; sample < size(); ++sample) {
             try {
-                impl_->collect(static_cast<uint32_t>(sample), counter, true);
+                impl_->collect(static_cast<uint32_t>(sample), counter, true, local);
                 rows[sample] = impl_->verify(static_cast<uint32_t>(sample), counter, min_similarity);
             } catch (...) {
                 #pragma omp critical(rabbitsketch_index_error)
@@ -166,8 +173,8 @@ std::vector<IndexMatch> SketchIndex::pairs(double min_similarity, int num_thread
     return result;
 }
 
-SketchIndex indexDict(const std::vector<BuiltSketch>& sketches, int num_threads) {
-    return SketchIndex(sketches, num_threads);
+SketchIndex indexDict(const std::vector<BuiltSketch>& sketches, int num_threads, NumaIndexOptions numa) {
+    return SketchIndex(sketches, num_threads, numa);
 }
 
 SketchIndex BuiltSketch::indexDict(const std::vector<BuiltSketch>& sketches, int num_threads) {

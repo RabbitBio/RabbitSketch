@@ -74,6 +74,8 @@ static void print_usage(const char* prog) {
 "  -i list.txt -l         all-pairs over the file list\n"
 "  --index                use inverted-index pipeline (list mode only;\n"
 "                         supported for all algorithms, including bindash)\n\n"
+"  --numa-index           node-local read-only index replicas (requires --index -l)\n"
+"  --numa-index-max-gib N  total replica mapping budget in GiB (default 64)\n\n"
 "Common options:\n"
 "  -o <path>              output file (default: rabbitsketch.dist)\n"
 "  -k <int>               k-mer size (default 21; KSSD uses 2 * floor(k/2))\n"
@@ -124,6 +126,16 @@ static int parse_args(int argc, char* argv[], Args& a) {
         else if (s == "--fastkmv")      setAlgo(Algo::FASTKMV);
         else if (s == "--fracminhash")  setAlgo(Algo::FRACMINHASH);
         else if (s == "--index")        a.useIndex = true;
+        else if (s == "--numa-index")   a.numaIndex.replicate = true;
+        else if (s == "--numa-index-max-gib") {
+            need(i, "--numa-index-max-gib");
+            size_t used = 0;
+            const std::string value = argv[++i];
+            const uint64_t gib = std::stoull(value, &used);
+            if (value.empty() || value[0] == '-' || used != value.size() || !gib || gib > (SIZE_MAX >> 30))
+                throw std::invalid_argument("invalid --numa-index-max-gib");
+            a.numaIndex.max_replica_bytes = size_t(gib) << 30;
+        }
         else if (s == "-l")             a.listMode = true;
         else if (s == "-i") {
             need(i, "-i");
@@ -213,6 +225,10 @@ static int parse_args(int argc, char* argv[], Args& a) {
             return 1;
         }
     }
+    if (a.numaIndex.replicate && (!a.useIndex || !a.listMode)) {
+        std::cerr << "ERROR: --numa-index requires --index and -l\n";
+        return 1;
+    }
     if (a.useIndex && !a.listMode) {
         std::cerr << "WARNING: --index is only meaningful in list (-l) mode; ignored\n";
         a.useIndex = false;
@@ -224,8 +240,13 @@ static int parse_args(int argc, char* argv[], Args& a) {
 //  Entry point.  All actual work happens in run_cli() in sub_command.cpp.
 // ─────────────────────────────────────────────────────────────────────────────
 int main(int argc, char* argv[]) {
-    Args a;
-    a.threads = omp_get_max_threads();
-    if (parse_args(argc, argv, a) != 0) return 1;
-    return run_cli(a);
+    try {
+        Args a;
+        a.threads = omp_get_max_threads();
+        if (parse_args(argc, argv, a) != 0) return 1;
+        return run_cli(a);
+    } catch (const std::exception& error) {
+        std::cerr << "ERROR: " << error.what() << '\n';
+        return 1;
+    }
 }

@@ -8,16 +8,79 @@ namespace Sketch { namespace BinDashIndex {
 
 namespace compressed_detail = PostingCodec;
 
+// Read-only view of the direct lookup. All arrays, including the bin metadata,
+// live in the same node-local arena as the encoded posting lists.
+struct NumaCompressedIndexReplica {
+    struct Bin {
+        size_t post_base = 0;
+        Numa::Span<uint32_t> offsets, ranks;
+        Numa::Span<uint16_t> values;
+        Numa::Span<uint64_t> present;
+        uint32_t position(uint32_t value) const {
+            if (!present.empty()) {
+                const uint32_t word = value >> 6;
+                const uint64_t mask = UINT64_C(1) << (value & 63);
+                const uint64_t bits = present[word];
+                if (!(bits & mask)) return UINT32_MAX;
+                return ranks[word] + static_cast<uint32_t>(__builtin_popcountll(bits & (mask - 1)));
+            }
+            if (values.empty()) return UINT32_MAX;
+            const auto it = std::lower_bound(values.begin(), values.end(), value);
+            return it == values.end() || *it != value ? UINT32_MAX : static_cast<uint32_t>(it - values.begin());
+        }
+    };
+    std::shared_ptr<Numa::Arena> arena;
+    uint32_t signature_bits;
+    Numa::Span<Bin> bins;
+    Numa::Span<uint8_t> encodedPosts;
+    template<class Source>
+    NumaCompressedIndexReplica(const Source& source, std::shared_ptr<Numa::Arena> owner)
+        : arena(std::move(owner)), signature_bits(source.signature_bits) {
+        bins = {static_cast<Bin*>(arena->allocate(source.bins.size() * sizeof(Bin), alignof(Bin))), source.bins.size()};
+        for (size_t i = 0; i < bins.size(); ++i) {
+            new (bins.data() + i) Bin();
+            const auto& from = source.bins[i];
+            auto& to = bins[i];
+            to.post_base = from.post_base;
+            to.offsets = {arena->copy(from.offsets.data(), from.offsets.size()), from.offsets.size()};
+            to.values = {arena->copy(from.values.data(), from.values.size()), from.values.size()};
+            to.present = {arena->copy(from.present.data(), from.present.size()), from.present.size()};
+            to.ranks = {arena->copy(from.ranks.data(), from.ranks.size()), from.ranks.size()};
+        }
+        encodedPosts = {arena->copy(source.encodedPosts.data(), source.encodedPosts.size()), source.encodedPosts.size()};
+    }
+    template<class Key>
+    bool findPostingRange(Key key, size_t& off, uint32_t& bytes) const {
+        const size_t bin = key >> signature_bits;
+        if (bin >= bins.size()) return false;
+        const uint32_t value = key & ((UINT32_C(1) << signature_bits) - 1);
+        const auto& table = bins[bin];
+        const uint32_t p = table.position(value);
+        if (p == UINT32_MAX) return false;
+        off = table.post_base + table.offsets[p];
+        bytes = table.offsets[p + 1] - table.offsets[p];
+        return true;
+    }
+    template<class Visit>
+    void forEachPosting(size_t off, uint32_t bytes, Visit visit) const {
+        PostingCodec::forEachBytes(encodedPosts.data() + off, bytes, visit);
+    }
+};
+
 // Sorted sample IDs are encoded as exact unsigned differences. Offsets refer
 // to bytes, not posting counts; decoding streams directly into the caller's
 // accumulator, without reconstructing a second global posting array.
 struct CompressedInvertedIndex {
+    using NumaReplica = NumaCompressedIndexReplica;
     uint32_t signature_bits = 0;
     std::vector<BinPostingTable> bins;
     std::vector<uint8_t> encodedPosts;
     size_t totalPostings = 0;
     size_t totalUnique = 0;
     size_t workspace_bound_bytes = 0;
+
+    size_t numaKeyCount() const { return totalUnique; }
+    size_t numaStorageBytes() const { return lookupBytes() + encodedPosts.size(); }
 
     template<class Key>
     bool findPostingRange(Key key, size_t& off, uint32_t& bytes) const {

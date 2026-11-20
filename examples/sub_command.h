@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include "NumaMemory.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Algorithm selector (mutually exclusive --<algo> flag in CLI)
@@ -36,6 +37,7 @@ enum class Algo {
 struct Args {
     Algo        algo        = Algo::NONE;
     bool        useIndex    = false;
+    Sketch::NumaIndexOptions numaIndex;
     bool        listMode    = false;
     std::vector<std::string> inputs;
     std::string output      = "rabbitsketch.dist";

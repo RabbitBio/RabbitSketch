@@ -3,6 +3,7 @@
 
 #include "phmap.h"
 #include "PostingCodec.h"
+#include "NumaIndex.h"
 #include "api/OpenMPCompat.h"
 #include <algorithm>
 #include <cstdint>
@@ -26,9 +27,14 @@ template<class Key>
 struct InvertedIndex {
     // off is an encoded byte offset; cnt is a logical occurrence count.
     struct PostRange { size_t off; uint32_t cnt; };
+    using NumaReplica = NumaHashIndexReplica<Key, PostRange>;
     phmap::flat_hash_map<Key, PostRange> postIdx;
     std::vector<uint8_t> encodedPosts;
     size_t totalPostings = 0;
+    size_t numaKeyCount() const { return postIdx.size(); }
+    size_t numaStorageBytes() const {
+        return encodedPosts.size() + postIdx.capacity() * (sizeof(typename decltype(postIdx)::value_type) + 1) + 64;
+    }
 
     bool findPostingRange(const Key& key, size_t& off, uint32_t& count) const {
         const auto it = postIdx.find(key);
