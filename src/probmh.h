@@ -35,6 +35,7 @@
 #define _PROBMH_H_
 
 #include <cstdint>
+#include <cstddef>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -175,6 +176,12 @@ public:
 
     /** Insert one element from raw k-mer hash @p h with weight @p weight (default 1). */
     void addHash(uint64_t h, double weight = 1.0);
+
+    /** Exact ordered equivalent of addHash(hashes[i], weights[i]).
+     * Uses batched SIMD hashing and reuses equal-weight reciprocals without
+     * changing fingerprints, per-element race updates or weight summation. */
+    void addHashBatch(const uint64_t* hashes, const double* weights, size_t count);
+
 
     /**
      * Return the probability Jaccard similarity in [0, 1].

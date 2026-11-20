@@ -17,18 +17,18 @@ endif
 
 all: rabbitsketch exe_test_HLL exe_test_SetSketch exe_test_Kssd exe_test_MinHash exe_test_OMH exe_test_ProbMinHash exe_test_OneProbMinHash exe_test_FastKMV exe_test_BinDash exe_test_TopLProbMinHash exe_eval_sketch_acc
 
-exe_test_HLL: test_HLL.cpp ../src/HyperLogLog.cpp ../src/InvertedIndex.h
+exe_test_HLL: test_HLL.cpp ../src/HyperLogLog.cpp ../src/InvertedIndex.h ../src/PartitionedIndex.h ../src/PostingCodec.h
 	$(CXX) $(CXXFLAGS) test_HLL.cpp ../src/HyperLogLog.cpp -o exe_test_HLL $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -lz -lrabbitsketch_static
 
-exe_test_SetSketch: test_SetSketch.cpp ../src/SetSketch.cpp ../src/InvertedIndex.h
+exe_test_SetSketch: test_SetSketch.cpp ../src/SetSketch.cpp ../src/InvertedIndex.h ../src/PartitionedIndex.h ../src/PostingCodec.h
 	$(CXX) $(CXXFLAGS) test_SetSketch.cpp ../src/SetSketch.cpp -o exe_test_SetSketch $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -lz -lrabbitsketch_static
 
 KSSD_HEADERS=../src/Sketch.h ../src/KssdBuild.h ../src/KssdIndex.h ../src/io/KssdFastx.h
 
-exe_test_Kssd: test_Kssd.cpp sub_command.cpp sub_command.h ../src/BinDashIndex.h ../src/InvertedIndex.h $(KSSD_HEADERS) ../build/lib/librabbitsketch_static.a
+exe_test_Kssd: test_Kssd.cpp sub_command.cpp sub_command.h ../src/BinDashIndex.h ../src/BinDashInvertedIndex.h ../src/BinDashCompressedIndex.h ../src/InvertedIndex.h ../src/PartitionedIndex.h ../src/PostingCodec.h ../src/SortedInvertedIndex.h ../src/ProbMinHashBuild.h $(KSSD_HEADERS) ../build/lib/librabbitsketch_static.a
 	$(CXX) $(CXXFLAGS) test_Kssd.cpp sub_command.cpp -o exe_test_Kssd $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -ldeflate -lz -lrabbitsketch_static
 
-exe_test_MinHash: test_MinHash.cpp ../src/InvertedIndex.h
+exe_test_MinHash: test_MinHash.cpp ../src/InvertedIndex.h ../src/PartitionedIndex.h ../src/PostingCodec.h
 	$(CXX) $(CXXFLAGS) test_MinHash.cpp  -o exe_test_MinHash $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -lz -lrabbitsketch_static
 
 exe_test_OMH: test_OMH.cpp
@@ -51,16 +51,16 @@ else
 EXTRA_LDFLAGS=
 endif
 
-rabbitsketch: $(RABBIT_CLI_SRCS) sub_command.h $(RABBIT_SRCS) ../src/BinDash.h ../src/BinDashIndex.h ../src/InvertedIndex.h $(KSSD_HEADERS) ../build/lib/librabbitsketch_static.a
+rabbitsketch: $(RABBIT_CLI_SRCS) sub_command.h $(RABBIT_SRCS) ../src/BinDash.h ../src/BinDashIndex.h ../src/BinDashInvertedIndex.h ../src/BinDashCompressedIndex.h ../src/InvertedIndex.h ../src/PartitionedIndex.h ../src/PostingCodec.h ../src/SortedInvertedIndex.h ../src/ProbMinHashBuild.h $(KSSD_HEADERS) ../build/lib/librabbitsketch_static.a
 	$(CXX) $(CXXFLAGS) $(RABBIT_CLI_SRCS) $(RABBIT_SRCS) -o rabbitsketch $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -ldeflate -lz -lrabbitsketch_static
 
-exe_test_ProbMinHash: test_ProbMinHash.cpp ../src/probmh.cpp ../src/InvertedIndex.h
+exe_test_ProbMinHash: test_ProbMinHash.cpp ../src/probmh.cpp ../src/InvertedIndex.h ../src/PartitionedIndex.h ../src/PostingCodec.h
 	$(CXX) $(CXXFLAGS) test_ProbMinHash.cpp ../src/probmh.cpp -o exe_test_ProbMinHash $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -lz -lrabbitsketch_static
 
 exe_test_OneProbMinHash: test_OneProbMinHash.cpp ../src/probmh_op.cpp
 	$(CXX) $(CXXFLAGS) test_OneProbMinHash.cpp ../src/probmh_op.cpp -o exe_test_OneProbMinHash $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -lz -lrabbitsketch_static
 
-exe_test_FastKMV: test_FastKMV.cpp ../src/fastkmv.cpp ../src/InvertedIndex.h
+exe_test_FastKMV: test_FastKMV.cpp ../src/fastkmv.cpp ../src/InvertedIndex.h ../src/PartitionedIndex.h ../src/PostingCodec.h
 	$(CXX) $(CXXFLAGS) test_FastKMV.cpp ../src/fastkmv.cpp -o exe_test_FastKMV $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -lz -lrabbitsketch_static
 
 exe_test_TopLProbMinHash: test_TopLProbMinHash.cpp ../src/probmh.cpp
@@ -75,7 +75,7 @@ exe_eval_sketch_acc: eval_sketch_accuracy.cpp ../src/probmh.cpp ../src/probmh_op
 exe_test_ani_containment: test_ani_containment.cpp ../src/probmh.cpp ../src/fastkmv.cpp
 	$(CXX) $(CXXFLAGS) test_ani_containment.cpp ../src/probmh.cpp ../src/fastkmv.cpp -o exe_test_ani_containment $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -lz -lrabbitsketch_static
 
-exe_test_BinDash: test_BinDash.cpp ../src/BinDash.cpp ../src/InvertedIndex.h
+exe_test_BinDash: test_BinDash.cpp ../src/BinDash.cpp ../src/InvertedIndex.h ../src/PartitionedIndex.h ../src/PostingCodec.h
 	$(CXX) $(CXXFLAGS) test_BinDash.cpp ../src/BinDash.cpp -o exe_test_BinDash $(RABBIT_LIBDIRS) $(EXTRA_LDFLAGS) -lz -lrabbitsketch_static
 
 clean:

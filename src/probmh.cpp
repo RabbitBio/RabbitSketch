@@ -694,11 +694,58 @@ void ProbMinHash4::addHash(uint64_t h, double weight) {
     addHashFromRng(mc::murmur3_fmix(h, seed_), weight);
 }
 
+void ProbMinHash4::addHashBatch(const uint64_t* hashes, const double* weights,
+                               size_t count) {
+    requireMutable("ProbMinHash4::addHashBatch");
+    if (count && (hashes == nullptr || weights == nullptr))
+        throw std::invalid_argument("ProbMinHash batch inputs must not be null");
+    const double c1 = ted_params_[0].c1;
+    double previous_weight = 0.0;
+    double inverse_weight = 0.0;
+    double current_max = tracker_.getMax();
+    for (size_t offset = 0; offset < count; offset += 8) {
+        const size_t lanes = std::min<size_t>(8, count - offset);
+        uint64_t tail[8] = {};
+        const uint64_t* input = hashes + offset;
+        if (lanes != 8) {
+            std::copy_n(input, lanes, tail);
+            input = tail;
+        }
+        uint64_t rng[8];
+        // Same single seeded fmix as addHash(), using the runtime SIMD helper
+        // already shared by the other integer-hash sketch builders.
+        Runtime::filterFmix64x8(input, static_cast<uint8_t>((1u << lanes) - 1),
+                               seed_, UINT64_MAX, rng);
+        for (size_t lane = 0; lane < lanes; ++lane) {
+            const double weight = weights[offset + lane];
+            if (!(weight > 0.0)) continue;
+            if (weight != 1.0 && weight_semantics_ == Rank::WeightSemantics::UnweightedSet)
+                weight_semantics_ = Rank::WeightSemantics::UserSupplied;
+            // Preserve the exact scalar accumulation order, including rounding.
+            total_weight_ += weight;
+            if (weight != previous_weight) {
+                previous_weight = weight;
+                inverse_weight = 1.0 / weight;
+            }
+            const double u0 = static_cast<double>(rng[lane] >> 11) * PMH_INV2_53;
+            const double hv0 = u0 * c1;
+            // The slow truncated-exponential branch must use its original RNG
+            // path. Only the identical fast first-priority expression is used
+            // to reject an update; no approximation or truncation is added.
+            if (hv0 < 1.0 && !(inverse_weight * hv0 < current_max)) continue;
+            addHashFromRngInv(rng[lane], inverse_weight);
+            current_max = tracker_.getMax();
+        }
+    }
+}
+
 void ProbMinHash4::addHashFromRng(uint64_t rng, double weight) {
     if (!(weight > 0.0))
         return;
-    const double wInv = 1.0 / weight;
+    addHashFromRngInv(rng, 1.0 / weight);
+}
 
+void ProbMinHash4::addHashFromRngInv(uint64_t rng, double wInv) {
     // Fast path (~97%): first sample u*c1[0] < 1.
     // Cache ted pointer and m_ as locals to avoid repeated member loads.
     const TedParam* const ted = ted_params_.get();

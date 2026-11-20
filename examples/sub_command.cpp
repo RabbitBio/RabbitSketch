@@ -25,11 +25,15 @@
 #include "io/KssdFastx.h"
 #include "BinDash.h"
 #include "BinDashIndex.h"
+#include "BinDashInvertedIndex.h"
+#include "BinDashCompressedIndex.h"
 #include "fastkmv.h"
 #include "fracminhash.h"
 #include "probmh.h"
+#include "ProbMinHashBuild.h"
 #include "SetSketch.h"
 #include "InvertedIndex.h"
+#include "SortedInvertedIndex.h"
 #include "shuffle.h"
 #include "common.h"
 #include "kseq.h"
@@ -221,6 +225,28 @@ static bool parse_fastq_mem(const char* buf, size_t len, int k,
     return true;
 }
 
+// A worker keeps its input and counting pages across genomes, then releases
+// them before the comparison phase. Rebinding resets every parser cursor.
+struct PmhWorkerWorkspace : Sketch::ProbMinHashBuild::Workspace {
+    kseq_t* parser = nullptr;
+    ~PmhWorkerWorkspace() { kseq_destroy(parser); }
+
+    kseq_t* bind(gzFile input) {
+        if (!parser) parser = kseq_init(input);
+        else parser->f->f = input;
+        kseq_rewind(parser);
+        parser->name.l = parser->comment.l = parser->seq.l = parser->qual.l = 0;
+        return parser;
+    }
+
+    void release() {
+        kseq_destroy(parser);
+        parser = nullptr;
+        Sketch::ProbMinHashBuild::Workspace::release();
+    }
+};
+static thread_local PmhWorkerWorkspace pmh_workspace;
+
 // Build a PMH-norm sketch using libdeflate for .gz, kseq fallback otherwise.
 // Uses a contiguous occurrence vector and sort for frequency counting.
 static Sketch::ProbMinHash4*
@@ -232,9 +258,16 @@ pmh_build_weighted(const std::string& path, uint32_t m, int k,
     const uint64_t mask     = k == 32 ? UINT64_MAX : (1ULL << (2 * k)) - 1;
     const uint64_t hi_shift = 2ULL * (k - 1);
 
-    // Initial capacity only: full-frequency inputs may require more storage.
-    std::vector<uint64_t> sampled;
-    sampled.reserve(1 << 20);
+    // Plain FASTA bytes bound its occurrence count. Reuse useful capacity
+    // and trim outlier-sized buffers before a much smaller next genome.
+    struct stat input_info;
+    size_t reserve_hint = 1u << 20;
+    if (path.size() < 3 || path.compare(path.size() - 3, 3, ".gz") != 0) {
+        if (::stat(path.c_str(), &input_info) == 0 && S_ISREG(input_info.st_mode) && input_info.st_size > 0)
+            reserve_hint = std::max(reserve_hint, static_cast<size_t>(input_info.st_size));
+    }
+    pmh_workspace.begin(reserve_hint);
+    auto& sampled = pmh_workspace.occurrences;
     uint64_t total = 0;
 
     bool used_libdeflate = false;
@@ -319,14 +352,14 @@ pmh_build_weighted(const std::string& path, uint32_t m, int k,
         total = 0;
         gzFile fp = gzopen(path.c_str(), "r");
         if (fp) {
-            kseq_t* ks = kseq_init(fp);
+            kseq_t* ks = pmh_workspace.bind(fp);
             while (kseq_read(ks) >= 0) {
                 const char* seq = ks->seq.s;
                 const int   len = (int)ks->seq.l;
                 if (len >= k)
                     pmh_kmers(seq, len, k, mask, hi_shift, sampled, total, sample_threshold);
             }
-            kseq_destroy(ks);
+            ks->f->f = nullptr;
             gzclose(fp);
         } else {
             std::cerr << "WARNING: cannot open " << path << "\n";
@@ -335,20 +368,27 @@ pmh_build_weighted(const std::string& path, uint32_t m, int k,
 
     // ── sort + run-length count → PMH sketch ─────────────────────────────
     // Sort and count occurrences without discarding singleton k-mers.
-    std::sort(sampled.begin(), sampled.end());
+    pmh_workspace.sort();
 
     auto* sk = new Sketch::ProbMinHash4(m, k, seed, maxL);
     if (total > 0 && !sampled.empty()) {
         const double inv = 1.0 / static_cast<double>(total);
+        constexpr size_t BATCH = 256;
+        uint64_t keys[BATCH];
+        double weights[BATCH];
         size_t i = 0;
         while (i < sampled.size()) {
-            size_t j = i + 1;
-            while (j < sampled.size() && sampled[j] == sampled[i]) ++j;
-            const uint64_t cnt = static_cast<uint64_t>(j - i);
-            // Keep singleton identities too: dropping them would change the
-            // frequency profile supplied to the weighted estimator.
-            sk->addHash(sampled[i], static_cast<double>(cnt) * inv);
-            i = j;
+            size_t used = 0;
+            while (used < BATCH && i < sampled.size()) {
+                size_t j = i + 1;
+                while (j < sampled.size() && sampled[j] == sampled[i]) ++j;
+                const uint64_t cnt = static_cast<uint64_t>(j - i);
+                keys[used] = sampled[i];
+                weights[used] = static_cast<double>(cnt) * inv;
+                ++used;
+                i = j;
+            }
+            sk->addHashBatch(keys, weights, used);
         }
     }
     return sk;
@@ -717,7 +757,7 @@ static void list_allpairs(const Args& a,
 // ═══════════════════════════════════════════════════════════════════════════
 static void run_index_fastkmv(const Args& a, const std::vector<std::string>& files) {
     const int N = static_cast<int>(files.size());
-    std::vector<std::vector<uint64_t>> skKeys(N);
+    std::vector<Sketch::IndexKeyView<uint64_t>> skKeys(N);
     std::vector<std::unique_ptr<Sketch::FastKMV>> nativeSketches(N);
 
     const int actualThreads = std::max(1, std::min(a.threads, N));
@@ -726,13 +766,13 @@ static void run_index_fastkmv(const Args& a, const std::vector<std::string>& fil
     for (int t = 0; t < N; ++t) {
         std::unique_ptr<Sketch::FastKMV> sk(build_fastkmv(files[t], a));
         const uint64_t* regs = sk->getRegisters();
-        skKeys[t].assign(regs, regs + sk->size());
+        skKeys[t] = {regs, sk->size()};
         nativeSketches[t] = std::move(sk);
     }
     double t1 = get_sec();
     std::cerr << "sketch time: " << t1 - t0 << " s\n";
 
-    auto csrIdx = Sketch::buildCSRIndexFromKeys<uint64_t>(skKeys, N, actualThreads);
+    auto csrIdx = Sketch::buildCSRIndexFromSortedKeys<uint64_t>(skKeys, N, actualThreads);
     double t2 = get_sec();
     std::cerr << "build CSR index: " << t2 - t1 << " s\n";
 
@@ -774,7 +814,7 @@ static void run_index_fracminhash(const Args& a, const std::vector<std::string>&
     for (int i = 0; i < N; ++i) {
         std::unique_ptr<Sketch::FracMinHash> sk(build_fracminhash(files[i], a));
         keys[i] = sk->hashes();
-        // The shared builder mixes only bucket selection, preserving raw keys.
+        // The shared builder preserves every native key and occurrence.
         sizes[i] = static_cast<int>(keys[i].size());
     }
     const double t1 = get_sec();
@@ -822,6 +862,113 @@ static void run_index_fracminhash(const Args& a, const std::vector<std::string>&
 //  Index key = winners_[k] XOR (k × golden-ratio) via getWinnerIndexKeys().
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Dense winner storage and tiled exact verification, following the compact
+// all-pairs paths used by the other register/signature sketches.
+static void run_allpairs_probmh(const Args& a, const std::vector<std::string>& files) {
+
+    const size_t n = files.size();
+    const size_t m = a.pmhM;
+    if (m <= 1) throw std::invalid_argument("ProbMinHash register count must exceed 1");
+    if (m && n > std::numeric_limits<size_t>::max() / m / sizeof(uint64_t))
+        throw std::length_error("ProbMinHash winner storage size overflow");
+    const int workers = std::max(1, std::min(a.threads, static_cast<int>(n)));
+    std::unique_ptr<uint64_t[]> winners(new uint64_t[n * m]);
+    std::unique_ptr<uint8_t[]> winner_bytes(new uint8_t[n * m]);
+    std::vector<Sketch::Rank::RankMetadata> metadata(n);
+    const double t0 = get_sec();
+    #pragma omp parallel num_threads(workers)
+    {
+        #pragma omp for schedule(dynamic)
+        for (size_t i = 0; i < n; ++i) {
+            std::unique_ptr<Sketch::ProbMinHash4> sk(build_probminhash(files[i], a));
+            metadata[i] = sk->metadata();
+            std::copy_n(sk->getWinners(), m, winners.get() + i * m);
+            for (size_t j = 0; j < m; ++j)
+                winner_bytes[i * m + j] = static_cast<uint8_t>(sk->getWinners()[j]);
+        }
+        pmh_workspace.release();
+    }
+    // The original pairwise API checks the family for every pair. Homogeneous
+    // construction lets us perform the same validation once per sample.
+    for (size_t i = 1; i < n; ++i)
+        metadata[0].requireSameFamily(metadata[i], "ProbMinHash4::jaccard_weighted");
+    std::cerr << "exact winner filter: " << n * m << " auxiliary bytes (one byte per register)\n";
+    std::cerr << "sketch time: " << get_sec() - t0 << " s\n";
+
+
+    // Derive the smallest accepted integer match count with the actual output
+    // distance expression. This preserves strict cutoff rounding at boundaries.
+    size_t low = 0, high = m + 1;
+    while (low < high) {
+        const size_t middle = low + (high - low) / 2;
+        if (middle <= m && mash_distance(static_cast<double>(middle) / m, a.kmerSize) < a.maxDist)
+            high = middle;
+        else
+            low = middle + 1;
+    }
+    const size_t minimum = low;
+    const size_t tile = std::max<size_t>(8, std::min<size_t>(64, (1u << 20) / (m * sizeof(uint64_t))));
+    const double t1 = get_sec();
+
+    FILE* fp = std::fopen(a.output.c_str(), "w");
+    if (!fp) err(errno, "cannot open output: %s", a.output.c_str());
+    std::setvbuf(fp, nullptr, _IOFBF, 1 << 22);
+    constexpr size_t FLUSH_BYTES = 1u << 20;
+    #pragma omp parallel num_threads(workers)
+    {
+        std::string buffer;
+        buffer.reserve(FLUSH_BYTES);
+        #pragma omp for schedule(dynamic, 1)
+        for (size_t block_i = 0; block_i < n; block_i += tile) {
+            const size_t end_i = std::min(n, block_i + tile);
+            for (size_t block_j = block_i; block_j < n; block_j += tile) {
+                const size_t end_j = std::min(n, block_j + tile);
+                for (size_t i = block_i; i < end_i; ++i) {
+                    const uint64_t* left = winners.get() + i * m;
+                    for (size_t j = std::max(i + 1, block_j); j < end_j; ++j) {
+                        if (!Sketch::ProbMinHashBuild::winnerByteFilterAllows(
+                                winner_bytes.get() + i * m, winner_bytes.get() + j * m, m, minimum))
+                            continue;
+                        const uint64_t* right = winners.get() + j * m;
+                        if (j + 1 < end_j)
+                            __builtin_prefetch(winners.get() + (j + 1) * m, 0, 1);
+                        size_t common;
+                        if (!Sketch::ProbMinHashBuild::countWinnersAtLeast(left, right, m, minimum, common))
+                            continue;
+                        const double distance = mash_distance(static_cast<double>(common) / m, a.kmerSize);
+                        if (distance < a.maxDist) {
+                            char value[64];
+                            const int length = std::snprintf(value, sizeof(value), "%.6f\n", distance);
+                            const size_t row_bytes = files[i].size() + files[j].size() + 2 + static_cast<size_t>(length);
+                            if (!buffer.empty() && buffer.size() + row_bytes > FLUSH_BYTES) {
+                                #pragma omp critical(pmh_output)
+                                { std::fwrite(buffer.data(), 1, buffer.size(), fp); }
+                                buffer.clear();
+                            }
+                            buffer.append(files[i]).push_back('\t');
+                            buffer.append(files[j]).push_back('\t');
+                            buffer.append(value, static_cast<size_t>(length));
+                            if (buffer.size() >= FLUSH_BYTES) {
+                                #pragma omp critical(pmh_output)
+                                { std::fwrite(buffer.data(), 1, buffer.size(), fp); }
+                                buffer.clear();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (!buffer.empty()) {
+            #pragma omp critical(pmh_output)
+            { std::fwrite(buffer.data(), 1, buffer.size(), fp); }
+        }
+    }
+    std::fclose(fp);
+
+    std::cerr << "dist time: " << get_sec() - t1 << " s\n";
+    std::cerr << "output: " << a.output << "\n";
+
+}
 static void run_index_probmh(const Args& a, const std::vector<std::string>& files) {
     const int N = static_cast<int>(files.size());
     const int mSize = static_cast<int>(a.pmhM);
@@ -832,18 +979,25 @@ static void run_index_probmh(const Args& a, const std::vector<std::string>& file
 
     double t0 = get_sec();
 
-    #pragma omp parallel for num_threads(actualThreads) schedule(dynamic)
-    for (int t = 0; t < N; ++t) {
-        std::unique_ptr<Sketch::ProbMinHash4> sk(
-            pmh_build_weighted(files[t], a.pmhM, a.kmerSize, a.seed, a.pmhMaxL,
-                               a.pmhSampleDivisor));
-        sk->getWinnerIndexKeys(skKeys[t]);
+    #pragma omp parallel num_threads(actualThreads)
+    {
+        #pragma omp for schedule(dynamic)
+        for (int t = 0; t < N; ++t) {
+            std::unique_ptr<Sketch::ProbMinHash4> sk(
+                pmh_build_weighted(files[t], a.pmhM, a.kmerSize, a.seed, a.pmhMaxL,
+                                   a.pmhSampleDivisor));
+            sk->getWinnerIndexKeys(skKeys[t]);
+            // Sorting changes traversal order only; preserve every key,
+            // including any multiplicities, for exact original match counts.
+            std::sort(skKeys[t].begin(), skKeys[t].end());
+        }
+        pmh_workspace.release();
     }
 
     double t1 = get_sec();
     std::cerr << "sketch time: " << t1 - t0 << " s\n";
 
-    auto csrIdx = Sketch::buildCSRIndexFromKeys<uint64_t>(skKeys, N, actualThreads);
+    auto csrIdx = Sketch::buildCSRIndexFromSortedKeys<uint64_t>(skKeys, N, actualThreads);
     double t2 = get_sec();
     std::cerr << "build CSR index: " << t2 - t1 << " s\n";
 
@@ -861,7 +1015,7 @@ static void run_index_probmh(const Args& a, const std::vector<std::string>& file
 
     double t3 = get_sec();
     Sketch::computeDistances<uint64_t>(csrIdx, skKeys, sketchSizes, files,
-        N, a.kmerSize, a.maxDist, jaccardFn, minCommonFn, a.output, a.threads);
+        N, a.kmerSize, a.maxDist, jaccardFn, minCommonFn, a.output, a.threads, 1u << 20);
     double t4 = get_sec();
     std::cerr << "dist time: "  << t4 - t3 << " s\n";
     std::cerr << "total time: " << t4 - t0 << " s\n";
@@ -994,7 +1148,7 @@ static void run_index_setsketch(const Args& a, const std::vector<std::string>& f
         double ti0 = get_sec();
         auto csrIdx = Sketch::buildCSRIndexFromKeys<uint64_t>(skKeys, N, a.threads);
         double ti2 = get_sec();
-        cerr << "CSR build (radix): " << ti2 - ti0 << " s\n";
+        cerr << "CSR build (partitioned): " << ti2 - ti0 << " s\n";
 
         // ── σ-calibrated minCommon (witness-KMV is a Bernoulli LSH) ───────────
         // For a true pair with Jaccard J, # KMV matches ~ Binomial(K, J).
@@ -1444,14 +1598,11 @@ static void run_index_kssd(const Args& a, const std::vector<std::string>& files)
             [&](int i) -> const std::vector<uint64_t>& { return sketches[i].h64; })
         : Sketch::KssdBuild::buildIndex<uint32_t>(N, actualThreads, keyBits,
             [&](int i) -> const std::vector<uint32_t>& { return sketches[i].h32; });
-    auto& csrOff = index.offsets;
-    auto& csrPosts = index.postings;
-    auto& postIdx64 = index.sparse;
     const double t2 = get_sec();
     std::cerr << "build CSR index: " << t2 - t1 << " s\n"
               << "unique hashes: " << index.unique_before << " -> " << index.unique_after << "\n"
-              << "total non-singleton postings: " << csrPosts.size() << "\n"
-              << "index offsets: " << (csrOff.empty() ? "sparse" : "direct array") << "\n";
+              << "total non-singleton postings: " << index.totalPostings << "\n"
+              << "index offsets: sparse, delta-compressed postings\n";
 
     // ── Phase 3: Distance via flat CSR index ─────────────────────────────────
     double t3 = get_sec();
@@ -1467,9 +1618,6 @@ static void run_index_kssd(const Args& a, const std::vector<std::string>& files)
     for (int i = 0; i < N; i++)
         sketchSz[i] = use64 ? static_cast<int>(sketches[i].h64.size())
                              : static_cast<int>(sketches[i].h32.size());
-
-    const size_t*   csrOffPtr  = csrOff.data();
-    const uint32_t* csrPostPtr = csrPosts.data();
 
     FILE* fout = std::fopen(a.output.c_str(), "w");
     if (!fout) throw std::runtime_error("KSSD: cannot open output");
@@ -1500,48 +1648,20 @@ static void run_index_kssd(const Args& a, const std::vector<std::string>& files)
                 ep = 1;
             }
 
-            if (csrOff.empty()) {
-                const size_t hsz = use64 ? sketches[i].h64.size() : sketches[i].h32.size();
-                for (size_t idx = 0; idx < hsz; idx++) {
-                    const uint64_t hv = use64 ? sketches[i].h64[idx] : sketches[i].h32[idx];
-                    auto it = postIdx64.find(hv);
-                    if (__builtin_expect(it == postIdx64.end(), 0)) continue;
-                    const uint32_t* pl = csrPostPtr + it->second.off;
-                    const uint32_t plSz = it->second.cnt;
-                    for (uint32_t ki = 0; ki < plSz; ki++) {
-                        uint32_t j = pl[ki];
-                        if (static_cast<int>(j) <= i) continue;
-                        if (__builtin_expect(stamp[j] != ep, 1)) {
-                            stamp[j] = ep;
-                            isect[j] = 1;
-                            cand.push_back(j);
-                        } else {
-                            isect[j]++;
-                        }
-                    }
-                }
-            } else {
-                const auto& harr = sketches[i].h32;
-                const size_t hsz = harr.size();
-                for (size_t idx = 0; idx < hsz; idx++) {
-                    if (__builtin_expect(idx + 1 < hsz, 1))
-                        __builtin_prefetch(&harr[idx + 1], 0, 1);
-                    const uint32_t hv = harr[idx];
-                    const size_t plStart = csrOffPtr[hv];
-                    const size_t plEnd   = csrOffPtr[hv + 1];
-                    if (__builtin_expect(plStart == plEnd, 0)) continue;
-                    for (size_t ki = plStart; ki < plEnd; ki++) {
-                        uint32_t j = csrPostPtr[ki];
-                        if (static_cast<int>(j) <= i) continue;
-                        if (__builtin_expect(stamp[j] != ep, 1)) {
-                            stamp[j] = ep;
-                            isect[j] = 1;
-                            cand.push_back(j);
-                        } else {
-                            isect[j]++;
-                        }
-                    }
-                }
+            const size_t hsz = use64 ? sketches[i].h64.size() : sketches[i].h32.size();
+            for (size_t k = 0; k < hsz; ++k) {
+                const uint64_t hash = use64 ? sketches[i].h64[k] : sketches[i].h32[k];
+                size_t off;
+                uint32_t count;
+                if (!index.findPostingRange(hash, off, count)) continue;
+                index.forEachPosting(off, count, [&](uint32_t j) {
+                    if (static_cast<int>(j) <= i) return;
+                    if (__builtin_expect(stamp[j] != ep, 1)) {
+                        stamp[j] = ep;
+                        isect[j] = 1;
+                        cand.push_back(j);
+                    } else ++isect[j];
+                });
             }
 
             const int minCommon = std::max(1,
@@ -1598,14 +1718,15 @@ static void run_index_kssd(const Args& a, const std::vector<std::string>& files)
 // ═══════════════════════════════════════════════════════════════════════════
 // BinDash index: exact (bin position, b-bit value) keys. Posting counts equal
 // the native packed comparison's matching-bin count, including densified bins.
-template<class Key>
+template<class Key, class Value>
 static int run_index_bindash_typed(const Args& a, const std::vector<std::string>& files)
 {
     namespace BI = Sketch::BinDashIndex;
     const int n = static_cast<int>(files.size());
     const int threads = std::max(1, std::min(a.threads, n));
     const uint32_t bins = a.bdSketch64 * 64;
-    std::vector<std::vector<Key>> keys(n);
+    std::vector<std::vector<Value>> values(n);
+    std::vector<BI::ValueKeyView<Key, Value>> keys(n);
     std::vector<int> sizes(n, static_cast<int>(bins));
     std::atomic<bool> failed(false);
     const double t0 = get_sec();
@@ -1614,14 +1735,19 @@ static int run_index_bindash_typed(const Args& a, const std::vector<std::string>
         gzFile fp = gzopen(files[i].c_str(), "r");
         if (!fp) { failed.store(true); continue; }
         kseq_t* reader = kseq_init(fp);
-        Sketch::BinDash sketch(a.bdSketch64, a.kmerSize, a.bdBbits, a.seed);
+        Sketch::BinDash sketch(a.bdSketch64, a.kmerSize, a.bdBbits, a.seed,
+                              /*retain_operations=*/false);
         int status;
         while ((status = kseq_read(reader)) >= 0)
             sketch.update(reader->seq.s, reader->seq.l);
         kseq_destroy(reader);
         gzclose(fp);
         if (status < -1) { failed.store(true); continue; }
-        keys[i] = BI::keys<Key>(sketch);
+        sketch.packedSignatures();
+        values[i].resize(bins);
+        for (uint32_t bin = 0; bin < bins; ++bin)
+            values[i][bin] = static_cast<Value>(sketch.getBinValue(bin));
+        keys[i] = {values[i].data(), bins, a.bdBbits};
     }
     if (failed.load()) {
         std::cerr << "ERROR: BinDash could not read one or more FASTX inputs\n";
@@ -1629,13 +1755,14 @@ static int run_index_bindash_typed(const Args& a, const std::vector<std::string>
     }
     const double t1 = get_sec();
     std::cerr << "sketch + index keys: " << t1 - t0 << " s\n";
-    auto index = Sketch::buildCSRIndexFromKeys<Key>(keys, n, threads, BI::Bucket{});
+    auto index = BI::buildCompressedIndex<Key, Value>(keys, n, threads);
     const double t2 = get_sec();
     std::cerr << "build CSR index: " << t2 - t1 << " s\n";
     const int minimum = static_cast<int>(BI::minimumMatches(
         bins, a.bdBbits, a.kmerSize, a.maxDist));
     std::cerr << "BinDash index: bins=" << bins << " bbits=" << a.bdBbits
-              << " key_bytes=" << sizeof(Key) << " minSamebits=" << minimum
+              << " key_bytes=" << sizeof(Key) << " stored_value_bytes=" << sizeof(Value)
+              << " minSamebits=" << minimum
               << " (mashD<" << a.maxDist << ")\n";
     auto jaccard = [bins, bits = a.bdBbits](int common, int, int) {
         return BI::jaccard(static_cast<uint32_t>(common), bins, bits);
@@ -1650,7 +1777,7 @@ static int run_index_bindash_typed(const Args& a, const std::vector<std::string>
     // 32-bit counters also support configurations exceeding 65535 bins.
     Sketch::computeDistances<Key, decltype(jaccard), decltype(minCommon), uint32_t>(
         index, keys, sizes, files, n, a.kmerSize, a.maxDist,
-        jaccard, minCommon, output, threads);
+        jaccard, minCommon, output, threads, size_t(1) << 20);
     const double t3 = get_sec();
     std::cerr << "dist time: " << t3 - t2 << " s\n"
               << "total time: " << t3 - t0 << " s\n";
@@ -1666,9 +1793,17 @@ static int run_index_bindash(const Args& a, const std::vector<std::string>& file
         return 1;
     }
     const unsigned bits = Sketch::BinDashIndex::keyBits(static_cast<uint32_t>(bins), a.bdBbits);
-    if (bits <= 32) return run_index_bindash_typed<uint32_t>(a, files);
-    if (bits <= 64) return run_index_bindash_typed<uint64_t>(a, files);
-    return run_index_bindash_typed<Sketch::BinDashIndex::WideKey>(a, files);
+    if (bits <= 32) {
+        if (a.bdBbits <= 8) return run_index_bindash_typed<uint32_t, uint8_t>(a, files);
+        if (a.bdBbits <= 16) return run_index_bindash_typed<uint32_t, uint16_t>(a, files);
+        return run_index_bindash_typed<uint32_t, uint32_t>(a, files);
+    }
+    if (bits <= 64) {
+        if (a.bdBbits <= 16) return run_index_bindash_typed<uint64_t, uint16_t>(a, files);
+        if (a.bdBbits <= 32) return run_index_bindash_typed<uint64_t, uint32_t>(a, files);
+        return run_index_bindash_typed<uint64_t, uint64_t>(a, files);
+    }
+    return run_index_bindash_typed<Sketch::BinDashIndex::WideKey, uint64_t>(a, files);
 }
 
 //  §9  BinDash all-pairs  (mirrors test_BinDash.cpp – flat_usigs storage,
@@ -2038,7 +2173,7 @@ static void run_index_hll(const Args& a, const std::vector<std::string>& files_i
         double ti0 = get_sec();
         auto csrIdx = Sketch::buildCSRIndexFromKeys<uint64_t>(skKeys, N, a.threads);
         double ti2 = get_sec();
-        cerr << "CSR build (radix): " << ti2 - ti0 << " s\n";
+        cerr << "CSR build (partitioned): " << ti2 - ti0 << " s\n";
 
         // ── σ-calibrated minCommon (see SetSketch path for derivation) ────
         const double sigma     = std::sqrt(expectedOverlap * (1.0 - minJac));
@@ -2397,13 +2532,7 @@ int run_cli(const Args& a) {
         break;
 
     case Algo::PROBMINHASH:
-        list_allpairs<Sketch::ProbMinHash4>(a, files, build_probminhash,
-            [kmer](Sketch::ProbMinHash4* x, Sketch::ProbMinHash4* y) {
-                return mash_distance(x->jaccard_weighted(*y), kmer);
-            },
-            // Post-build: free ted_params_ (~40 KB) + perm_ (~8 KB) per sketch.
-            // Runs after all sketches are built; no malloc-contention during build.
-            [](Sketch::ProbMinHash4* sk) { sk->finalize(); });
+        run_allpairs_probmh(a, files);
         break;
 
     case Algo::SETSKETCH:

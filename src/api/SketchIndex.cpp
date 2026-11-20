@@ -56,11 +56,9 @@ struct SketchIndex::Impl {
             const auto found = index.postIdx.find(key);
             if (found == index.postIdx.end()) continue;
             const auto range = found->second;
-            for (size_t k = range.off; k < range.off + range.cnt; ++k) {
-                const uint32_t other = index.csrPosts[k];
-                if (other == sample || (upper_only && other < sample)) continue;
-                counter.add(other);
-            }
+            index.forEachPosting(range.off, range.cnt, [&](uint32_t other) {
+                if (other != sample && (!upper_only || other > sample)) counter.add(other);
+            });
         }
         std::sort(counter.touched.begin(), counter.touched.end());
     }
@@ -107,16 +105,16 @@ SketchIndex::SketchIndex(std::vector<BuiltSketch> sketches, int num_threads) {
 
 size_t SketchIndex::size() const noexcept { return impl_->sketches.size(); }
 size_t SketchIndex::keyCount() const noexcept { return impl_->index.postIdx.size(); }
-size_t SketchIndex::postingCount() const noexcept { return impl_->index.csrPosts.size(); }
+size_t SketchIndex::postingCount() const noexcept { return impl_->index.totalPostings; }
 bool SketchIndex::approximateCandidates() const noexcept { return impl_->approximate; }
 
 std::vector<uint32_t> SketchIndex::postings(uint64_t value, uint32_t position) const {
     const auto found = impl_->index.postIdx.find({value, position});
     if (found == impl_->index.postIdx.end()) return {};
     const auto range = found->second;
-    auto begin = impl_->index.csrPosts.begin() + range.off;
-    std::vector<uint32_t> result(begin, begin + range.cnt);
-    std::sort(result.begin(), result.end());
+    std::vector<uint32_t> result;
+    result.reserve(range.cnt);
+    impl_->index.forEachPosting(range.off, range.cnt, [&](uint32_t sid) { result.push_back(sid); });
     return result;
 }
 

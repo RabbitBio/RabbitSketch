@@ -34,6 +34,22 @@ struct WideKey {
     }
 };
 
+// Bin positions are implicit in the array index. Store only the signature
+// value and synthesize the exact composite key when it is used. Values may
+// use 8/16/32/64 bits; no signature bits are discarded.
+template<class Key, class Value>
+struct ValueKeyView {
+    const Value* values = nullptr;
+    uint32_t bins = 0, bits = 0;
+    size_t size() const { return bins; }
+    Key operator[](size_t bin) const {
+        if constexpr (std::is_same<Key, WideKey>::value)
+            return WideKey{static_cast<uint64_t>(values[bin]), static_cast<uint32_t>(bin)};
+        else
+            return (static_cast<Key>(bin) << bits) | static_cast<Key>(values[bin]);
+    }
+};
+
 inline unsigned keyBits(uint32_t bins, uint32_t bbits) {
     unsigned position_bits = 0;
     for (uint32_t last = bins - 1; last; last >>= 1) ++position_bits;

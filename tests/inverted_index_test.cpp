@@ -25,7 +25,6 @@ std::vector<std::vector<uint32_t>> checkIndex(
     }
     const auto index = Sketch::buildCSRIndexFromKeys<Key>(keys, n, threads);
     size_t expectedKeys = 0, expectedPosts = 0;
-    std::vector<bool> visited(index.csrPosts.size());
     for (const auto& item : reference) {
         const auto found = index.postIdx.find(item.first);
         if (item.second.size() == 1) {
@@ -36,19 +35,13 @@ std::vector<std::vector<uint32_t>> checkIndex(
         expectedPosts += item.second.size();
         check(found != index.postIdx.end(), "original key missing or transformed");
         const auto range = found->second;
-        check(range.off <= index.csrPosts.size() &&
-              range.cnt <= index.csrPosts.size() - range.off, "invalid CSR range");
-        std::vector<uint32_t> observed(index.csrPosts.begin() + range.off,
-            index.csrPosts.begin() + range.off + range.cnt);
-        std::sort(observed.begin(), observed.end());
-        check(observed == item.second, "posting IDs differ from reference");
-        for (size_t p = range.off; p < range.off + range.cnt; ++p) {
-            check(!visited[p], "overlapping CSR ranges");
-            visited[p] = true;
-        }
+        check(range.off < index.encodedPosts.size(), "invalid encoded range");
+        std::vector<uint32_t> observed;
+        index.forEachPosting(range.off, range.cnt, [&](uint32_t sid) { observed.push_back(sid); });
+        check(observed == item.second, "sorted posting IDs differ from reference");
     }
     check(index.postIdx.size() == expectedKeys, "unexpected index key");
-    check(index.csrPosts.size() == expectedPosts && index.totalPostings == expectedPosts,
+    check(index.totalPostings == expectedPosts,
           "incorrect posting total");
     std::vector<std::vector<uint32_t>> counts(n, std::vector<uint32_t>(n));
     for (int i = 0; i < n; ++i) {
@@ -56,8 +49,7 @@ std::vector<std::vector<uint32_t>> checkIndex(
             const auto found = index.postIdx.find(key);
             if (found == index.postIdx.end()) continue;
             const auto range = found->second;
-            for (size_t p = range.off; p < range.off + range.cnt; ++p)
-                ++counts[i][index.csrPosts[p]];
+            index.forEachPosting(range.off, range.cnt, [&](uint32_t sid) { ++counts[i][sid]; });
         }
         for (int j = i + 1; j < n; ++j) {
             std::vector<Key> common;

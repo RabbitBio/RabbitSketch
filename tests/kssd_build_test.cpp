@@ -157,20 +157,19 @@ static void checkIndex(unsigned bits, std::vector<std::vector<Key>> keys) {
         size_t total = 0;
         for (const auto& pair : expected) {
             const uint64_t hash = pair.first;
-            size_t start = 0, count = 0;
-            if (index.offsets.empty()) {
-                auto found = index.sparse.find(hash);
-                if (found != index.sparse.end()) { start = found->second.off; count = found->second.cnt; }
-            } else { start = index.offsets[hash]; count = index.offsets[hash + 1] - start; }
+            size_t start = 0;
+            uint32_t count = 0;
+            index.findPostingRange(hash, start, count);
             if (pair.second.size() == 1) check(count == 0, "singleton retained");
             else {
                 check(count == pair.second.size(), "posting count mismatch");
-                check(std::equal(pair.second.begin(), pair.second.end(), index.postings.begin() + start),
-                      "posting IDs mismatch");
+                std::vector<uint32_t> observed;
+                index.forEachPosting(start, count, [&](uint32_t sid) { observed.push_back(sid); });
+                check(observed == pair.second, "posting IDs mismatch");
                 total += count;
             }
         }
-        check(total == index.postings.size(), "extra postings");
+        check(total == index.totalPostings, "extra postings");
     }
 }
 

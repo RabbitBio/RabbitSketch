@@ -6,8 +6,8 @@
  *
  * Workflow:
  *   1. Caller extracts each sketch's native index keys.
- *   2. buildCSRIndexFromKeys() – parallel bucket scatter/sort, singleton removal,
- *      and CSR flattening. Mixing selects buckets without changing stored keys.
+ *   2. buildCSRIndexFromKeys() – bounded partitioned sorting, singleton removal,
+ *      and exact delta-compressed posting lists.
  *   3. computeDistances() – posting-list traversal with stamp/epoch counting,
  *      caller-provided Jaccard lambda, minCommon pruning, and Mash distance output.
  */
@@ -15,7 +15,7 @@
 #ifndef _INVERTED_INDEX_H_
 #define _INVERTED_INDEX_H_
 
-#include "phmap.h"
+#include "PartitionedIndex.h"
 #include "common.h"
 
 #include "api/OpenMPCompat.h"
@@ -29,206 +29,22 @@
 #include <string>
 #include <iostream>
 #include <algorithm>
+#include <type_traits>
 #include <sys/stat.h>
 #include <unistd.h>
 
 namespace Sketch {
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Data structure holding the CSR-packed inverted index.
-// ─────────────────────────────────────────────────────────────────────────────
-template<typename KeyT>
-struct InvertedIndex {
-    struct PostRange { size_t off; uint32_t cnt; };
-
-    phmap::flat_hash_map<KeyT, PostRange> postIdx;
-    std::vector<uint32_t>                 csrPosts;
-    size_t                                totalPostings = 0;
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// buildCSRIndexFromKeys – fast path bypassing per-thread phmap inserts.
-//
-//   1. Per-partition per-bucket counts of (key, sid) pairs (1024 buckets)
-//   2. Compute per-thread per-bucket write offsets (parallel-safe scatter)
-//   3. Scatter pairs into bucket-grouped flat array
-//   4. Sort each bucket by key (parallel across buckets)
-//   5. Per-bucket scan emits posting lists into csrPosts; build phmap postIdx.
-//
-// Output is a phmap-backed InvertedIndex equivalent to buildCSRIndex's, so
-// the downstream computeDistances / computeDistancesExact code is unchanged.
-// ─────────────────────────────────────────────────────────────────────────────
-template<typename KeyT, typename BucketFn>
-InvertedIndex<KeyT> buildCSRIndexFromKeys(
-    const std::vector<std::vector<KeyT>>& skKeys,
-    int N,
-    int nThreads,
-    BucketFn bucket)
-{
-    InvertedIndex<KeyT> idx;
-    if (N <= 0) return idx;
-
-    constexpr int BK_BITS  = 10;
-    constexpr int BK       = 1 << BK_BITS;
-
-    struct KS { KeyT key; uint32_t sid; };
-
-    const int T = std::min(nThreads, N);
-    if (T <= 0) return idx;
-
-    // seqLo[tid] .. seqLo[tid+1] – contiguous sequence range owned by thread tid
-    std::vector<int> seqLo(T + 1, 0);
-    {
-        const int base = N / T;
-        const int rem  = N % T;
-        int p = 0;
-        for (int tid = 0; tid < T; ++tid) {
-            seqLo[tid] = p;
-            p += base + (tid < rem ? 1 : 0);
-        }
-        seqLo[T] = N;
-    }
-
-    // ── Step 1: per-thread per-bucket counts ────────────────────────────────
-    std::vector<size_t> cnt(static_cast<size_t>(T) * BK, 0);
-    // Iterate logical partitions even if OMP_THREAD_LIMIT / dynamic teams
-    // supply fewer workers than requested.
-    #pragma omp parallel for num_threads(T) schedule(static)
-    for (int tid = 0; tid < T; ++tid) {
-        size_t* lc = &cnt[static_cast<size_t>(tid) * BK];
-        const int lo = seqLo[tid], hi = seqLo[tid + 1];
-        for (int t = lo; t < hi; ++t)
-            for (KeyT k : skKeys[t])
-                ++lc[bucket(k)];
-    }
-
-    // ── Step 2: bucket totals + per-thread per-bucket write offsets ─────────
-    std::vector<size_t> bktSize(BK, 0);
-    for (int b = 0; b < BK; ++b) {
-        size_t s = 0;
-        for (int tid = 0; tid < T; ++tid)
-            s += cnt[static_cast<size_t>(tid) * BK + b];
-        bktSize[b] = s;
-    }
-    std::vector<size_t> bktOff(BK + 1, 0);
-    for (int b = 0; b < BK; ++b) bktOff[b + 1] = bktOff[b] + bktSize[b];
-    const size_t totalPairs = bktOff[BK];
-    if (totalPairs == 0) return idx;
-
-    std::vector<size_t> off(static_cast<size_t>(T) * BK, 0);
-    for (int b = 0; b < BK; ++b) {
-        size_t cur = bktOff[b];
-        for (int tid = 0; tid < T; ++tid) {
-            off[static_cast<size_t>(tid) * BK + b] = cur;
-            cur += cnt[static_cast<size_t>(tid) * BK + b];
-        }
-    }
-    std::vector<size_t>().swap(cnt);
-
-    // ── Step 3: scatter (key, sid) pairs into bucket-grouped flat array ─────
-    std::vector<KS> pairs(totalPairs);
-    #pragma omp parallel for num_threads(T) schedule(static)
-    for (int tid = 0; tid < T; ++tid) {
-        std::vector<size_t> cur(BK);
-        std::memcpy(cur.data(), &off[static_cast<size_t>(tid) * BK],
-                    BK * sizeof(size_t));
-        const int lo = seqLo[tid], hi = seqLo[tid + 1];
-        for (int t = lo; t < hi; ++t) {
-            const uint32_t sid = static_cast<uint32_t>(t);
-            for (KeyT k : skKeys[t]) {
-                int b = static_cast<int>(bucket(k));
-                pairs[cur[b]++] = KS{k, sid};
-            }
-        }
-    }
-    std::vector<size_t>().swap(off);
-
-    // ── Step 4: sort each bucket by key ────────────────────────────────────
-    #pragma omp parallel for num_threads(nThreads) schedule(dynamic, 1)
-    for (int b = 0; b < BK; ++b) {
-        std::sort(pairs.data() + bktOff[b], pairs.data() + bktOff[b + 1],
-                  [](const KS& a, const KS& bb) { return a.key < bb.key; });
-    }
-
-    // ── Step 5: per-bucket count of unique non-singleton keys + post total ──
-    std::vector<size_t> bktUnique(BK, 0);
-    std::vector<size_t> bktPosts (BK, 0);
-    #pragma omp parallel for num_threads(nThreads) schedule(dynamic, 1)
-    for (int b = 0; b < BK; ++b) {
-        size_t u = 0, p = 0;
-        const size_t lo = bktOff[b], hi = bktOff[b + 1];
-        size_t i = lo;
-        while (i < hi) {
-            size_t j = i + 1;
-            while (j < hi && pairs[j].key == pairs[i].key) ++j;
-            const size_t run = j - i;
-            if (run > 1) { ++u; p += run; }
-            i = j;
-        }
-        bktUnique[b] = u;
-        bktPosts [b] = p;
-    }
-    size_t totalUnique = 0, totalPosts = 0;
-    std::vector<size_t> postOff(BK + 1, 0);
-    for (int b = 0; b < BK; ++b) {
-        totalUnique += bktUnique[b];
-        postOff[b]   = totalPosts;
-        totalPosts  += bktPosts[b];
-    }
-    postOff[BK] = totalPosts;
-    std::cerr << "merge index: " << totalUnique << " unique keys" << std::endl;
-    std::cerr << "singleton removal: -> " << totalUnique << std::endl;
-
-    // ── Step 6: fill csrPosts in parallel; postIdx insertion serial ────────
-    idx.totalPostings = totalPosts;
-    idx.csrPosts.resize(totalPosts);
-    idx.postIdx.reserve(totalUnique);
-
-    #pragma omp parallel for num_threads(nThreads) schedule(dynamic, 1)
-    for (int b = 0; b < BK; ++b) {
-        const size_t lo = bktOff[b], hi = bktOff[b + 1];
-        size_t out = postOff[b];
-        size_t i = lo;
-        while (i < hi) {
-            size_t j = i + 1;
-            while (j < hi && pairs[j].key == pairs[i].key) ++j;
-            const size_t run = j - i;
-            if (run > 1) {
-                for (size_t k = i; k < j; ++k)
-                    idx.csrPosts[out++] = pairs[k].sid;
-            }
-            i = j;
-        }
-    }
-
-    // postIdx is small after singleton removal → serial insert is fast.
-    for (int b = 0; b < BK; ++b) {
-        const size_t lo = bktOff[b], hi = bktOff[b + 1];
-        size_t out = postOff[b];
-        size_t i = lo;
-        while (i < hi) {
-            size_t j = i + 1;
-            while (j < hi && pairs[j].key == pairs[i].key) ++j;
-            const size_t run = j - i;
-            if (run > 1) {
-                idx.postIdx[pairs[i].key] =
-                    typename InvertedIndex<KeyT>::PostRange{
-                        out, static_cast<uint32_t>(run)};
-                out += run;
-            }
-            i = j;
-        }
-    }
-
-    std::cerr << "CSR flatten: " << totalPosts << " postings" << std::endl;
-    return idx;
+// Synthesized keys (e.g. BinDash position + signature) are returned by value;
+// only prefetch an actual referenced element, never a temporary key.
+template<class Keys>
+inline void prefetchIndexKey(const Keys& keys, size_t position) {
+    if constexpr (std::is_lvalue_reference<decltype(keys[position])>::value)
+        __builtin_prefetch(&keys[position], 0, 1);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// A bottom-k or threshold sketch's raw high bits are mostly zero. Mix only
-// for bucket selection so these keys can use all sorting tasks while the
-// original values remain intact for lookup and native sketch verification.
-// ─────────────────────────────────────────────────────────────────────────────
+// Compatibility bucket selector. Partitioning now uses exact key ranges; a
+// caller-provided hash bucket function is accepted without changing key values.
 struct MixedIndexBucket {
     size_t operator()(uint64_t key) const {
         key += UINT64_C(0x9e3779b97f4a7c15);
@@ -238,127 +54,86 @@ struct MixedIndexBucket {
     }
 };
 
-// Custom bucket functions also return [0,1024), e.g. for composite keys.
-template<typename KeyT>
-InvertedIndex<KeyT> buildCSRIndexFromKeys(
-    const std::vector<std::vector<KeyT>>& skKeys, int N, int nThreads)
-{
-    return buildCSRIndexFromKeys<KeyT>(skKeys, N, nThreads, MixedIndexBucket{});
+// Ownable extracted keys can be sorted in place. Never deduplicate: some
+// sketch adapters intentionally carry repeated occurrences.
+template<class Key, class BucketFn = MixedIndexBucket>
+InvertedIndex<Key> buildCSRIndexFromKeys(
+    std::vector<std::vector<Key>>& keys, int n, int threads,
+    BucketFn = {}, IndexBuildOptions options = {}, IndexBuildStats* stats = nullptr) {
+    if (n < 0 || static_cast<size_t>(n) > keys.size())
+        throw std::invalid_argument("invalid index sample count");
+    const int workers = std::max(1, std::min(threads, std::max(1, n)));
+    #pragma omp parallel for num_threads(workers) schedule(dynamic)
+    for (int i = 0; i < n; ++i)
+        if (!std::is_sorted(keys[i].begin(), keys[i].end()))
+            std::sort(keys[i].begin(), keys[i].end());
+    return buildPartitionedIndex<Key>(keys, n, threads, true, options, stats);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Compatibility path for callers that already own thread-local maps.
-// New key-array callers use buildCSRIndexFromKeys() above.
-// ─────────────────────────────────────────────────────────────────────────────
-template<typename KeyT>
-InvertedIndex<KeyT> buildCSRIndex(
-    std::vector<phmap::flat_hash_map<KeyT, std::vector<uint32_t>>>& threadIdx,
-    int nThreads)
-{
-    constexpr int NUM_SHARDS = 64;
-    const KeyT SHARD_MASK = static_cast<KeyT>(NUM_SHARDS - 1);
-    const int tCount = static_cast<int>(threadIdx.size());
+// Preserve read-only input and the old const overload. Sorted arrays use the
+// same fast path; unsorted arrays use bounded rescans, with no full-size copy.
+template<class Key, class BucketFn = MixedIndexBucket>
+InvertedIndex<Key> buildCSRIndexFromKeys(
+    const std::vector<std::vector<Key>>& keys, int n, int threads,
+    BucketFn = {}, IndexBuildOptions options = {}, IndexBuildStats* stats = nullptr) {
+    if (n < 0 || static_cast<size_t>(n) > keys.size())
+        throw std::invalid_argument("invalid index sample count");
+    bool sorted = true;
+    for (int i = 0; i < n; ++i)
+        sorted = sorted && std::is_sorted(keys[i].begin(), keys[i].end());
+    return buildPartitionedIndex<Key>(keys, n, threads, sorted, options, stats);
+}
 
-    std::vector<phmap::flat_hash_map<KeyT, std::vector<uint32_t>>> invShards(NUM_SHARDS);
-
-    // Phase 2.1: thread-local re-shard (no locks)
-    {
-        std::vector<std::vector<phmap::flat_hash_map<KeyT, std::vector<uint32_t>>>> localShards(
-            tCount, std::vector<phmap::flat_hash_map<KeyT, std::vector<uint32_t>>>(NUM_SHARDS));
-
-        #pragma omp parallel for num_threads(nThreads) schedule(static)
-        for (int tid = 0; tid < tCount; ++tid)
-        {
-            for (auto& [key, vec] : threadIdx[tid]) {
-                int shard = static_cast<int>(key & SHARD_MASK);
-                auto& shardMap = localShards[tid][shard];
-                auto [it, ins] = shardMap.try_emplace(key, std::move(vec));
-                if (!ins) {
-                    auto& dst = it->second;
-                    dst.reserve(dst.size() + vec.size());
-                    dst.insert(dst.end(), vec.begin(), vec.end());
-                }
-            }
-            phmap::flat_hash_map<KeyT, std::vector<uint32_t>>().swap(threadIdx[tid]);
-        }
-        threadIdx.clear();
-
-        // Phase 2.2: shard merge across threads
-        #pragma omp parallel for num_threads(nThreads) schedule(dynamic, 1)
-        for (int s = 0; s < NUM_SHARDS; s++) {
-            auto& merged = invShards[s];
-            for (int tid = 0; tid < tCount; ++tid) {
-                auto& src = localShards[tid][s];
-                for (auto& [key, vec] : src) {
-                    auto [it, ins] = merged.try_emplace(key, std::move(vec));
-                    if (!ins) {
-                        auto& dst = it->second;
-                        dst.reserve(dst.size() + vec.size());
-                        dst.insert(dst.end(), vec.begin(), vec.end());
-                    }
-                }
-                phmap::flat_hash_map<KeyT, std::vector<uint32_t>>().swap(src);
+// Compatibility for owners of existing thread-local posting maps. Sorting
+// uses their existing ID arrays in place; the result uses the same codec and
+// visitor as the key-array builder, without a second decoded posting array.
+template<class Key>
+InvertedIndex<Key> buildCSRIndex(
+    std::vector<phmap::flat_hash_map<Key, std::vector<uint32_t>>>& threadIdx,
+    int /*threads*/) {
+    phmap::flat_hash_map<Key, std::vector<uint32_t>> merged;
+    for (auto& local : threadIdx) {
+        for (auto& entry : local) {
+            auto found = merged.try_emplace(entry.first, std::move(entry.second));
+            if (!found.second) {
+                auto& target = found.first->second;
+                target.insert(target.end(), entry.second.begin(), entry.second.end());
             }
         }
+        phmap::flat_hash_map<Key, std::vector<uint32_t>>().swap(local);
     }
-
-    size_t totalUnique = 0;
-    for (auto& sh : invShards) totalUnique += sh.size();
-    std::cerr << "merge index: " << totalUnique << " unique keys" << std::endl;
-
-    // Singleton removal + posting count in one pass
-    size_t totalAfter = 0;
-    size_t totalPostings = 0;
-    #pragma omp parallel for num_threads(nThreads) reduction(+:totalAfter,totalPostings)
-    for (int s = 0; s < NUM_SHARDS; s++) {
-        for (auto it = invShards[s].begin(); it != invShards[s].end(); ) {
-            if (it->second.size() <= 1) it = invShards[s].erase(it);
-            else {
-                totalPostings += it->second.size();
-                ++it;
-                totalAfter++;
-            }
+    threadIdx.clear();
+    InvertedIndex<Key> result;
+    size_t encoded = 0, unique = 0;
+    for (auto& entry : merged) {
+        auto& ids = entry.second;
+        if (ids.size() < 2) continue;
+        if (ids.size() > UINT32_MAX) throw std::length_error("index posting list too large");
+        std::sort(ids.begin(), ids.end());
+        uint32_t last = 0;
+        for (uint32_t sid : ids) {
+            const size_t bytes = PostingCodec::encodedSize(sid - last);
+            if (bytes > SIZE_MAX - encoded) throw std::length_error("compressed index too large");
+            encoded += bytes; last = sid;
         }
+        ++unique; result.totalPostings += ids.size();
     }
-    std::cerr << "singleton removal: " << totalUnique << " -> " << totalAfter << std::endl;
-
-    // Flatten into CSR — two passes to parallelise the bulk memcpy:
-    //   Pass 1 (serial):   compute per-key offset, fill postIdx (fast hash ops).
-    //   Pass 2 (parallel): parallel memcpy per shard into csrPosts.
-    // postIdx is written only in Pass 1 (serial) so no data race.
-    // csrPosts writes are shard-disjoint so no synchronisation needed in Pass 2.
-    InvertedIndex<KeyT> idx;
-    idx.totalPostings = totalPostings;
-    idx.postIdx.reserve(totalAfter);
-    idx.csrPosts.resize(totalPostings);
-
-    // Pass 1: assign offsets + populate postIdx (serial, purely hash-map ops)
-    std::vector<size_t> shardOff(NUM_SHARDS, 0);
-    {
-        size_t cursor = 0;
-        for (int s = 0; s < NUM_SHARDS; s++) {
-            shardOff[s] = cursor;
-            for (auto& [key, vec] : invShards[s]) {
-                idx.postIdx[key] = {cursor, static_cast<uint32_t>(vec.size())};
-                cursor += vec.size();
-            }
+    result.encodedPosts.resize(encoded);
+    result.postIdx.reserve(unique);
+    size_t cursor = 0;
+    for (auto& entry : merged) {
+        auto& ids = entry.second;
+        if (ids.size() < 2) continue;
+        result.postIdx.emplace(entry.first,
+            typename InvertedIndex<Key>::PostRange{cursor, static_cast<uint32_t>(ids.size())});
+        uint32_t last = 0;
+        for (uint32_t sid : ids) {
+            cursor += PostingCodec::encode(result.encodedPosts.data() + cursor, sid - last);
+            last = sid;
         }
+        std::vector<uint32_t>().swap(ids);
     }
-
-    // Pass 2: parallel memcpy — each shard owns a disjoint region of csrPosts
-    #pragma omp parallel for num_threads(nThreads) schedule(dynamic, 1)
-    for (int s = 0; s < NUM_SHARDS; s++) {
-        size_t off = shardOff[s];
-        for (auto& [key, vec] : invShards[s]) {
-            std::memcpy(&idx.csrPosts[off], vec.data(),
-                        vec.size() * sizeof(uint32_t));
-            off += vec.size();
-        }
-        phmap::flat_hash_map<KeyT, std::vector<uint32_t>>().swap(invShards[s]);
-    }
-
-    std::cerr << "CSR flatten: " << totalPostings << " postings" << std::endl;
-    return idx;
+    return result;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -376,10 +151,12 @@ InvertedIndex<KeyT> buildCSRIndex(
 //   minCommonFn = [minSame](int){ return minSame; }   // global constant
 // ─────────────────────────────────────────────────────────────────────────────
 template<typename KeyT, typename JaccardFn, typename MinCommonFn,
-         typename CounterT = uint16_t>
+         typename CounterT = uint16_t,
+         typename KeyRanges = std::vector<std::vector<KeyT>>,
+         typename IndexT = InvertedIndex<KeyT>>
 void computeDistances(
-    const InvertedIndex<KeyT>&              idx,
-    const std::vector<std::vector<KeyT>>&   skKeys,
+    const IndexT&                          idx,
+    const KeyRanges&                        skKeys,
     const std::vector<int>&                 sketchSizes,
     const std::vector<std::string>&         fileList,
     int                                     N,
@@ -388,10 +165,10 @@ void computeDistances(
     JaccardFn                               jaccardFn,
     MinCommonFn                             minCommonFn,
     const std::string&                      outputPath,
-    int                                     nThreads)
+    int                                     nThreads,
+    size_t                                  outputBufferLimit = 0)
 {
     const bool useMashDist = (kmerSize > 0);
-    const uint32_t* csrPtr = idx.csrPosts.data();
 
     // Size-ratio pruning (only meaningful for Mash distance mode)
     const double radio = useMashDist
@@ -427,7 +204,7 @@ void computeDistances(
         std::vector<int> cand;
         cand.reserve(4096);
         std::string buf;
-        buf.reserve(1 << 24);
+        buf.reserve(outputBufferLimit ? outputBufferLimit : (1 << 24));
 
         // dynamic,4: good balance between load-balance quality and scheduling
         // overhead. With 128 HT threads, chunk=1 causes excessive contention
@@ -451,14 +228,13 @@ void computeDistances(
             const size_t ksz = keys.size();
             for (size_t ki = 0; ki < ksz; ki++) {
                 if (__builtin_expect(ki + 1 < ksz, 1))
-                    __builtin_prefetch(&keys[ki + 1], 0, 1);
-                auto it = idx.postIdx.find(keys[ki]);
-                if (__builtin_expect(it == idx.postIdx.end(), 0)) continue;
-                const uint32_t* pl   = csrPtr + it->second.off;
-                const uint32_t  plSz = it->second.cnt;
-                for (uint32_t pi = 0; pi < plSz; pi++) {
-                    int j = static_cast<int>(pl[pi]);
-                    if (j <= i) continue;
+                    prefetchIndexKey(keys, ki + 1);
+                size_t offset;
+                uint32_t plSz;
+                if (__builtin_expect(!idx.findPostingRange(keys[ki], offset, plSz), 0)) continue;
+                idx.forEachPosting(offset, plSz, [&](uint32_t sid) {
+                    int j = static_cast<int>(sid);
+                    if (j <= i) return;
                     if (__builtin_expect(stamp[j] != ep, 1)) {
                         stamp[j] = ep;
                         isect[j] = 1;
@@ -466,7 +242,7 @@ void computeDistances(
                     } else {
                         ++isect[j];
                     }
-                }
+                });
             }
 
             for (int j : cand) {
@@ -495,6 +271,16 @@ void computeDistances(
                     char line[1024];
                     int n = snprintf(line, sizeof(line), "%s\t%s\t%.6f\n",
                         fileList[i].c_str(), fileList[j].c_str(), dist);
+                    // Opt-in bounded buffering for BinDash. Flush before an
+                    // append would grow the allocation; with many workers,
+                    // doubling each output string wastes several GiB. Other
+                    // callers keep their existing buffering policy by default.
+                    if (outputBufferLimit && !buf.empty() &&
+                        buf.size() + static_cast<size_t>(n) > outputBufferLimit) {
+                        #pragma omp critical
+                        { std::fwrite(buf.data(), 1, buf.size(), fout); }
+                        buf.clear();
+                    }
                     buf.append(line, static_cast<size_t>(n));
                 }
             }
@@ -528,10 +314,11 @@ void computeDistances(
 // ExactJaccardFn:  double fn(int i, int j) → exact Jaccard, or < 0 to skip
 // MinCommonFn:     int fn(int key_count_i) → minimum common keys to verify
 // ─────────────────────────────────────────────────────────────────────────────
-template<typename KeyT, typename ExactJaccardFn, typename MinCommonFn>
+template<typename KeyT, typename ExactJaccardFn, typename MinCommonFn,
+         typename KeyRanges = std::vector<std::vector<KeyT>>>
 void computeDistancesExact(
     const InvertedIndex<KeyT>&              idx,
-    const std::vector<std::vector<KeyT>>&   skKeys,
+    const KeyRanges&                        skKeys,
     const std::vector<std::string>&         fileList,
     int                                     N,
     int                                     kmerSize,
@@ -542,7 +329,6 @@ void computeDistancesExact(
     int                                     nThreads)
 {
     const bool useMashDist = (kmerSize > 0);
-    const uint32_t* csrPtr = idx.csrPosts.data();
 
     std::string finalPath = outputPath;
     struct stat st;
@@ -593,14 +379,13 @@ void computeDistancesExact(
             const size_t ksz = keys.size();
             for (size_t ki = 0; ki < ksz; ki++) {
                 if (__builtin_expect(ki + 1 < ksz, 1))
-                    __builtin_prefetch(&keys[ki + 1], 0, 1);
-                auto it = idx.postIdx.find(keys[ki]);
-                if (__builtin_expect(it == idx.postIdx.end(), 0)) continue;
-                const uint32_t* pl   = csrPtr + it->second.off;
-                const uint32_t  plSz = it->second.cnt;
-                for (uint32_t pi = 0; pi < plSz; pi++) {
-                    int j = static_cast<int>(pl[pi]);
-                    if (j <= i) continue;
+                    prefetchIndexKey(keys, ki + 1);
+                size_t offset;
+                uint32_t count;
+                if (!idx.findPostingRange(keys[ki], offset, count)) continue;
+                idx.forEachPosting(offset, count, [&](uint32_t sid) {
+                    const int j = static_cast<int>(sid);
+                    if (j <= i) return;
                     if (__builtin_expect(stamp[j] != ep, 1)) {
                         stamp[j] = ep;
                         isect[j] = 1;
@@ -608,7 +393,7 @@ void computeDistancesExact(
                     } else {
                         ++isect[j];
                     }
-                }
+                });
             }
 
             for (int j : cand) {
