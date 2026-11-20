@@ -102,13 +102,20 @@ static inline void keys_from_witnesses_kmv(
         const uint64_t w = wit[p];
         if (w != 0) out.push_back(splitmix64(w ^ seed));
     }
-    if (K <= 0 || out.empty()) return;
+    if (K <= 0 || out.empty()) {
+        // Keep the original key values/order, but release unused storage.
+        if (out.capacity() > out.size()) std::vector<uint64_t>(out).swap(out);
+        return;
+    }
     if (static_cast<int>(out.size()) > K) {
         std::nth_element(out.begin(), out.begin() + K, out.end());
         out.resize(static_cast<size_t>(K));
     }
     std::sort(out.begin(), out.end());
     out.erase(std::unique(out.begin(), out.end()), out.end());
+    // resize(K) retains the original m-entry allocation. Only the surviving
+    // keys are needed by the index; copying them preserves every key exactly.
+    if (out.capacity() > out.size()) std::vector<uint64_t>(out).swap(out);
 }
 
 // ── Frequency-weighted k-mer counting for PMH-norm ────────────────────────
@@ -396,7 +403,7 @@ static Sketch::MinHash* build_minhash(const std::string& path, const Args& a) {
 }
 
 static Sketch::HyperLogLog* build_hll(const std::string& path, const Args& a) {
-    auto* sk = new Sketch::HyperLogLog(a.hllBits, a.kmerSize);
+    auto* sk = new Sketch::HyperLogLog(a.hllBits, /*track_witnesses=*/false, a.kmerSize);
     stream_seq(path, [&](char* seq, uint64_t /*len*/) { sk->update(seq); });
     return sk;
 }
