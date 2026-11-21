@@ -703,19 +703,13 @@ void ProbMinHash4::addHashBatch(const uint64_t* hashes, const double* weights,
     double previous_weight = 0.0;
     double inverse_weight = 0.0;
     double current_max = tracker_.getMax();
-    for (size_t offset = 0; offset < count; offset += 8) {
-        const size_t lanes = std::min<size_t>(8, count - offset);
-        uint64_t tail[8] = {};
-        const uint64_t* input = hashes + offset;
-        if (lanes != 8) {
-            std::copy_n(input, lanes, tail);
-            input = tail;
-        }
-        uint64_t rng[8];
-        // Same single seeded fmix as addHash(), using the runtime SIMD helper
-        // already shared by the other integer-hash sketch builders.
-        Runtime::filterFmix64x8(input, static_cast<uint8_t>((1u << lanes) - 1),
-                               seed_, UINT64_MAX, rng);
+    constexpr size_t hash_batch_size = 256;
+    uint64_t rng[hash_batch_size];
+    for (size_t offset = 0; offset < count;) {
+        const size_t lanes = std::min(hash_batch_size, count - offset);
+        // Preserve addHash()'s single seeded fmix, without threshold filtering
+        // or an indirect runtime dispatch for each group of eight elements.
+        Runtime::hashFmix64Batch(hashes + offset, lanes, seed_, rng);
         for (size_t lane = 0; lane < lanes; ++lane) {
             const double weight = weights[offset + lane];
             if (!(weight > 0.0)) continue;
@@ -736,6 +730,7 @@ void ProbMinHash4::addHashBatch(const uint64_t* hashes, const double* weights,
             addHashFromRngInv(rng[lane], inverse_weight);
             current_max = tracker_.getMax();
         }
+        offset += lanes;
     }
 }
 

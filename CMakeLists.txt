@@ -142,6 +142,15 @@ if (CXXAPI)
 		add_executable(probminhash_optimization_test tests/probminhash_optimization_test.cpp)
 		target_link_libraries(probminhash_optimization_test rabbitsketch_static)
 		add_test(NAME probminhash_optimization COMMAND probminhash_optimization_test)
+		foreach(batch_isa scalar avx2 avx512)
+			add_test(NAME probminhash_batch_hash_${batch_isa}
+				COMMAND probminhash_optimization_test --hash-only)
+			set_tests_properties(probminhash_batch_hash_${batch_isa} PROPERTIES
+				ENVIRONMENT "RABBITSKETCH_SIMD=${batch_isa}")
+		endforeach()
+		add_executable(bounded_radix_sort_test tests/bounded_radix_sort_test.cpp)
+		target_link_libraries(bounded_radix_sort_test rabbitsketch_static)
+		add_test(NAME bounded_radix_sort COMMAND bounded_radix_sort_test)
 
 		add_executable(cardinality_test tests/cardinality_test.cpp)
 		target_link_libraries(cardinality_test rabbitsketch_static)

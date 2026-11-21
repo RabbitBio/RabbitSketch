@@ -2,6 +2,7 @@
 #define RABBITSKETCH_PROBMINHASH_BUILD_H
 
 #include "api/RuntimeInfo.h"
+#include "BoundedRadixSort.h"
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -21,98 +22,64 @@ struct Workspace {
     std::unique_ptr<uint64_t[]> scratch;
     size_t scratch_capacity = 0;
 
-    // Retain useful capacity, but do not pin the largest genome seen by every
-    // worker for the rest of the run. Empty vectors can be replaced without
-    // copying any k-mer data. Plain-input byte hints bound the required size.
+    // Keep ordinary counting buffers across files without retaining arbitrarily
+    // large outliers. This is a retention limit, not an input or counting limit:
+    // an active genome may require more space, including when its hint is low.
+    // 128 workers retain at most 12 GiB of occurrence capacity between ordinary
+    // inputs, plus the separately bounded sort scratch below.
+    static constexpr size_t retained_limit = size_t(12) << 20; // 96 MiB/worker
+
     void begin(size_t reserve_hint = 0) {
+        const size_t maximum = occurrences.max_size();
+        if (reserve_hint > maximum)
+            throw std::length_error("ProbMinHash occurrence hint exceeds vector maximum");
+        const size_t previous_size = occurrences.size();
         occurrences.clear();
         const size_t quantum = size_t(1) << 16;
         size_t wanted = std::max(reserve_hint, size_t(1) << 20);
-        if (wanted <= std::numeric_limits<size_t>::max() - (quantum - 1))
-            wanted = (wanted + quantum - 1) / quantum * quantum;
-        if (occurrences.capacity() / 2 > wanted)
+        const size_t remainder = wanted % quantum;
+        if (remainder)
+            wanted += std::min(quantum - remainder, maximum - wanted);
+
+        // Small/large ordinary genomes commonly alternate. Shrinking merely
+        // because the next hint is smaller repeatedly discards reusable pages.
+        // Only release an outlier once the next hint fits the retained range.
+        // Compressed input hints can underestimate actual size; push_back still
+        // grows as necessary and no occurrence is omitted.
+        if (occurrences.capacity() > retained_limit && wanted <= retained_limit) {
             std::vector<uint64_t>().swap(occurrences);
-        if (wanted > occurrences.capacity()) occurrences.reserve(wanted);
+            // A low compressed-file hint may make vector growth overshoot the
+            // retention limit even for an ordinary input. Learn its actual
+            // size so the next input does not repeat that overshoot.
+            if (previous_size <= retained_limit)
+                wanted = std::max(wanted, previous_size);
+        }
+        if (wanted <= occurrences.capacity()) return;
+
+        size_t capacity = wanted;
+        if (wanted <= retained_limit) {
+            capacity = std::max(occurrences.capacity(), size_t(1) << 20);
+            while (capacity < wanted) {
+                const size_t growth = std::max(capacity / 2, quantum);
+                capacity += std::min(growth, retained_limit - capacity);
+            }
+            const size_t tail = capacity % quantum;
+            if (tail)
+                capacity += std::min(quantum - tail, retained_limit - capacity);
+        }
+        occurrences.reserve(capacity);
     }
 
-    static constexpr size_t scratch_limit = size_t(1) << 16;
-
-    // Small buckets use cache-resident LSD sorting. Large buckets are first
-    // partitioned in place on their most significant byte (American flag
-    // sorting). All values and duplicate frequencies are retained exactly;
-    // the final integer order is the same as std::sort.
-    void sortRange(uint64_t* values, size_t n, unsigned highest_bit) {
-        if (n < 128) {
-            std::sort(values, values + n);
-            return;
-        }
-        if (n <= scratch_limit) {
-            constexpr unsigned BITS = 11;
-            constexpr size_t BUCKETS = size_t(1) << BITS;
-            std::array<size_t, BUCKETS> positions;
-            uint64_t* source = values;
-            uint64_t* target = scratch.get();
-            for (unsigned shift = 0; shift <= highest_bit; shift += BITS) {
-                positions.fill(0);
-                for (size_t i = 0; i < n; ++i)
-                    ++positions[(source[i] >> shift) & (BUCKETS - 1)];
-                size_t next = 0;
-                for (size_t bucket = 0; bucket < BUCKETS; ++bucket) {
-                    const size_t count = positions[bucket];
-                    positions[bucket] = next;
-                    next += count;
-                }
-                for (size_t i = 0; i < n; ++i) {
-                    const uint64_t key = source[i];
-                    target[positions[(key >> shift) & (BUCKETS - 1)]++] = key;
-                }
-                std::swap(source, target);
-            }
-            if (source != values) std::copy_n(source, n, values);
-            return;
-        }
-        constexpr size_t BUCKETS = 256;
-        const unsigned shift = highest_bit > 7 ? highest_bit - 7 : 0;
-        std::array<size_t, BUCKETS> end{}, next{};
-        for (size_t i = 0; i < n; ++i) ++end[(values[i] >> shift) & 255];
-        size_t offset = 0;
-        for (size_t b = 0; b < BUCKETS; ++b) {
-            next[b] = offset;
-            offset += end[b];
-            end[b] = offset;
-        }
-        for (size_t b = 0; b < BUCKETS; ++b) {
-            while (next[b] < end[b]) {
-                const size_t destination = (values[next[b]] >> shift) & 255;
-                if (destination == b) ++next[b];
-                else std::swap(values[next[b]], values[next[destination]++]);
-            }
-        }
-        if (shift == 0) return;
-        offset = 0;
-        for (size_t b = 0; b < BUCKETS; ++b) {
-            const size_t count = end[b] - offset;
-            if (count > 1) sortRange(values + offset, count, shift - 1);
-            offset = end[b];
-        }
-    }
+    static constexpr size_t scratch_limit = detail::BoundedRadixSort::scratch_limit;
 
     void sort() {
         const size_t n = occurrences.size();
-        if (n < 128) {
-            std::sort(occurrences.begin(), occurrences.end());
-            return;
-        }
-        uint64_t differences = 0;
-        const uint64_t first = occurrences.front();
-        for (uint64_t key : occurrences) differences |= key ^ first;
-        if (!differences) return;
-        const size_t wanted = std::min(n, scratch_limit);
+        const size_t wanted = n < 128 ? 0 : std::min(n, scratch_limit);
         if (scratch_capacity < wanted) {
             scratch.reset(new uint64_t[wanted]);
             scratch_capacity = wanted;
         }
-        sortRange(occurrences.data(), n, 63u - static_cast<unsigned>(__builtin_clzll(differences)));
+        detail::BoundedRadixSort::sort(occurrences.data(), n, scratch.get(), scratch_capacity);
     }
 
     void release() {

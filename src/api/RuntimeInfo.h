@@ -21,7 +21,7 @@ struct RuntimeInfo {
     bool cpu_avx512bw = false;
     std::string selected_byte_path = "scalar";
     std::string selected_u64_path = "scalar";
-    // Shared by the single-round filter and double-round hash kernels.
+    // Shared by the batch, single-round filter and double-round hash kernels.
     std::string selected_rank_path = "scalar";
     std::string environment_override;
     bool environment_override_honored = true;
@@ -52,6 +52,19 @@ size_t countSortedIntersectionU64(const uint64_t* left,
                                   size_t left_size,
                                   const uint64_t* right,
                                   size_t right_size) noexcept;
+
+/**
+ * Compute RankStream fmix64(value, seed) for every input without filtering.
+ * Dispatch occurs once per batch. Only count entries are read and written;
+ * no SIMD alignment is required and exact in-place operation is supported.
+ * The arrays must otherwise be disjoint. An empty batch or null input/output
+ * is a no-op.
+ * Uses the same runtime ISA selection as filterFmix64x8.
+ */
+void hashFmix64Batch(const uint64_t* values,
+                    size_t count,
+                    uint64_t seed,
+                    uint64_t* fingerprints) noexcept;
 
 /**
  * Compute RankStream fmix64 for eight canonical values and return the lanes

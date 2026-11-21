@@ -24,6 +24,8 @@ using IntersectionFunction = size_t (*)(const uint64_t*, size_t,
                                         const uint64_t*, size_t);
 using RankFilterFunction = uint8_t (*)(const uint64_t*, uint8_t, uint64_t,
                                       uint64_t, uint64_t*);
+using RankBatchFunction = void (*)(const uint64_t*, size_t, uint64_t,
+                                  uint64_t*);
 using DoubleRankFunction = void (*)(const uint64_t*, uint8_t, uint64_t,
                                     uint64_t*, uint64_t*);
 
@@ -75,6 +77,14 @@ inline uint64_t fmix64(uint64_t value, uint64_t seed) noexcept {
     value *= UINT64_C(0xc4ceb9fe1a85ec53);
     value ^= value >> 33;
     return value;
+}
+
+void scalarHashFmix64Batch(const uint64_t* values,
+                          size_t count,
+                          uint64_t seed,
+                          uint64_t* fingerprints) noexcept {
+    for (size_t index = 0; index < count; ++index)
+        fingerprints[index] = fmix64(values[index], seed);
 }
 
 uint8_t scalarFilterFmix64x8(const uint64_t* canonical_values,
@@ -335,6 +345,60 @@ size_t avx512SortedIntersectionU64(const uint64_t* left,
 }
 
 RABBITSKETCH_TARGET("avx2")
+void avx2HashFmix64Batch(const uint64_t* values,
+                        size_t count,
+                        uint64_t seed,
+                        uint64_t* fingerprints) noexcept {
+    const __m256i seed_vector = _mm256_set1_epi64x(
+        static_cast<long long>(seed));
+    const __m256i first_constant = _mm256_set1_epi64x(
+        static_cast<long long>(UINT64_C(0xff51afd7ed558ccd)));
+    const __m256i second_constant = _mm256_set1_epi64x(
+        static_cast<long long>(UINT64_C(0xc4ceb9fe1a85ec53)));
+    size_t index = 0;
+    for (; count - index >= 4; index += 4) {
+        __m256i value = _mm256_loadu_si256(
+            reinterpret_cast<const __m256i*>(values + index));
+        value = _mm256_xor_si256(value, seed_vector);
+        value = _mm256_xor_si256(value, _mm256_srli_epi64(value, 33));
+        value = avx2MulloEpi64(value, first_constant);
+        value = _mm256_xor_si256(value, _mm256_srli_epi64(value, 33));
+        value = avx2MulloEpi64(value, second_constant);
+        value = _mm256_xor_si256(value, _mm256_srli_epi64(value, 33));
+        _mm256_storeu_si256(
+            reinterpret_cast<__m256i*>(fingerprints + index), value);
+    }
+    scalarHashFmix64Batch(values + index, count - index, seed,
+                         fingerprints + index);
+}
+
+RABBITSKETCH_TARGET("avx512f,avx512dq")
+void avx512HashFmix64Batch(const uint64_t* values,
+                          size_t count,
+                          uint64_t seed,
+                          uint64_t* fingerprints) noexcept {
+    const __m512i seed_vector = _mm512_set1_epi64(
+        static_cast<long long>(seed));
+    const __m512i first_constant = _mm512_set1_epi64(
+        static_cast<long long>(UINT64_C(0xff51afd7ed558ccd)));
+    const __m512i second_constant = _mm512_set1_epi64(
+        static_cast<long long>(UINT64_C(0xc4ceb9fe1a85ec53)));
+    size_t index = 0;
+    for (; count - index >= 8; index += 8) {
+        __m512i value = _mm512_loadu_si512(values + index);
+        value = _mm512_xor_epi64(value, seed_vector);
+        value = _mm512_xor_epi64(value, _mm512_srli_epi64(value, 33));
+        value = _mm512_mullo_epi64(value, first_constant);
+        value = _mm512_xor_epi64(value, _mm512_srli_epi64(value, 33));
+        value = _mm512_mullo_epi64(value, second_constant);
+        value = _mm512_xor_epi64(value, _mm512_srli_epi64(value, 33));
+        _mm512_storeu_si512(fingerprints + index, value);
+    }
+    scalarHashFmix64Batch(values + index, count - index, seed,
+                         fingerprints + index);
+}
+
+RABBITSKETCH_TARGET("avx2")
 uint8_t avx2FilterFmix64x8(const uint64_t* canonical_values,
                            uint8_t valid_mask,
                            uint64_t seed,
@@ -499,6 +563,7 @@ struct Dispatch {
     U64Function u64 = scalarEqualNonZeroU64;
     IntersectionFunction intersection = scalarSortedIntersectionU64;
     RankFilterFunction rank_filter = scalarFilterFmix64x8;
+    RankBatchFunction rank_batch = scalarHashFmix64Batch;
     DoubleRankFunction double_rank = scalarDoubleFmix64x8;
 };
 
@@ -549,14 +614,17 @@ Dispatch makeDispatch() noexcept {
         result.info.selected_u64_path = "avx512f";
         if (override_value != "auto" && result.info.cpu_avx512dq) {
             result.rank_filter = avx512FilterFmix64x8;
+            result.rank_batch = avx512HashFmix64Batch;
             result.double_rank = avx512DoubleFmix64x8;
             result.info.selected_rank_path = "avx512dq";
         } else if (result.info.cpu_avx2) {
             result.rank_filter = avx2FilterFmix64x8;
+            result.rank_batch = avx2HashFmix64Batch;
             result.double_rank = avx2DoubleFmix64x8;
             result.info.selected_rank_path = "avx2";
         } else if (result.info.cpu_avx512dq) {
             result.rank_filter = avx512FilterFmix64x8;
+            result.rank_batch = avx512HashFmix64Batch;
             result.double_rank = avx512DoubleFmix64x8;
             result.info.selected_rank_path = "avx512dq";
         }
@@ -565,6 +633,7 @@ Dispatch makeDispatch() noexcept {
         result.u64 = avx2EqualNonZeroU64;
         result.intersection = avx2SortedIntersectionU64;
         result.rank_filter = avx2FilterFmix64x8;
+        result.rank_batch = avx2HashFmix64Batch;
         result.double_rank = avx2DoubleFmix64x8;
         result.info.selected_byte_path = "avx2";
         result.info.selected_u64_path = "avx2";
@@ -660,6 +729,14 @@ size_t countSortedIntersectionU64(const uint64_t* left,
     return common + remainder(
         left + left_index, left_size - left_index,
         right + right_index, right_size - right_index);
+}
+
+void hashFmix64Batch(const uint64_t* values,
+                    size_t count,
+                    uint64_t seed,
+                    uint64_t* fingerprints) noexcept {
+    if (count == 0 || values == nullptr || fingerprints == nullptr) return;
+    dispatch().rank_batch(values, count, seed, fingerprints);
 }
 
 uint8_t filterFmix64x8(const uint64_t* canonical_values,
